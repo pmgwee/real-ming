@@ -9,7 +9,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark light">
-  <title>Real-Ming v1 — Final Architecture</title>
+  <title>Real-Ming v1.1 — Final Architecture</title>
   <style>
     :root {
       --ground: #f3f6f8;
@@ -1171,7 +1171,7 @@
     <header class="masthead">
       <div>
         <p class="eyebrow">Ming Creatives · Personal Executive Operations</p>
-        <h1>Real-Ming v1 — final architecture</h1>
+        <h1>Real-Ming v1.1 — final architecture</h1>
         <p class="standfirst">A private, CEO-led operating system that coordinates five bounded Executive Roles, authoritative personal and project sources, durable cloud work, and on-demand private execution—without turning every source into one shared memory or giving agents unbounded authority.</p>
         <div class="stamp">
           <span>Status <strong>final v1 design baseline</strong></span>
@@ -1204,7 +1204,7 @@
           <p class="section-label">Architecture verdict</p>
           <h2>The earlier sketch remains the spine—not the final map.</h2>
         </div>
-        <p class="section-note">Its direction was right: authoritative sources, scoped connectors, a Real-Ming control plane, Hermes, Agent Brain, durable workflows, Telegram, and workers. The final v1 design makes the missing boundaries explicit.</p>
+        <p class="section-note">Its direction was right: authoritative sources, scoped connectors, a Real-Ming control plane, Hermes, Agent Brain, durable workflows, Telegram, and workers. The v1.1 design adds the governed, persistent Knowledge Vault without turning it into a universal memory.</p>
       </div>
 
       <div class="verdict">
@@ -1219,7 +1219,7 @@
             <div class="item">Sources of Record</div>
             <div class="item">Scoped adapters</div>
             <div class="item">Real-Ming control plane</div>
-            <div class="item">Hermes + Agent Brain</div>
+            <div class="item">Hermes + Knowledge Vault + Agent Brain</div>
             <div class="item">Surfaces + workers</div>
           </div>
           <ul class="delta-list">
@@ -1227,6 +1227,7 @@
             <li>Master Tasks, Work Items, Approvals, Outcome Reports, projections, audit, and Project Portfolio become first-class services.</li>
             <li>Cloud execution and the Lenovo private worker have an explicit capability boundary and safe offline queue.</li>
             <li>Agent Brain is only brokered, cited Project Evidence—not a universal personal memory.</li>
+            <li>Compiled Knowledge is versioned Markdown isolated by Trust Domain; Obsidian is its CEO-facing IDE and Hermes native memory remains bounded.</li>
           </ul>
         </article>
       </div>
@@ -1379,17 +1380,22 @@
           <div class="band context">
             <p class="band-title"><span class="number">4</span> Information boundary · minimum approved context</p>
             <div class="node-grid">
-              <article class="node span-4">
+              <article class="node span-3">
                 <h3>Context Vault + Projection Broker</h3>
                 <p>Curated Personal Context Package → role/task-scoped Approved Projection</p>
                 <span class="micro">never universal raw memory</span>
               </article>
-              <article class="node span-4">
+              <article class="node span-3">
+                <h3>Knowledge Vault + Compiler</h3>
+                <p>Candidate Envelopes → cited, versioned Trust-Domain Markdown → scoped projection</p>
+                <span class="micro">raw · schema · wiki · index · log · lint</span>
+              </article>
+              <article class="node span-3">
                 <h3>Evidence Broker → Agent Brain</h3>
                 <p>Workspace + role + Work Item purpose + allowed project → cited Project Evidence</p>
                 <span class="micro">project evidence only</span>
               </article>
-              <article class="node span-4">
+              <article class="node span-3">
                 <h3>Source Connector Layer</h3>
                 <p>Capability-scoped adapters · provenance · freshness · health · safe write-back</p>
                 <span class="micro">sources remain authoritative</span>
@@ -1459,9 +1465,9 @@
       <div class="section-head">
         <div>
           <p class="section-label">Diagram D · Trust, personal context &amp; project evidence</p>
-          <h2>Two brokered information paths; no universal memory.</h2>
+          <h2>Three governed information layers; no universal memory.</h2>
         </div>
-        <p class="section-note">Personal facts and project knowledge have different provenance, sensitivity, and update rules. Neither path silently promotes derived content into an authoritative personal, career, financial, or project fact.</p>
+        <p class="section-note">Personal Context, Compiled Knowledge, and Project Evidence have different provenance, sensitivity, and update rules. No layer silently promotes derived content into an authoritative personal, career, financial, academic, or project fact.</p>
       </div>
 
       <div class="split-grid">
@@ -1490,8 +1496,22 @@
             <div class="unit">Evidence Broker policy</div>
             <div class="unit">Cited Project Evidence</div>
           </div>
-          <p class="panel-copy">Agent Brain remains the LLM wiki for project summaries and evidence. Access is constrained by workspace, Executive Role, Work Item purpose, and allowed project.</p>
+          <p class="panel-copy">Agent Brain remains the canonical, append-only Project Evidence system with generated Markdown projections. Real-Ming reads it through the Evidence Broker and never edits its ledger or generated folders.</p>
         </article>
+      </div>
+
+      <div class="panel" style="margin-top: 16px;">
+        <div class="panel-head">
+          <h3>Persistent Compiled Knowledge path</h3>
+          <span class="badge">cited · versioned · rebuildable</span>
+        </div>
+        <div class="mini-flow">
+          <div class="unit">Candidate Envelope<br><small>source · hash · as-of · policy</small></div>
+          <div class="unit">Knowledge Compiler<br><small>ingest · reconcile · cite · lint</small></div>
+          <div class="unit">Trust-Domain wiki<br><small>raw · schema · wiki · index · log</small></div>
+          <div class="unit">Approved Projection<br><small>role · task · purpose</small></div>
+        </div>
+        <p class="panel-copy">The encrypted Knowledge Vault contains Personal, Ming Creatives, Academic, Entertainment, and Finance roots plus a CEO projection root. Hermes operates compilation and query. Obsidian displays the Markdown to the CEO. Hermes native memory stores only approved runtime preferences and pointers.</p>
       </div>
 
       <div class="panel" style="margin-top: 16px;">
@@ -1681,7 +1701,7 @@
             <li>Five direct-report Executive Roles; COO coordinates without peer authority.</li>
             <li>Telegram primary, dashboard for monitoring, exact Approval, and recovery.</li>
             <li>Master Tasks canonical; Sources of Record remain authoritative.</li>
-            <li>Brokered context/evidence, hybrid workers, tiered authority, and no Money Movement.</li>
+            <li>Brokered context, Compiled Knowledge, and Project Evidence; hybrid workers; tiered authority; and no Money Movement.</li>
           </ul>
         </article>
         <article class="decision-box deferred">
@@ -1692,6 +1712,7 @@
             <li>OAuth credentials, provider accounts, connector secrets, and scheduler inventory.</li>
             <li>Provider/project budgets beneath the RM250 global cap.</li>
             <li>Staged Agent Brain registration and verification of additional projects.</li>
+            <li>Durable encrypted volume, backup, and optional synchronization provider for the Knowledge Vault.</li>
           </ul>
         </article>
       </div>
@@ -1699,7 +1720,7 @@
 
     <footer class="footer">
       <p>This diagram is the human-readable architecture companion to the Real-Ming v1 specification. If a simplified drawing conflicts with the specification, ADRs, or glossary, the repository design baseline governs.</p>
-      <span class="version">Real-Ming · Architecture v1.0</span>
+      <span class="version">Real-Ming · Architecture v1.1</span>
     </footer>
   </main>
 

@@ -7,8 +7,17 @@ This is a discovery record, not the implementation specification. It records kno
 - Never record passwords, recovery codes, API secrets, complete payment-card details, brokerage transaction passwords, or identity-document images here.
 - Every imported record must retain its source and an `as of` time; stale data must never be presented as current.
 - Direct source data remains authoritative. Agent Brain supplies Project Evidence and never replaces live source files or provider records.
+- Candidate Envelopes record provenance and a bounded snapshot or pointer; Compiled Knowledge remains derived, cited, versioned, and rebuildable.
+- Knowledge Vault roots follow Trust Domains rather than Executive Roles. CTO and CMO both use scoped Ming Creatives projections, while Entertainment remains isolated even without a dedicated Executive Role.
+- Hermes native memory stores only approved runtime preferences and pointers. Chats, email bodies, financial exports, academic files, and project corpora never become a raw memory dump.
 - Personal-context ingestion is allowlisted page by page. Connecting the Notion workspace does not authorize indiscriminate ingestion of every page.
 - Cross-domain consumers receive an Approved Projection unless their Executive Role is explicitly authorized for the raw source.
+
+## Persistent compiled knowledge
+
+The Real-Ming Knowledge Vault is one logical service over six isolated Markdown roots: Personal, Ming Creatives, Academic, Entertainment, Finance, and CEO Approved Projections. Each domain root contains schema files, `index.md`, append-only `log.md`, immutable Candidate Envelopes or source-reference metadata, versioned compiled wiki pages, daily operational outputs, and a quarantine area for conflicts or failed validation.
+
+The Knowledge Compiler follows the LLM Wiki ingest, query, and lint discipline. It may replace a derived page only by publishing a traceable successor generation. It never writes back to a Source of Record, rewrites Agent Brain evidence, edits Agent Brain-generated folders, or promotes a daily note or conversation transcript directly into a stable fact. Obsidian may open the Markdown roots for CEO inspection; agents receive only brokered role- and task-scoped projections.
 
 ## Calendar and tasks
 

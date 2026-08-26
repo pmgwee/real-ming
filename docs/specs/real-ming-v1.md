@@ -1,4 +1,6 @@
-# Real-Ming v1 Personal Executive Operations Specification
+# Real-Ming v1.1 Personal Executive Operations Specification
+
+Version 1.1 · 2026-08-27 · Adds the approved Trust-Domain Knowledge Vault and LLM Wiki memory architecture without changing the two-tracer rollout or human-authority boundaries.
 
 ## Problem Statement
 
@@ -18,7 +20,7 @@ One private Telegram bot will be the primary remote command and Approval surface
 
 Master Tasks will be the canonical Notion data source for operational Work Items. Five current task databases will be backed up, migrated, reconciled, and replaced in daily use by linked Work Views for the CEO and each Executive Role. All Work Items will use one lifecycle, one Accountable Executive, optional Collaborating Executives, provenance-linked commitments, explicit risk and Approval state, and a recorded Outcome Report.
 
-The system will compose rather than replace existing systems. Hermes will remain the conversational and tool runtime. Real-Ming will provide policy, coordination, durable work, Approval, projection, audit, monitoring, and dashboard capabilities. Agent Brain will remain the source of cited Project Evidence behind an Evidence Broker. Domain systems will remain Sources of Record. Personal Context will be curated through an allowlisted Personal Context Package, encrypted Context Vault, and role- and task-scoped Approved Projections.
+The system will compose rather than replace existing systems. Hermes will remain the conversational, tool, scheduling, and Knowledge Compiler runtime. Real-Ming will provide policy, coordination, durable work, Approval, projection, audit, monitoring, and dashboard capabilities. Agent Brain will remain the source of cited Project Evidence behind an Evidence Broker. Domain systems will remain Sources of Record. Personal Context will be curated through an allowlisted Personal Context Package and encrypted Context Vault. Persistent Compiled Knowledge will be stored as cited, versioned Markdown in a Knowledge Vault with separate Trust Domain roots and a CEO Approved-Projection root. Obsidian is the CEO-facing knowledge IDE, while Executive Roles retrieve only role- and task-scoped projections. Hermes native memory remains a small, write-gated Hot Runtime Memory rather than the persistent brain.
 
 Execution will be hybrid. An isolated always-on control plane will handle Telegram, schedules, cloud APIs, cloud-accessible repositories, monitoring, and Remote-Ready Projects. The Lenovo will act as an on-demand private worker for local files, existing browser sessions, Windows-only tools, sensitive processing, and other Local-Only Work. Work that truly requires the Lenovo will queue safely while it is unavailable instead of pretending it can execute in the cloud.
 
@@ -124,13 +126,21 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 96. As the CEO, I want the system to degrade visibly when a provider is unavailable or stale, so that missing data is never silently treated as an empty or healthy source.
 97. As the CEO, I want retries to be idempotent and bounded, so that provider failures cannot duplicate Work Items, messages, database changes, or deployments.
 98. As the CEO, I want model routing to use an adequate cost-conscious provider while respecting sensitivity policy, so that quality, privacy, and the Metered Platform Cost cap are balanced.
+99. As the CEO, I want persistent agent knowledge compiled into cited, versioned Markdown, so that research and operations accumulate without replacing authoritative providers.
+100. As the CEO, I want the Knowledge Vault isolated into Personal, Ming Creatives, Academic, Entertainment, and Finance roots plus a CEO projection root, so that persistent knowledge does not erase Trust Domain boundaries.
+101. As an Executive Role, I want Compiled Knowledge served through the Projection Broker for my current Work Item, so that useful history does not grant direct filesystem or cross-domain access.
+102. As the CEO, I want every compiled claim linked to a Candidate Envelope or cited Project Evidence with source, hash, `as of` time, sensitivity, allowed roles, and retention, so that derived knowledge remains explainable and refreshable.
+103. As the CEO, I want contradictions quarantined and derived pages superseded through versioned publication, so that an LLM cannot silently choose a convenient truth or erase history.
+104. As the CEO, I want Hermes scheduled jobs to ingest, query, file useful outputs, and lint the Knowledge Vault without converting daily notes or chats automatically into stable facts.
+105. As the CEO, I want Hermes native memory restricted to approved stable preferences, routing facts, and vault pointers, so that small runtime convenience cannot become a universal personal memory.
+106. As the CEO, I want Obsidian to display the Knowledge Vault while the encrypted filesystem, brokers, and policy engine enforce durability and access, so that the viewer is not mistaken for the security boundary.
 
 ## Implementation Decisions
 
 ### System composition and module boundaries
 
-- Hermes remains the conversational and tool runtime. Real-Ming adds durable work coordination, Executive Role routing, policy enforcement, Approval, audit, projection, monitoring, and CEO surfaces rather than introducing a second competing agent core.
-- The system is divided into an Identity and Command Gateway, Executive Role Registry, Work Orchestrator, Policy and Approval Engine, Master Tasks integration, Source Connector layer, Context Vault and Projection Broker, Evidence Broker, Project Portfolio, Worker Coordinator, Outcome and Audit service, Operations Read Model, dashboard, and notification service.
+- Hermes remains the conversational, tool, scheduling, and Knowledge Compiler runtime. Real-Ming adds durable work coordination, Executive Role routing, policy enforcement, Approval, audit, projection, monitoring, and CEO surfaces rather than introducing a second competing agent core.
+- The system is divided into an Identity and Command Gateway, Executive Role Registry, Work Orchestrator, Policy and Approval Engine, Master Tasks integration, Source Connector layer, Context Vault, Knowledge Vault and Projection Broker, Evidence Broker, Project Portfolio, Worker Coordinator, Outcome and Audit service, Operations Read Model, dashboard, and notification service.
 - External providers are accessed through explicit adapters. Provider-specific payloads do not leak into the Work Orchestrator; adapters normalize provenance, freshness, capabilities, success, retryability, denial, and failure.
 - V1 is single-user-first, but every durable record carries an actor identity and workspace identity. Public signup, billing, and generalized role administration are deferred.
 
@@ -161,14 +171,20 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 - Code promotion, database migration, production-data change, external communication, destructive action, permission change, purchase, and financial Record Change are distinct Approval scopes and cannot be bundled implicitly.
 - Money Movement and brokerage trading have no grantable v1 capability. Credentials, recovery material, card details, brokerage transaction passwords, and identity documents are Sensitive Secrets and never enter normal agent context.
 
-### Personal Context, Trust Domains, and Project Evidence
+### Personal Context, Trust Domains, Project Evidence, and Compiled Knowledge
 
 - The Personal Context Package is a CEO-curated ingestion allowlist. Each entry records source, authority, `as of` time, sensitivity, Trust Domain, permitted roles, and supersession.
 - Version control stores schemas, policies, manifests, and redacted projections. Raw staging is excluded from Git. Selected always-on context is encrypted in the Context Vault.
 - The Projection Broker releases the minimum approved slice for the current Executive Role and Work Item. Cross-domain summaries are Approved Projections, not shared raw memory.
 - Personal, Ming Creatives, Academic, Entertainment, and Finance are separate Trust Domains. Dashboard search and general Executive context use projections by default.
 - Agent Brain remains Project Evidence. The Evidence Broker requires a workspace, Executive Role, Work Item purpose, and allowed Portfolio Project, and returns cited project-scoped results.
-- Optional reviewed project wiki material remains distinct from Agent Brain evidence and direct source files. Neither is promoted into personal or career fact without provenance.
+- The Knowledge Vault is one logical encrypted and versioned Markdown service with isolated Personal, Ming Creatives, Academic, Entertainment, and Finance roots plus a CEO root containing only Approved Projections. Storage follows Trust Domains; Executive Roles are scoped views and do not define vault boundaries.
+- Each Candidate Envelope records source system, stable source reference, captured and `as of` times, content hash, sensitivity, allowed roles, retention class, and a bounded snapshot or pointer. Sensitive Secrets are rejected before compilation.
+- The Knowledge Compiler follows the LLM Wiki raw/schema/wiki discipline and supports ingest, query, filing useful outputs, index maintenance, append-only logging, contradiction quarantine, linting, and atomic versioned publication.
+- Compiled Knowledge is derived and rebuildable. It may supersede a prior wiki generation but may never write to a Source of Record, rewrite canonical Agent Brain evidence, edit Agent Brain-generated projections, or silently become a personal, career, financial, academic, or project fact.
+- The Projection Broker releases Compiled Knowledge only for the current Executive Role, Work Item, purpose, and allowed Trust Domains. CTO and CMO receive distinct views over Ming Creatives; Entertainment remains isolated even without a dedicated Executive Role.
+- Hermes native `MEMORY.md` and `USER.md` are Hot Runtime Memory only. Writes require Approval, contents remain deliberately bounded, and domain corpora, daily notes, conversations, email bodies, financial data, and academic files are excluded.
+- Obsidian is the CEO-facing IDE over the Markdown roots. The durable encrypted filesystem, versioned publication, backups, policy engine, and brokers—not Obsidian—provide persistence and access control.
 - The Project Portfolio records Portfolio State, repository, production branch, deployment identifiers, evidence identity, responsible roles, sensitivity, health, Remote-Ready status, and relevant source links.
 
 ### Hybrid execution and workers
@@ -199,6 +215,7 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 - Metered Platform Cost observations contain workspace, Portfolio Project, provider, service or model, period, amount, currency, source, `as of` time, and quality indicator such as provider-reported, estimated, stale, or unavailable.
 - The global monthly Metered Platform Cost cap is RM250. Provider and project budgets are proposals until CEO-approved. Recurring Subscriptions and paid agent-tool plans remain exclusively in DuitSini.
 - Scheduler monitoring records expected cadence, criticality, last Scheduler Heartbeat, last success, next expected run, duration, failure streak, accountable role, and evidence link.
+- Knowledge health reports per-domain ingest, compile, publish, and lint state, candidate backlog, quarantined conflicts, stale pages, failed citations, and current generation identity without exposing raw notes in dashboard search or logs.
 - One critical missed or failed heartbeat triggers an Exception Notice. Routine jobs trigger after two consecutive failures. Repeated identical errors are grouped, and recovery produces one notice.
 
 ### Domain-specific integrations
@@ -230,6 +247,8 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 - Provider unavailability, stale data, missing permission, and unsupported capability are distinct states. None may be represented as an empty healthy response.
 - Model routing chooses an adequate model under sensitivity, capability, quality, latency, and Metered Platform Cost policy. Raw high-sensitivity context is minimized or retained on the private worker.
 - Routine operational events remain in dashboard history and the Executive Roll-Up. Exception Notices are deduplicated and rate-limited without hiding distinct critical failures.
+- Knowledge Compiler jobs are scheduled only after scheduler health and recovery are available. They explicitly load their schema, index, Work Item purpose, and allowed roots rather than relying on prior-session Hot Runtime Memory.
+- Verified raw candidate payloads become purge-eligible after 30 days unless a stricter domain policy applies. Provenance identifiers, hashes, tombstones, and purge evidence remain append-only without retaining the sensitive payload; compiled generations and backups follow Trust Domain deletion and supersession policy.
 
 ## Testing Decisions
 
@@ -244,7 +263,7 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 
 - The harness submits normalized CEO commands, dashboard actions, scheduled events, source events, and worker events through the same Operations Gateway used by production surfaces.
 - It runs the real identity, role routing, Work Orchestrator, Policy and Approval Engine, durable state, read models, notifications, and audit against an isolated test workspace with controlled provider and worker fakes.
-- System scenarios cover direct questions without Work Items, action capture, ambiguous clarification, one Accountable Executive, collaboration, lifecycle guards, Proposed Commitments, calendar/task reconciliation, morning brief, evening roll-up, do-not-disturb, grouped exceptions, and recovery notices.
+- System scenarios cover direct questions without Work Items, action capture, ambiguous clarification, one Accountable Executive, collaboration, lifecycle guards, Proposed Commitments, calendar/task reconciliation, morning brief, evening roll-up, do-not-disturb, grouped exceptions, recovery notices, Candidate Envelope compilation, versioned wiki publication, contradiction quarantine, scoped knowledge retrieval, and denied cross-domain lookup.
 - Authority scenarios cover allowed reads, Standing Authority, denied cross-domain access, redacted dashboard projections, secret exclusion, exact-target Approval, changed-target invalidation, changes requested, cancellation, and disallowed Money Movement.
 - Hybrid scenarios cover an online private worker, offline queueing, expired leases, retry after reconnect, duplicate delivery, verification failure, and worker output that cannot complete a Work Item without an Outcome Report.
 - MicroSaaS scenarios cover branch creation, checks, preview verification, Deployment Candidate creation, stale commit Approval rejection, separately scoped migration Approval, production promotion, failed verification, rollback candidate presentation, and final Outcome Report.
@@ -252,7 +271,7 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 
 ### Seam 2: Provider Adapter Contract Harness
 
-- One parameterized contract suite is applied to Telegram, Notion, Google Calendar, email, Agent Brain, GitHub, Git, Vercel, Metered Platform Cost providers, scheduler sources, Context Vault storage, and the private worker protocol as each adapter is added.
+- One parameterized contract suite is applied to Telegram, Notion, Google Calendar, email, Agent Brain, GitHub, Git, Vercel, Metered Platform Cost providers, scheduler sources, Context Vault and Knowledge Vault storage, and the private worker protocol as each adapter is added.
 - Every adapter proves capability discovery, authentication failure handling, input validation, normalized identity, provenance, `as of` time, idempotent write behaviour, retry classification, rate-limit handling, redaction, secret-safe errors, and stale/unavailable signalling.
 - Read/write adapters prove that a retry cannot duplicate an external effect. Read-only adapters prove that unsupported writes are rejected locally before a provider call.
 - Live smoke tests are opt-in, isolated, self-cleaning where possible, and skipped unless both an explicit run flag and securely supplied credentials exist.
@@ -263,6 +282,7 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 - DuitSini supplies prior art for Node-based Vitest contract tests, stubbed global provider calls, provider-neutral adapters, secret-safe assertions, a mock-versus-production repository boundary, deterministic local persistence tests, and explicit opt-in live smoke tests.
 - The Real-Ming implementation should preserve the same safety posture: local contract tests run without network or billable requests, while live verification is deliberate and separately identifiable.
 - Each change must pass type checking, automated behavioural tests, secret/error scans appropriate to the changed adapters, and a production-equivalent build before becoming a Deployment Candidate.
+- Knowledge tests use deterministic source fixtures and prove source hashes, citations, conflict handling, atomic generation publication, `index.md`, append-only `log.md`, lint findings, retention, and the prohibition on direct source or Agent Brain writes.
 - Tracer 1 passes only when the CEO can submit work through Telegram, see the same Work Item in the correct Work View, receive the scheduled brief and roll-up, exercise an artifact-bound Approval, and inspect a complete audit trail without raw cross-domain leakage.
 - Tracer 2 passes only when one bounded DuitSini update travels from CEO request to verified preview, exact-commit Approval, merge, production verification, and final Outcome Report without production-data leakage or unapproved migration effects.
 
@@ -271,6 +291,8 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 - Public signup, customer billing, organizations, team invitations, generalized RBAC administration, or a multi-user product interface.
 - Five separate Telegram bots or continuously running LLM loops for the five Executive Roles.
 - A universal agent with unrestricted credentials, Project Evidence, personal context, or cross-domain memory.
+- A single flat Obsidian vault available directly to every Executive Role, treating Obsidian as an access-control system, or treating Hermes native memory as the persistent knowledge store.
+- Raw chat, inbox, financial, academic, filesystem, or Agent Brain dumps promoted directly into Compiled Knowledge or Hot Runtime Memory.
 - Replacing Google Calendar, Notion, email providers, finance applications, project databases, GitHub, Vercel, career files, content workflows, or Agent Brain as Sources of Record.
 - Indiscriminate ingestion of the entire Notion workspace, entire email history, all local files, or every Agent Brain project.
 - Storing raw personal files, credentials, recovery codes, complete payment-card details, brokerage transaction passwords, or identity documents in Git.
@@ -292,4 +314,4 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 - The exact first DuitSini update, selected Personal Context files, allowlisted Notion page identifiers, connector credentials, provider inventories, and provider/project budgets are operational inputs captured by later Work Items or tickets.
 - Evidence-enablement candidates are the content-creation workflow, Agent Brain dashboard, personal portfolio, career operations, and Real-Ming itself. Registration is staged separately, followed by service restart, health and storage inspection, and a cited-query check.
 - Real-Ming is a new implementation repository. Its glossary, ADRs, discovery records, and this specification are the current authoritative design baseline.
-- Phase 3 must decompose this umbrella specification into tracer-bullet tickets with explicit blocking edges. Implementation should not treat this single specification issue as one monolithic coding task.
+- Phase 3 decomposes this umbrella specification into tracer-bullet tickets with explicit blocking edges, including the Knowledge Vault foundation. Implementation must not treat this single specification issue as one monolithic coding task.

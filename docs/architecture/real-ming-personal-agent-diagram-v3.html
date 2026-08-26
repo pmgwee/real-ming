@@ -1,0 +1,738 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>Real-Ming Personal Agent Architecture v3</title>
+  <style>
+    :root {
+      --bg: #080d18;
+      --surface: #101827;
+      --surface-2: #151f31;
+      --surface-3: #1a2639;
+      --text: #f4f8ff;
+      --muted: #a8b9cc;
+      --faint: #71859c;
+      --line: #2b3b50;
+      --blue: #4db5ff;
+      --green: #45d49a;
+      --purple: #b58cff;
+      --yellow: #f2c94c;
+      --orange: #ff8a4c;
+      --red: #ff6b65;
+      --cyan: #51d8e8;
+      --mono: "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--bg); }
+
+    body {
+      margin: 0;
+      background:
+        linear-gradient(rgba(81, 216, 232, .035) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(81, 216, 232, .035) 1px, transparent 1px),
+        var(--bg);
+      background-size: 34px 34px;
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.42;
+      padding: 30px;
+    }
+
+    main {
+      width: min(1540px, 100%);
+      margin: 0 auto;
+    }
+
+    header {
+      padding: 4px 0 22px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow,
+    .band-label,
+    .tag,
+    .legend,
+    .flow-label,
+    .micro {
+      font-family: var(--mono);
+      letter-spacing: .06em;
+    }
+
+    .eyebrow {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 8px;
+      color: var(--cyan);
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 18px rgba(69, 212, 154, .58);
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    h1 {
+      margin-bottom: 8px;
+      font-family: var(--mono);
+      font-size: clamp(28px, 3.2vw, 46px);
+      line-height: 1.12;
+      letter-spacing: -.035em;
+      font-weight: 600;
+    }
+
+    h2 {
+      margin-bottom: 4px;
+      font-family: var(--mono);
+      font-size: 21px;
+      line-height: 1.2;
+      font-weight: 600;
+    }
+
+    h3 {
+      margin-bottom: 8px;
+      font-family: var(--mono);
+      font-size: 16px;
+      line-height: 1.25;
+      font-weight: 600;
+    }
+
+    .subtitle {
+      max-width: 1080px;
+      margin-bottom: 17px;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 14px;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 22px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend span { display: inline-flex; align-items: center; gap: 7px; }
+    .swatch { width: 12px; height: 12px; border-radius: 3px; }
+    .swatch.source { background: var(--blue); }
+    .swatch.govern { background: var(--green); }
+    .swatch.memory { background: var(--purple); }
+    .swatch.runtime { background: var(--yellow); }
+    .swatch.human { background: var(--orange); }
+
+    .band {
+      margin-top: 18px;
+      padding: 20px;
+      background: rgba(16, 24, 39, .94);
+      border-top: 2px solid var(--band-color, var(--line));
+      border-bottom: 1px solid var(--line);
+    }
+
+    .band.source-band { --band-color: var(--blue); }
+    .band.govern-band { --band-color: var(--green); }
+    .band.memory-band { --band-color: var(--purple); }
+    .band.runtime-band { --band-color: var(--yellow); }
+    .band.human-band { --band-color: var(--orange); }
+
+    .band-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 22px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+
+    .band-label {
+      margin-bottom: 4px;
+      color: var(--band-color, var(--muted));
+      font-size: 12px;
+      text-transform: uppercase;
+    }
+
+    .band-note {
+      max-width: 670px;
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: right;
+    }
+
+    .grid {
+      display: grid;
+      gap: 12px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .grid-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .grid-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+    .node {
+      min-width: 0;
+      padding: 15px 16px;
+      background: var(--surface-2);
+      border-left: 4px solid var(--node-color, var(--line));
+    }
+
+    .node p {
+      margin-bottom: 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .node.blue { --node-color: var(--blue); }
+    .node.green { --node-color: var(--green); }
+    .node.purple { --node-color: var(--purple); }
+    .node.yellow { --node-color: var(--yellow); }
+    .node.orange { --node-color: var(--orange); }
+    .node.red { --node-color: var(--red); }
+    .node.cyan { --node-color: var(--cyan); }
+
+    .tag {
+      display: inline-block;
+      margin-bottom: 7px;
+      color: var(--node-color, var(--muted));
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+
+    .flow-divider {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin: 10px 0 -7px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .flow-divider::before,
+    .flow-divider::after {
+      content: "";
+      flex: 1;
+      height: 1px;
+      background: var(--line);
+    }
+
+    .flow-label { min-width: 0; text-align: center; }
+    .arrow { color: var(--cyan); font-size: 18px; }
+
+    .authority-row {
+      display: grid;
+      grid-template-columns: 1.1fr 1.4fr 1.4fr 1.4fr;
+      gap: 12px;
+    }
+
+    .ceo {
+      background: linear-gradient(135deg, rgba(255, 138, 76, .18), rgba(16, 24, 39, .9));
+    }
+
+    .roles-map {
+      margin-top: 12px;
+      padding-top: 14px;
+      border-top: 1px solid var(--line);
+    }
+
+    .role-link {
+      margin-top: 10px;
+      color: var(--faint);
+      font-size: 12px;
+    }
+
+    .role-link strong { color: var(--text); }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 1.35fr 1.2fr 1.15fr 1fr;
+      gap: 12px;
+    }
+
+    .adapter {
+      margin-top: 13px;
+      padding: 12px 16px;
+      background: rgba(77, 181, 255, .08);
+      border: 1px dashed rgba(77, 181, 255, .5);
+      color: var(--muted);
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .layer-stack {
+      display: grid;
+      grid-template-columns: 1.2fr 1.2fr 1.5fr 1.05fr 1.15fr;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .layer {
+      padding: 15px;
+      background: var(--surface-2);
+      border-top: 3px solid var(--node-color);
+    }
+
+    .layer strong {
+      display: block;
+      margin-bottom: 7px;
+      font-family: var(--mono);
+      font-size: 15px;
+    }
+
+    .layer p { margin: 0; color: var(--muted); font-size: 12px; }
+
+    .memory-split {
+      display: grid;
+      grid-template-columns: 1fr 1.35fr 1fr;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .lane {
+      padding: 16px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+    }
+
+    .lane h3 { color: var(--purple); }
+
+    .lane-list {
+      display: grid;
+      gap: 7px;
+      margin-top: 12px;
+    }
+
+    .lane-step {
+      padding: 10px 11px;
+      background: var(--surface-3);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .lane-step strong { color: var(--text); }
+
+    .compiler {
+      position: relative;
+      background: linear-gradient(145deg, rgba(181, 140, 255, .13), var(--surface-2));
+      border: 1px solid rgba(181, 140, 255, .48);
+    }
+
+    .compiler h3 { color: var(--text); }
+
+    .compiler .checks {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .check {
+      padding: 9px;
+      background: rgba(8, 13, 24, .48);
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .topology-note {
+      margin: 14px 0 10px;
+      padding: 10px 14px;
+      background: rgba(181, 140, 255, .08);
+      color: var(--muted);
+      border-left: 3px solid var(--purple);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .domain {
+      min-height: 170px;
+      padding: 14px;
+      background: var(--surface-2);
+      border-top: 3px solid var(--purple);
+    }
+
+    .domain.ceo-domain { border-top-color: var(--orange); }
+    .domain h3 { margin-bottom: 5px; }
+    .domain p { margin-bottom: 10px; color: var(--muted); font-size: 12px; }
+
+    .tree {
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .tree strong { color: var(--text); font-weight: 500; }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(8, minmax(0, 1fr));
+      gap: 8px;
+      counter-reset: stage;
+    }
+
+    .pipeline-step {
+      position: relative;
+      min-height: 142px;
+      padding: 14px 12px;
+      background: var(--surface-2);
+      border-top: 3px solid var(--purple);
+      counter-increment: stage;
+    }
+
+    .pipeline-step::before {
+      content: counter(stage, decimal-leading-zero);
+      display: block;
+      margin-bottom: 9px;
+      color: var(--purple);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .pipeline-step:not(:last-child)::after {
+      content: "›";
+      position: absolute;
+      right: -8px;
+      top: 55px;
+      z-index: 2;
+      color: var(--cyan);
+      font-size: 24px;
+    }
+
+    .pipeline-step p { margin: 0; color: var(--muted); font-size: 11px; }
+
+    .relation {
+      display: grid;
+      grid-template-columns: 1.2fr .7fr 1.2fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .relation-arrow {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--muted);
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .relation-arrow b { color: var(--cyan); font-size: 30px; font-weight: 400; }
+
+    .not-box {
+      margin-top: 12px;
+      padding: 9px 11px;
+      background: rgba(255, 107, 101, .09);
+      color: #ffc2bf;
+      border-left: 3px solid var(--red);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .runtime-grid {
+      display: grid;
+      grid-template-columns: 1.35fr 1.1fr 1fr 1.15fr;
+      gap: 12px;
+    }
+
+    .hot-memory {
+      background: linear-gradient(145deg, rgba(242, 201, 76, .12), var(--surface-2));
+    }
+
+    .interface-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .outcomes {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .rules {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px 24px;
+      margin-top: 18px;
+      padding: 15px;
+      color: #ffb6b2;
+      border-top: 1px solid rgba(255, 107, 101, .48);
+      border-bottom: 1px solid rgba(255, 107, 101, .48);
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    footer {
+      padding: 18px 2px 4px;
+      color: var(--faint);
+      text-align: center;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    @media (max-width: 1180px) {
+      .authority-row, .source-grid, .grid-5, .grid-6, .layer-stack, .runtime-grid, .outcomes {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+      .pipeline { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .pipeline-step:nth-child(4)::after { display: none; }
+    }
+
+    @media (max-width: 760px) {
+      body { padding: 16px; }
+      .band { padding: 15px; }
+      .band-head { display: block; }
+      .band-note { text-align: left; margin-top: 8px; }
+      .authority-row, .source-grid, .grid-2, .grid-3, .grid-4, .grid-5, .grid-6,
+      .layer-stack, .memory-split, .pipeline, .relation, .runtime-grid, .interface-row, .outcomes {
+        grid-template-columns: 1fr;
+      }
+      .pipeline-step:not(:last-child)::after { display: none; }
+      .relation-arrow { min-height: 58px; }
+      .relation-arrow b { transform: rotate(90deg); }
+    }
+
+    @media print {
+      body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+  <main role="img" aria-label="Complete Real-Ming personal executive agent architecture version 3, including governance, Trust Domains, persistent compiled knowledge, Hermes, Obsidian, Agent Brain, hybrid workers and verified outcomes.">
+    <header>
+      <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Architecture decision baseline · 2026-08-27</p>
+      <h1>Real-Ming Personal Executive Agent Architecture · v3</h1>
+      <p class="subtitle">Ming remains CEO. Hermes supplies conversation, tools, schedules and the Knowledge Compiler. Real-Ming governs identity, work, authority, information boundaries and audit. Persistent knowledge is compiled into Trust-Domain Markdown; Sources of Record and Agent Brain remain authoritative in their own scopes.</p>
+      <div class="legend" aria-label="Diagram legend">
+        <span><i class="swatch source" aria-hidden="true"></i>Authoritative source</span>
+        <span><i class="swatch govern" aria-hidden="true"></i>Real-Ming governance</span>
+        <span><i class="swatch memory" aria-hidden="true"></i>Knowledge and evidence</span>
+        <span><i class="swatch runtime" aria-hidden="true"></i>Runtime and workers</span>
+        <span><i class="swatch human" aria-hidden="true"></i>Human authority and interface</span>
+      </div>
+    </header>
+
+    <section class="band human-band" aria-labelledby="authority-title">
+      <div class="band-head">
+        <div><p class="band-label">01 · Human authority and operating surfaces</p><h2 id="authority-title">One CEO identity; every consequential decision remains human-owned.</h2></div>
+        <p class="band-note">Telegram is the primary command and Approval surface. The dashboard monitors and investigates. Obsidian is the CEO-facing knowledge IDE.</p>
+      </div>
+      <div class="authority-row">
+        <article class="node orange ceo"><span class="tag">Human authority</span><h3>Ming · CEO</h3><p>Sets intent · grants exact Approval · reviews outcomes · may inspect all authorized roots</p></article>
+        <article class="node blue"><span class="tag">Primary interface</span><h3>Private Telegram</h3><p>Commands · focused clarifications · Approvals · exceptions · scheduled briefs · Outcome Reports</p></article>
+        <article class="node blue"><span class="tag">Operations console</span><h3>Authenticated Dashboard</h3><p>Work queue · portfolio · knowledge health · workers · integrations · costs · schedulers · audit · recovery</p></article>
+        <article class="node purple"><span class="tag">Knowledge IDE</span><h3>Obsidian</h3><p>Views versioned Markdown, Wikilinks, properties and backlinks; not a Source of Record or access-control system</p></article>
+      </div>
+    </section>
+
+    <div class="flow-divider"><span class="flow-label"><span class="arrow">↓</span> all commands and views use the same identity, policy, Approval and audit boundary</span></div>
+
+    <section class="band govern-band" aria-labelledby="control-title">
+      <div class="band-head">
+        <div><p class="band-label">02 · Real-Ming governed control plane</p><h2 id="control-title">Five bounded Executive Roles are policy views—not five independent bots or memory silos.</h2></div>
+        <p class="band-note">Every role reports directly to the CEO. The COO coordinates but cannot approve peers or inherit their raw context.</p>
+      </div>
+      <div class="grid grid-4">
+        <article class="node green"><h3>Identity + Command Gateway</h3><p>CEO allowlist · normalize · classify · route · idempotency · workspace identity</p></article>
+        <article class="node green"><h3>Work Orchestrator</h3><p>Durable Work Items · lifecycle · dependencies · leases · retries · verification</p></article>
+        <article class="node orange"><h3>Policy + Approval Engine</h3><p>Trust Domain · role · purpose · risk · capability · exact artifact · expiry</p></article>
+        <article class="node yellow"><h3>Outcome + Audit Service</h3><p>Evidence · effects · verification · Outcome Reports · append-only audit</p></article>
+      </div>
+      <div class="roles-map grid grid-5" aria-label="Executive role views">
+        <article class="node yellow"><span class="tag">Default coordinator</span><h3>COO</h3><p>Personal Life · Career Job · approved Entertainment projections · daily portfolio</p><div class="role-link"><strong>Store view:</strong> Personal + limited Entertainment</div></article>
+        <article class="node green"><span class="tag">Product engineer</span><h3>CTO</h3><p>MicroSaaS engineering · technical operations · deployment candidates</p><div class="role-link"><strong>Store view:</strong> Ming Creatives / technical</div></article>
+        <article class="node purple"><span class="tag">Finance advisor</span><h3>Personal CFO</h3><p>Finance · accounting · wealth · reconciliation · Record Changes</p><div class="role-link"><strong>Store view:</strong> Finance</div></article>
+        <article class="node purple"><span class="tag">Academic advisor</span><h3>CAO</h3><p>Commitments · course monitoring · study planning · draft support</p><div class="role-link"><strong>Store view:</strong> Academic</div></article>
+        <article class="node blue"><span class="tag">Content operator</span><h3>CMO</h3><p>Content strategy · research · production portfolio · distribution</p><div class="role-link"><strong>Store view:</strong> Ming Creatives / content</div></article>
+      </div>
+    </section>
+
+    <div class="flow-divider"><span class="flow-label"><span class="arrow">↓</span> Sources of Record produce candidates; role names do not define storage boundaries</span></div>
+
+    <section class="band source-band" aria-labelledby="source-title">
+      <div class="band-head">
+        <div><p class="band-label">03 · Authoritative sources and accurate “five sources” terminology</p><h2 id="source-title">Many providers → Candidate Envelopes → five Trust-Domain roots → five role-scoped views.</h2></div>
+        <p class="band-note">There are not five universal memory sources. Each provider remains authoritative; a candidate is only a provenance-bearing input to compilation.</p>
+      </div>
+      <div class="source-grid">
+        <article class="node blue"><span class="tag">Personal</span><h3>Life + Career</h3><p>Google Calendar · Master Tasks · allowlisted Notion pages · Personal Context Package · authoritative career files · personal/opportunity email</p></article>
+        <article class="node blue"><span class="tag">Ming Creatives</span><h3>Projects + Content</h3><p>Application databases · repositories · GitHub/Git/Vercel · content workflow · Project Portfolio · approved Agent Brain evidence</p></article>
+        <article class="node blue"><span class="tag">Academic</span><h3>Study Systems</h3><p>Academic Master Tasks · Google Calendar · Canvas · Microsoft 365 email · Teams · approved course files</p></article>
+        <article class="node blue"><span class="tag">Finance</span><h3>Finance Records</h3><p>DuitSini · Money Manager export · Moomoo export/worksheet · immutable Financial Snapshots · Finance tasks</p></article>
+        <article class="node blue"><span class="tag">Entertainment</span><h3>Low-priority Signals</h3><p>Entertainment/application mailbox and later-authorized sources · digest-only by default</p></article>
+      </div>
+      <div class="adapter">CAPABILITY-SCOPED ADAPTERS · provenance · source identity · freshness · health · sensitivity · safe write-back · no Sensitive Secrets in model context</div>
+    </section>
+
+    <section class="band memory-band" aria-labelledby="layers-title">
+      <div class="band-head">
+        <div><p class="band-label">04 · Chosen memory architecture</p><h2 id="layers-title">Five different persistence responsibilities; no single universal brain.</h2></div>
+        <p class="band-note">“Memory” is split so current operational truth, immutable evidence, derived knowledge, runtime convenience and work state cannot silently overwrite one another.</p>
+      </div>
+      <div class="layer-stack">
+        <article class="layer" style="--node-color: var(--blue)"><strong>1 · Sources of Record</strong><p>Current provider and domain records. Real-Ming may read or write only under adapter capability and policy.</p></article>
+        <article class="layer" style="--node-color: var(--cyan)"><strong>2 · Provenance + Evidence</strong><p>Candidate Envelopes, source hashes, immutable audit and canonical Agent Brain Project Evidence.</p></article>
+        <article class="layer" style="--node-color: var(--purple)"><strong>3 · Persistent Compiled Knowledge</strong><p>Encrypted, cited, versioned Markdown in Trust-Domain roots; rebuildable from evidence.</p></article>
+        <article class="layer" style="--node-color: var(--yellow)"><strong>4 · Hot Runtime Memory</strong><p>Small, write-gated Hermes preferences, routing facts and vault pointers only.</p></article>
+        <article class="layer" style="--node-color: var(--green)"><strong>5 · Operational State</strong><p>Work Items, Approvals, schedules, worker leases, Outcome Reports and audit state.</p></article>
+      </div>
+
+      <div class="flow-divider"><span class="flow-label"><span class="arrow">↓</span> two governed evidence inputs feed one policy-controlled compiler</span></div>
+
+      <div class="memory-split">
+        <article class="lane">
+          <span class="tag" style="--node-color: var(--cyan)">Personal and domain candidate path</span>
+          <h3>Context Vault + Source Envelopes</h3>
+          <p class="micro">Selected context only; full providers stay authoritative.</p>
+          <div class="lane-list">
+            <div class="lane-step"><strong>CEO allowlist</strong> · file/page/source identity</div>
+            <div class="lane-step"><strong>Candidate Envelope</strong> · hash · captured/as-of · domain · roles</div>
+            <div class="lane-step"><strong>Raw payload policy</strong> · encrypted · bounded · purgeable</div>
+            <div class="lane-step"><strong>Quarantine</strong> · secret · conflict · stale · invalid</div>
+          </div>
+        </article>
+
+        <article class="lane compiler">
+          <span class="tag" style="--node-color: var(--purple)">Hermes-operated LLM Wiki compiler</span>
+          <h3>Knowledge Compiler</h3>
+          <p>Ingests candidates, reconciles against Sources of Record, creates cited concepts and summaries, maintains Wikilinks, publishes a new generation, and lints the result.</p>
+          <div class="checks">
+            <div class="check">source + hash verified</div>
+            <div class="check">Trust Domain enforced</div>
+            <div class="check">citation + as-of required</div>
+            <div class="check">conflicts quarantined</div>
+            <div class="check">index.md regenerated</div>
+            <div class="check">log.md appended</div>
+            <div class="check">publish atomically</div>
+            <div class="check">never writes source truth</div>
+          </div>
+        </article>
+
+        <article class="lane">
+          <span class="tag" style="--node-color: var(--cyan)">Existing Second Brain path</span>
+          <h3>Agent Brain · Project Evidence</h3>
+          <p class="micro">Separate canonical project-history system; not personal memory.</p>
+          <div class="lane-list">
+            <div class="lane-step"><strong>SQLite ledger</strong> · append-only canonical evidence</div>
+            <div class="lane-step"><strong>Versioned memories</strong> · citations · supersession</div>
+            <div class="lane-step"><strong>Generated Markdown</strong> · Obsidian-readable · never edit</div>
+            <div class="lane-step"><strong>Evidence Broker</strong> · workspace · role · Work Item · project</div>
+          </div>
+        </article>
+      </div>
+
+      <p class="topology-note"><strong>Accurate topology:</strong> five Trust-Domain storage roots ≠ five Executive Roles ≠ five Sources of Record. CTO and CMO both receive different projections from Ming Creatives. The CEO root contains reviewed cross-domain projections only.</p>
+
+      <div class="grid grid-6" aria-label="Knowledge Vault topology">
+        <article class="domain"><h3>Personal/</h3><p>COO life/career knowledge and selected Personal Context.</p><div class="tree"><strong>SCHEMA · AGENTS · CLAUDE</strong><br>├─ raw/<br>├─ wiki/<br>├─ daily/<br>├─ outputs/<br>├─ quarantine/<br>├─ index.md<br>└─ log.md</div></article>
+        <article class="domain"><h3>Ming-Creatives/</h3><p>CTO technical and CMO content views over one Trust Domain.</p><div class="tree"><strong>SCHEMA · AGENTS · CLAUDE</strong><br>├─ raw/<br>├─ wiki/<br>├─ daily/<br>├─ outputs/<br>├─ quarantine/<br>├─ index.md<br>└─ log.md</div></article>
+        <article class="domain"><h3>Academic/</h3><p>CAO course, commitment and study knowledge.</p><div class="tree"><strong>SCHEMA · AGENTS · CLAUDE</strong><br>├─ raw/<br>├─ wiki/<br>├─ daily/<br>├─ outputs/<br>├─ quarantine/<br>├─ index.md<br>└─ log.md</div></article>
+        <article class="domain"><h3>Entertainment/</h3><p>Isolated low-priority digest knowledge; no dedicated executive.</p><div class="tree"><strong>SCHEMA · AGENTS · CLAUDE</strong><br>├─ raw/<br>├─ wiki/<br>├─ daily/<br>├─ outputs/<br>├─ quarantine/<br>├─ index.md<br>└─ log.md</div></article>
+        <article class="domain"><h3>Finance/</h3><p>Personal CFO analysis; never a bank or brokerage ledger.</p><div class="tree"><strong>SCHEMA · AGENTS · CLAUDE</strong><br>├─ raw/<br>├─ wiki/<br>├─ daily/<br>├─ outputs/<br>├─ quarantine/<br>├─ index.md<br>└─ log.md</div></article>
+        <article class="domain ceo-domain"><h3>CEO/</h3><p>Approved cross-domain projections, decisions and roll-ups only.</p><div class="tree"><strong>SCHEMA · AGENTS · CLAUDE</strong><br>├─ projections/<br>├─ decisions/<br>├─ outcomes/<br>├─ briefings/<br>├─ index.md<br>└─ log.md</div></article>
+      </div>
+    </section>
+
+    <section class="band memory-band" aria-labelledby="pipeline-title">
+      <div class="band-head">
+        <div><p class="band-label">05 · Final memory migration pipeline</p><h2 id="pipeline-title">Capture → validate → compile → publish → project; never dump and never silently promote.</h2></div>
+        <p class="band-note">A daily note is an operational record. Only reviewed, source-backed conclusions may become durable Compiled Knowledge or approved Hot Runtime Memory.</p>
+      </div>
+      <div class="pipeline">
+        <article class="pipeline-step"><h3>Capture</h3><p>Provider event, export, file, cited evidence or approved research output.</p></article>
+        <article class="pipeline-step"><h3>Envelope</h3><p>Source ID · hash · captured/as-of · domain · sensitivity · roles · retention.</p></article>
+        <article class="pipeline-step"><h3>Validate</h3><p>Reject secrets, verify authority and freshness, detect duplicates and conflicts.</p></article>
+        <article class="pipeline-step"><h3>Compile</h3><p>Extract claims, reconcile, cite sources, categorize, create Wikilinks and articles.</p></article>
+        <article class="pipeline-step"><h3>Lint</h3><p>Check citations, contradictions, staleness, islands, missing metadata and policy.</p></article>
+        <article class="pipeline-step"><h3>Publish</h3><p>Atomic versioned generation; update index.md; append log.md; preserve predecessor.</p></article>
+        <article class="pipeline-step"><h3>Project</h3><p>Projection Broker / Evidence Broker releases minimum context for role, task and purpose.</p></article>
+        <article class="pipeline-step"><h3>Use + file</h3><p>Hermes answers or works; useful output re-enters as a candidate, never direct truth.</p></article>
+      </div>
+    </section>
+
+    <section class="band memory-band" aria-labelledby="brain-title">
+      <div class="band-head">
+        <div><p class="band-label">06 · Relationship with the existing Second Brain</p><h2 id="brain-title">Reuse Agent Brain; do not rebuild it and do not turn it into universal memory.</h2></div>
+        <p class="band-note">Agent Brain already implements append-only project evidence, cited versioned memories, generated Markdown, index/log maintenance and linting.</p>
+      </div>
+      <div class="relation">
+        <article class="node cyan">
+          <span class="tag">Existing agent-knowledge-base-codex</span>
+          <h3>Agent Brain</h3>
+          <p>Canonical append-only SQLite evidence → cited versioned memories → generated project Markdown openable in Obsidian.</p>
+          <div class="not-box">Never accept personal, finance or academic dumps · never let Real-Ming edit generated/</div>
+        </article>
+        <div class="relation-arrow"><span>workspace + role + Work Item + allowed project</span><b>⇄</b><span>cited evidence only</span></div>
+        <article class="node purple">
+          <span class="tag">Real-Ming information boundary</span>
+          <h3>Evidence Broker → Candidate or direct query</h3>
+          <p>A permitted role receives cited Project Evidence. If selected for compilation, it becomes a new Candidate Envelope with its evidence identity—not a copied, uncited fact.</p>
+          <div class="not-box">Knowledge Vault compiler is the only writer of its Markdown · Agent Brain remains the only writer of its canonical evidence/projections</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="band runtime-band" aria-labelledby="runtime-title">
+      <div class="band-head">
+        <div><p class="band-label">07 · Hermes, Obsidian and hybrid execution</p><h2 id="runtime-title">Hermes works; Real-Ming governs; Obsidian shows; workers execute scoped capabilities.</h2></div>
+        <p class="band-note">Scheduled jobs run with explicit schema, index, allowed roots and Work Item purpose. They never depend on prior chat state or unrestricted filesystem access.</p>
+      </div>
+      <div class="runtime-grid">
+        <article class="node yellow"><span class="tag">Always-on runtime</span><h3>Hermes Agent</h3><p>Conversation · reasoning · tool invocation · Telegram gateway · LLM Wiki and Obsidian skills · on-demand role workers</p></article>
+        <article class="node yellow"><span class="tag">Durable automation</span><h3>Scheduler + Workflows</h3><p>Ingest · query · daily filing · lint · morning brief · evening roll-up · Scheduler Heartbeats · retries</p></article>
+        <article class="node yellow hot-memory"><span class="tag">Small runtime cache</span><h3>Hot Runtime Memory</h3><p>MEMORY.md / USER.md · approved preferences · routing facts · vault pointers · strict limits · write Approval</p></article>
+        <article class="node green"><span class="tag">Policy wrapper</span><h3>Scoped Skills + Tools</h3><p>Adapter capabilities · role/work purpose · brokered vault access · no direct secrets · auditable effects</p></article>
+      </div>
+      <div class="interface-row">
+        <article class="node yellow"><h3>Always-on Cloud</h3><p>Telegram · schedules · encrypted selected knowledge · cloud APIs · Remote-Ready projects · monitoring</p></article>
+        <article class="node purple"><h3>Lenovo Private Worker</h3><p>Local files · browser sessions · Windows-only tools · sensitive/heavy work · safe offline queue</p></article>
+        <article class="node orange"><h3>Obsidian Desktop / Mobile</h3><p>CEO reads Markdown and relationships. Local vault protection depends on encrypted storage and host controls.</p></article>
+      </div>
+    </section>
+
+    <div class="flow-divider"><span class="flow-label"><span class="arrow">↓</span> every worker result is untrusted until verified and reported</span></div>
+
+    <section class="band human-band" aria-labelledby="outcome-title">
+      <div class="band-head">
+        <div><p class="band-label">08 · Review-ready outcomes returned to the CEO</p><h2 id="outcome-title">Agents perform bounded work; Ming reviews evidence and final outcomes.</h2></div>
+        <p class="band-note">Provider write-back remains separate from memory compilation. Exact Approvals bind consequential actions to immutable artifacts.</p>
+      </div>
+      <div class="outcomes">
+        <article class="node yellow"><h3>Daily Operations Loop</h3><p>Master Tasks + Calendar reconciliation · 07:30 brief · 21:30 roll-up · cited daily notes</p></article>
+        <article class="node green"><h3>MicroSaaS Operations Loop</h3><p>Task branch · tests · draft PR · Vercel preview · exact Deployment Candidate · production verification</p></article>
+        <article class="node purple"><h3>Executive Outcomes</h3><p>Finance · academic · content · career · project decisions grounded in scoped sources and Compiled Knowledge</p></article>
+        <article class="node blue"><h3>CEO Operations View</h3><p>Approvals · Outcome Reports · knowledge health · portfolio · cost · scheduler · integration · worker · audit</p></article>
+      </div>
+      <div class="rules" aria-label="Non-negotiable guardrails">
+        <span>× no Money Movement or brokerage trading</span>
+        <span>× no academic submission</span>
+        <span>× no direct production push or deploy-latest</span>
+        <span>× no raw cross-domain memory</span>
+        <span>× no Sensitive Secrets in agent/model context</span>
+        <span>× no direct rewrite of Sources of Record or Agent Brain</span>
+      </div>
+    </section>
+
+    <footer>Real-Ming v3 · Sources remain authoritative · Knowledge is cited and rebuildable · Storage follows Trust Domains · Role access is projected · Human authority remains final</footer>
+  </main>
+</body>
+</html>

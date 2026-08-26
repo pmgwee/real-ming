@@ -1,6 +1,6 @@
 # Phase 1 Completion Checkpoint
 
-Status: complete, awaiting the next explicit phase command.
+Status: complete; amended on 2026-08-27 with the approved persistent-knowledge decision.
 
 ## Confirmed objective
 
@@ -28,6 +28,9 @@ Real-Ming is a private, single-user-first personal operations system in which Mi
 - domain applications remain Sources of Record;
 - Personal Context is curated through a manifest, Context Vault, and role-scoped projections;
 - Agent Brain remains the brokered source of cited Project Evidence;
+- the Real-Ming Knowledge Vault stores cited Compiled Knowledge as Trust-Domain-isolated, versioned Markdown; it does not replace Sources of Record or Agent Brain;
+- Hermes operates the Knowledge Compiler, schedules, and queries while its native memory remains a small, write-gated runtime cache;
+- Obsidian is the CEO-facing knowledge IDE over the encrypted Markdown roots, not the storage authority or access-control layer;
 - Sensitive Secrets never enter model context, tasks, outcomes, dashboards, or logs;
 - low-risk reversible work may use Standing Authority, while external, production, destructive, permission, and financial actions require exact Approval;
 - no Executive Role performs Money Movement or brokerage trading.
@@ -36,6 +39,8 @@ Real-Ming is a private, single-user-first personal operations system in which Mi
 
 1. Daily Operations tracer: Telegram, Google Calendar, five Notion task sources, Master Tasks, Work Views, morning brief, evening roll-up, Approval, and audit.
 2. DuitSini MicroSaaS tracer: one bounded update through task branch, tests, draft pull request, Vercel preview, Outcome Report, exact-commit CEO Approval, merge, production verification, and final report.
+
+Between the two broadening stages, one allowlisted Personal Context item must prove the Candidate Envelope → Knowledge Compiler → versioned domain wiki → Approved Projection path. Scheduled ingestion and linting follow after scheduler health and recovery are proven.
 
 ## Confirmed dashboard scope
 
@@ -55,5 +60,6 @@ Real-Ming is a private, single-user-first personal operations system in which Mi
 - per-project API, cloud, scheduler, and billing-provider inventory;
 - provider-specific budget allocations;
 - staged Agent Brain registration and verification of additional projects.
+- the durable encrypted volume, backup, and optional synchronization provider used for the Knowledge Vault.
 
-Phase 2 may now turn this confirmed discovery baseline into a tracker specification. Phase 3 may then derive tracer-bullet tickets and blocking edges. Neither phase begins without the CEO's explicit instruction.
+Phase 2 and Phase 3 were completed and are now reconciled with this amendment. Phase 4 is the architecture-and-planning consistency gate: the v3 diagram, specification, ADRs, local ticket manifest, and GitHub tracker must agree before implementation begins.

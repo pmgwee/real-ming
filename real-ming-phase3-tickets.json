@@ -1,0 +1,812 @@
+{
+  "schemaVersion": "2.0",
+  "generatedAt": "2026-08-27",
+  "phase": "Phase 3 tracer-bullet decomposition",
+  "repository": "pmgwee/real-ming",
+  "parentSpecIssue": 1,
+  "ticketCount": 44,
+  "architectureDecision": "Real-Ming v1.1 with Trust-Domain Knowledge Vault, Hermes Knowledge Compiler, Obsidian IDE, bounded Hot Runtime Memory, and brokered Agent Brain Project Evidence",
+  "tickets": [
+    {
+      "id": "RM-01",
+      "issueNumber": 2,
+      "title": "Prove one Work Item through the Operations Gateway",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [],
+      "url": "https://github.com/pmgwee/real-ming/issues/2"
+    },
+    {
+      "id": "RM-02",
+      "issueNumber": 3,
+      "title": "Route CEO commands to Executive Roles",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 2,
+          "id": "RM-01"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/3"
+    },
+    {
+      "id": "RM-03",
+      "issueNumber": 4,
+      "title": "Enforce the Work Item lifecycle and commitments",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 3,
+          "id": "RM-02"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/4"
+    },
+    {
+      "id": "RM-04",
+      "issueNumber": 5,
+      "title": "Enforce tiered authority and exact Approvals",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 4,
+          "id": "RM-03"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/5"
+    },
+    {
+      "id": "RM-05",
+      "issueNumber": 6,
+      "title": "Establish provider adapter contracts",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 2,
+          "id": "RM-01"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/6"
+    },
+    {
+      "id": "RM-06",
+      "issueNumber": 7,
+      "title": "Provision Tracer 1 identities and secrets",
+      "state": "open",
+      "triageLabel": "ready-for-human",
+      "blockedBy": [],
+      "url": "https://github.com/pmgwee/real-ming/issues/7"
+    },
+    {
+      "id": "RM-07",
+      "issueNumber": 8,
+      "title": "Operate the private Telegram front door",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 5,
+          "id": "RM-04"
+        },
+        {
+          "issueNumber": 6,
+          "id": "RM-05"
+        },
+        {
+          "issueNumber": 7,
+          "id": "RM-06"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/8"
+    },
+    {
+      "id": "RM-08",
+      "issueNumber": 9,
+      "title": "Inspect work through the authenticated CEO dashboard",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 5,
+          "id": "RM-04"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/9"
+    },
+    {
+      "id": "RM-09",
+      "issueNumber": 10,
+      "title": "Create Master Tasks and six linked Work Views",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 5,
+          "id": "RM-04"
+        },
+        {
+          "issueNumber": 6,
+          "id": "RM-05"
+        },
+        {
+          "issueNumber": 7,
+          "id": "RM-06"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/10"
+    },
+    {
+      "id": "RM-10",
+      "issueNumber": 11,
+      "title": "Rehearse migration of the five Notion task sources",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 10,
+          "id": "RM-09"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/11"
+    },
+    {
+      "id": "RM-11",
+      "issueNumber": 12,
+      "title": "Reconcile and cut over Master Tasks",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 8,
+          "id": "RM-07"
+        },
+        {
+          "issueNumber": 11,
+          "id": "RM-10"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/12"
+    },
+    {
+      "id": "RM-12",
+      "issueNumber": 13,
+      "title": "Reconcile one Google Calendar commitment",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 6,
+          "id": "RM-05"
+        },
+        {
+          "issueNumber": 7,
+          "id": "RM-06"
+        },
+        {
+          "issueNumber": 10,
+          "id": "RM-09"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/13"
+    },
+    {
+      "id": "RM-13",
+      "issueNumber": 14,
+      "title": "Deliver the 07:30 Morning Brief",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 8,
+          "id": "RM-07"
+        },
+        {
+          "issueNumber": 12,
+          "id": "RM-11"
+        },
+        {
+          "issueNumber": 13,
+          "id": "RM-12"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/14"
+    },
+    {
+      "id": "RM-14",
+      "issueNumber": 15,
+      "title": "Deliver the Executive Roll-Up and notification rhythm",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 14,
+          "id": "RM-13"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/15"
+    },
+    {
+      "id": "RM-15",
+      "issueNumber": 16,
+      "title": "Run Daily Operations in the always-on environment",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 9,
+          "id": "RM-08"
+        },
+        {
+          "issueNumber": 15,
+          "id": "RM-14"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/16"
+    },
+    {
+      "id": "RM-16",
+      "issueNumber": 17,
+      "title": "Prove the Daily Operations tracer",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 16,
+          "id": "RM-15"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/17"
+    },
+    {
+      "id": "RM-17",
+      "issueNumber": 18,
+      "title": "Ingest one Personal Context item safely",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 6,
+          "id": "RM-05"
+        },
+        {
+          "issueNumber": 17,
+          "id": "RM-16"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/18"
+    },
+    {
+      "id": "RM-18",
+      "issueNumber": 19,
+      "title": "Serve Approved Projections from the Context Vault",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 5,
+          "id": "RM-04"
+        },
+        {
+          "issueNumber": 9,
+          "id": "RM-08"
+        },
+        {
+          "issueNumber": 18,
+          "id": "RM-17"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/19"
+    },
+    {
+      "id": "RM-19",
+      "issueNumber": 20,
+      "title": "Establish the Project Portfolio and onboard DuitSini",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 6,
+          "id": "RM-05"
+        },
+        {
+          "issueNumber": 9,
+          "id": "RM-08"
+        },
+        {
+          "issueNumber": 17,
+          "id": "RM-16"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/20"
+    },
+    {
+      "id": "RM-20",
+      "issueNumber": 21,
+      "title": "Broker cited Agent Brain evidence for DuitSini",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 5,
+          "id": "RM-04"
+        },
+        {
+          "issueNumber": 6,
+          "id": "RM-05"
+        },
+        {
+          "issueNumber": 20,
+          "id": "RM-19"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/21"
+    },
+    {
+      "id": "RM-21",
+      "issueNumber": 22,
+      "title": "Run Local-Only Work through the Lenovo private worker",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 17,
+          "id": "RM-16"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/22"
+    },
+    {
+      "id": "RM-22",
+      "issueNumber": 23,
+      "title": "Surface provider degradation and recovery",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 17,
+          "id": "RM-16"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/23"
+    },
+    {
+      "id": "RM-23",
+      "issueNumber": 24,
+      "title": "Monitor Scheduler Heartbeats and exceptions",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 23,
+          "id": "RM-22"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/24"
+    },
+    {
+      "id": "RM-24",
+      "issueNumber": 25,
+      "title": "Capture the first DuitSini pilot Work Item",
+      "state": "open",
+      "triageLabel": "ready-for-human",
+      "blockedBy": [],
+      "url": "https://github.com/pmgwee/real-ming/issues/25"
+    },
+    {
+      "id": "RM-25",
+      "issueNumber": 26,
+      "title": "Show DuitSini GitHub and Git lineage",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 20,
+          "id": "RM-19"
+        },
+        {
+          "issueNumber": 23,
+          "id": "RM-22"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/26"
+    },
+    {
+      "id": "RM-26",
+      "issueNumber": 27,
+      "title": "Show DuitSini Vercel deployment lineage",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 26,
+          "id": "RM-25"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/27"
+    },
+    {
+      "id": "RM-27",
+      "issueNumber": 28,
+      "title": "Produce a verified DuitSini Deployment Candidate",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 21,
+          "id": "RM-20"
+        },
+        {
+          "issueNumber": 25,
+          "id": "RM-24"
+        },
+        {
+          "issueNumber": 27,
+          "id": "RM-26"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/28"
+    },
+    {
+      "id": "RM-28",
+      "issueNumber": 29,
+      "title": "Approve, promote and verify the exact candidate",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 28,
+          "id": "RM-27"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/29"
+    },
+    {
+      "id": "RM-29",
+      "issueNumber": 30,
+      "title": "Connect personal and opportunity email read-and-draft",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 19,
+          "id": "RM-18"
+        },
+        {
+          "issueNumber": 23,
+          "id": "RM-22"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/30"
+    },
+    {
+      "id": "RM-30",
+      "issueNumber": 31,
+      "title": "Deliver the entertainment and application email digest",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 30,
+          "id": "RM-29"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/31"
+    },
+    {
+      "id": "RM-31",
+      "issueNumber": 32,
+      "title": "Coordinate one academic commitment end to end",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 19,
+          "id": "RM-18"
+        },
+        {
+          "issueNumber": 23,
+          "id": "RM-22"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/32"
+    },
+    {
+      "id": "RM-32",
+      "issueNumber": 33,
+      "title": "Coordinate one CMO Work Item from the content workflow",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 21,
+          "id": "RM-20"
+        },
+        {
+          "issueNumber": 23,
+          "id": "RM-22"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/33"
+    },
+    {
+      "id": "RM-33",
+      "issueNumber": 34,
+      "title": "Ground one COO career Work Item in career-ops",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 19,
+          "id": "RM-18"
+        },
+        {
+          "issueNumber": 21,
+          "id": "RM-20"
+        },
+        {
+          "issueNumber": 22,
+          "id": "RM-21"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/34"
+    },
+    {
+      "id": "RM-34",
+      "issueNumber": 35,
+      "title": "Perform an approved Personal CFO DuitSini Record Change",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 29,
+          "id": "RM-28"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/35"
+    },
+    {
+      "id": "RM-35",
+      "issueNumber": 36,
+      "title": "Reconcile Moomoo and Money Manager exports",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 19,
+          "id": "RM-18"
+        },
+        {
+          "issueNumber": 22,
+          "id": "RM-21"
+        },
+        {
+          "issueNumber": 23,
+          "id": "RM-22"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/36"
+    },
+    {
+      "id": "RM-36",
+      "issueNumber": 37,
+      "title": "Produce an immutable Financial Snapshot successor",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 36,
+          "id": "RM-35"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/37"
+    },
+    {
+      "id": "RM-37",
+      "issueNumber": 38,
+      "title": "Enforce Metered Platform Cost and model-routing policy",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 20,
+          "id": "RM-19"
+        },
+        {
+          "issueNumber": 23,
+          "id": "RM-22"
+        },
+        {
+          "issueNumber": 24,
+          "id": "RM-23"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/38"
+    },
+    {
+      "id": "RM-38",
+      "issueNumber": 39,
+      "title": "Enforce retention and ingestion purge policy",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 19,
+          "id": "RM-18"
+        },
+        {
+          "issueNumber": 23,
+          "id": "RM-22"
+        },
+        {
+          "issueNumber": 37,
+          "id": "RM-36"
+        },
+        {
+          "issueNumber": 45,
+          "id": "RM-44"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/39"
+    },
+    {
+      "id": "RM-39",
+      "issueNumber": 40,
+      "title": "Evidence-enable the remaining approved projects sequentially",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 21,
+          "id": "RM-20"
+        },
+        {
+          "issueNumber": 23,
+          "id": "RM-22"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/40"
+    },
+    {
+      "id": "RM-40",
+      "issueNumber": 41,
+      "title": "Prove full Real-Ming v1.1 readiness",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 24,
+          "id": "RM-23"
+        },
+        {
+          "issueNumber": 29,
+          "id": "RM-28"
+        },
+        {
+          "issueNumber": 31,
+          "id": "RM-30"
+        },
+        {
+          "issueNumber": 32,
+          "id": "RM-31"
+        },
+        {
+          "issueNumber": 33,
+          "id": "RM-32"
+        },
+        {
+          "issueNumber": 34,
+          "id": "RM-33"
+        },
+        {
+          "issueNumber": 35,
+          "id": "RM-34"
+        },
+        {
+          "issueNumber": 37,
+          "id": "RM-36"
+        },
+        {
+          "issueNumber": 38,
+          "id": "RM-37"
+        },
+        {
+          "issueNumber": 39,
+          "id": "RM-38"
+        },
+        {
+          "issueNumber": 40,
+          "id": "RM-39"
+        },
+        {
+          "issueNumber": 45,
+          "id": "RM-44"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/41"
+    },
+    {
+      "id": "RM-41",
+      "issueNumber": 42,
+      "title": "Establish the Trust-Domain Knowledge Vault contract",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 5,
+          "id": "RM-04"
+        },
+        {
+          "issueNumber": 6,
+          "id": "RM-05"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/42"
+    },
+    {
+      "id": "RM-42",
+      "issueNumber": 43,
+      "title": "Compile one cited candidate into a versioned domain wiki",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 18,
+          "id": "RM-17"
+        },
+        {
+          "issueNumber": 42,
+          "id": "RM-41"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/43"
+    },
+    {
+      "id": "RM-43",
+      "issueNumber": 44,
+      "title": "Serve role-scoped Compiled Knowledge through Hermes",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 8,
+          "id": "RM-07"
+        },
+        {
+          "issueNumber": 19,
+          "id": "RM-18"
+        },
+        {
+          "issueNumber": 43,
+          "id": "RM-42"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/44"
+    },
+    {
+      "id": "RM-44",
+      "issueNumber": 45,
+      "title": "Operate scheduled knowledge compilation and linting",
+      "state": "open",
+      "triageLabel": "ready-for-agent",
+      "blockedBy": [
+        {
+          "issueNumber": 23,
+          "id": "RM-22"
+        },
+        {
+          "issueNumber": 24,
+          "id": "RM-23"
+        },
+        {
+          "issueNumber": 44,
+          "id": "RM-43"
+        }
+      ],
+      "url": "https://github.com/pmgwee/real-ming/issues/45"
+    }
+  ]
+}
