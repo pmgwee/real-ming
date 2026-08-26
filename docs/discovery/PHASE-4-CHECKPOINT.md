@@ -9,7 +9,7 @@ Phase 4 is the consistency and implementation-readiness gate following discovery
 - Phase 1 discovery now records the approved persistent-knowledge decision and preserves the two-tracer rollout order.
 - Phase 2 is published as the Real-Ming v1.1 specification in `docs/specs/real-ming-v1.md` and GitHub issue #1.
 - Phase 3 contains 44 tracer-bullet tickets with explicit blocking edges in `real-ming-phase3-tickets.json` and GitHub issues #2 through #45.
-- Architecture v3 is represented by `docs/architecture/real-ming-personal-agent-diagram-v3.html` and its verified PNG rendering.
+- Architecture v3 is represented by `docs/architecture/real-ming-personal-agent-diagram-v3.html` and its verified PNG rendering; `docs/architecture/real-ming-personal-agent-diagram-v3-simplified.html` and its PNG provide the executive-level companion view without changing the architecture baseline.
 - The detailed human-readable architecture is updated to v1.1 in `docs/architecture/real-ming-v1.html`.
 - The glossary defines Candidate Envelope, Compiled Knowledge, Knowledge Vault, Knowledge Compiler, and Hot Runtime Memory.
 - ADR-0018 records the Hermes + LLM Wiki + Obsidian-compatible Knowledge Vault decision; ADR-0017 now covers candidate payload and compiled-generation retention.
@@ -48,5 +48,5 @@ Implementation begins with the ready, unblocked foundation tickets rather than t
 - [x] Phase 2 local specification and GitHub specification synchronized.
 - [x] Phase 3 local manifest and GitHub tickets synchronized.
 - [x] Knowledge Vault ADR, terminology, retention, testing, and dashboard health incorporated.
-- [x] Architecture v3 generated as HTML and PNG and visually inspected.
+- [x] Architecture v3 and its simplified executive companion generated as HTML and PNG, checked responsively, and visually inspected.
 - [x] No Source of Record, production service, credential, Agent Brain ledger, or generated Agent Brain projection was modified.
