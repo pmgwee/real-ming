@@ -1,0 +1,3 @@
+# Pilot MicroSaaS operations with DuitSini
+
+The first MicroSaaS Operations Loop will use `subscription-agent` / DuitSini because the CEO has real pending updates and the project is already deployed and Evidence-Enabled. Its finance-adjacent data raises the pilot standard: work occurs on a task branch, preview verification uses non-production or redacted data, logs and Outcome Reports exclude sensitive records, database migrations or production-data changes require separate Approval, and only an exact verified Deployment Candidate may be merged and promoted. DuitSini's subscription and payment-method Record Changes remain distinct from Money Movement, which is out of scope.

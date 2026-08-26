@@ -1,0 +1,3 @@
+# Isolate trust domains
+
+Personal, Ming Creatives, academic, entertainment, and finance records will remain in separate Trust Domains, and cross-domain coordination will use Approved Projections rather than shared raw context. Dashboards and global search show redacted projections by default; raw personal documents, messages, academic files, financial worksheets, and career materials require an explicitly authorized drill-down and never enter dashboard logs or unrestricted search. This allows the COO to maintain a coherent portfolio while preventing one executive's access from silently becoming universal access.

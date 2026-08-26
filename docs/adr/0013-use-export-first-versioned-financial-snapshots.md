@@ -1,0 +1,3 @@
+# Use export-first, versioned financial snapshots
+
+The Personal CFO will initially consume Moomoo holdings and Realbyte Money Manager activity through exports or curated worksheets, while integrating directly with DuitSini only for subscription and payment-method Record Changes. The CFO owns financial meaning, reconciliation, and validation; the CTO may maintain formulas, imports, and workbook automation as product-engineering work, but a Financial Snapshot is not review-ready until the CFO validates it. Monthly aggregates are immutable versions: an approved correction or next-month update creates a successor and preserves the original. Direct brokerage connectivity is deferred until it can run as a dedicated private read-only service without a transaction password.

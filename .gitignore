@@ -1,0 +1,19 @@
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+*.local
+
+# Raw or staged Personal Context never belongs in Git
+personal-context/
+
+# Generated and temporary files
+tmp/
+.scratch/
+node_modules/
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

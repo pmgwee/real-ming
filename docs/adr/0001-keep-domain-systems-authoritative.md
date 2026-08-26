@@ -1,0 +1,3 @@
+# Keep domain systems authoritative
+
+Real-Ming will coordinate authoritative systems rather than absorb their raw records into a new master database. It may own preferences, policies, provenance-linked projections, workflow state, approvals, and audit history, while calendars, task systems, email, financial applications, project applications, and Project Evidence retain ownership of their respective records. DuitSini remains the sole Source of Record for Recurring Subscriptions, including agent-tool plans; the Real-Ming dashboard tracks Metered Platform Cost without copying those billing records. This avoids silent divergence and unnecessary concentration of sensitive data.

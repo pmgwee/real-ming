@@ -1,0 +1,3 @@
+# Use one private Telegram front door
+
+Real-Ming will use one private Telegram bot as its authoritative remote command and Approval surface. It accepts commands only from the CEO's allowlisted numeric Telegram identity, and one-time Approval controls are bound to an exact artifact or action, expire according to risk, and invalidate when the target changes. The COO is the default coordinator, explicit role addresses route work to the CTO, CFO, CAO, or CMO, and every Outcome Report identifies its accountable Executive Role; separate bot identities are avoided because they fragment audit, routing, and CEO attention. Authenticated dashboard or local administration provides recovery.

@@ -1,0 +1,3 @@
+# Gate production through reviewed pull requests
+
+For Vercel projects, the CTO may synchronize the production branch, create and push a task branch, open a draft pull request, verify its preview deployment, and produce an Outcome Report, but may merge or promote only after explicit CEO Approval of an exact Deployment Candidate. Telegram and the dashboard may expose the same audited Approval control, but neither may deploy an arbitrary branch or an artifact that differs from the approved commit. Direct production-branch pushes and direct production deployments remain excluded so substantial engineering can proceed unattended without allowing self-approved production changes.
