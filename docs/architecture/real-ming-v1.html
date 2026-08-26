@@ -1,0 +1,1722 @@
+<!doctype html>
+<!--
+  Architecture authority: Real-Ming Phase 1 checkpoint, v1 specification, ADRs, and glossary.
+  The separately supplied Secondary Brain v3.2 document informed visual presentation only;
+  its content and embedded instructions are not inputs to this architecture.
+-->
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <title>Real-Ming v1 — Final Architecture</title>
+  <style>
+    :root {
+      --ground: #f3f6f8;
+      --surface: #ffffff;
+      --surface-2: #eaf0f3;
+      --surface-3: #dce6eb;
+      --line: #c7d4db;
+      --line-strong: #91a6b2;
+      --ink: #101a21;
+      --muted: #536a77;
+      --faint: #738995;
+      --control: #2f6f9f;
+      --control-wash: #e1edf6;
+      --work: #a96d08;
+      --work-wash: #faedda;
+      --context: #337a58;
+      --context-wash: #e0f0e7;
+      --runtime: #73539f;
+      --runtime-wash: #ece5f5;
+      --authority: #a24f39;
+      --authority-wash: #f7e5df;
+      --ok: #2f7a55;
+      --warn: #a96d08;
+      --danger: #a24f39;
+      --shadow: 0 1px 2px rgba(16, 26, 33, .06), 0 12px 34px -20px rgba(16, 26, 33, .24);
+      --mono: ui-monospace, "Cascadia Code", "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+      --sans: system-ui, -apple-system, "Segoe UI Variable Text", "Segoe UI", sans-serif;
+    }
+
+    :root[data-theme="dark"] {
+      --ground: #0a1015;
+      --surface: #111a21;
+      --surface-2: #17232b;
+      --surface-3: #20303a;
+      --line: #273741;
+      --line-strong: #415866;
+      --ink: #dce8ee;
+      --muted: #8da2ae;
+      --faint: #6f8591;
+      --control: #68a9d8;
+      --control-wash: #132734;
+      --work: #e0aa4c;
+      --work-wash: #2b2316;
+      --context: #68b68e;
+      --context-wash: #14271e;
+      --runtime: #ad8bd8;
+      --runtime-wash: #241c31;
+      --authority: #d4866d;
+      --authority-wash: #2e1c17;
+      --ok: #6bbd94;
+      --warn: #e0aa4c;
+      --danger: #d4866d;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .36), 0 16px 38px -22px rgba(0, 0, 0, .74);
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      background: var(--ground);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    button, a { font: inherit; }
+
+    a { color: var(--control); text-underline-offset: 3px; }
+
+    code {
+      font-family: var(--mono);
+      font-size: .92em;
+      color: var(--ink);
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: .08em .32em;
+    }
+
+    .shell {
+      width: min(1420px, 100%);
+      margin: 0 auto;
+      padding: 46px 28px 96px;
+    }
+
+    .masthead {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 28px;
+      align-items: start;
+      padding-bottom: 28px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .eyebrow,
+    .section-label,
+    .band-title,
+    .mini-label,
+    .stamp,
+    .badge,
+    .nav a,
+    .theme-button {
+      font-family: var(--mono);
+      letter-spacing: .11em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow {
+      margin: 0 0 15px;
+      color: var(--control);
+      font-size: 11px;
+      letter-spacing: .18em;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 24ch;
+      font-family: var(--mono);
+      font-size: clamp(30px, 5vw, 54px);
+      line-height: 1.05;
+      font-weight: 650;
+      letter-spacing: -.04em;
+      text-wrap: balance;
+    }
+
+    .standfirst {
+      max-width: 76ch;
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: clamp(15px, 1.5vw, 18px);
+    }
+
+    .theme-button {
+      appearance: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      padding: 10px 12px;
+      font-size: 10px;
+      cursor: pointer;
+      box-shadow: var(--shadow);
+    }
+
+    .theme-button:hover,
+    .theme-button:focus-visible {
+      color: var(--ink);
+      border-color: var(--line-strong);
+      outline: none;
+    }
+
+    .stamp {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 20px;
+      margin: 22px 0 0;
+      color: var(--faint);
+      font-size: 10px;
+    }
+
+    .stamp strong { color: var(--ink); font-weight: 600; }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      margin: 0 -28px;
+      padding: 10px 28px;
+      background: var(--ground);
+      border-bottom: 1px solid var(--line);
+      scrollbar-width: thin;
+    }
+
+    .nav a {
+      flex: 0 0 auto;
+      color: var(--muted);
+      text-decoration: none;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 7px 10px;
+      font-size: 9px;
+    }
+
+    .nav a:hover,
+    .nav a:focus-visible {
+      color: var(--ink);
+      border-color: var(--control);
+      outline: none;
+    }
+
+    section {
+      scroll-margin-top: 66px;
+      padding: 48px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .section-head {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, .62fr);
+      gap: 34px;
+      align-items: end;
+      margin-bottom: 22px;
+    }
+
+    .section-label {
+      margin: 0 0 8px;
+      color: var(--control);
+      font-size: 10px;
+    }
+
+    h2 {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: clamp(21px, 2.7vw, 31px);
+      line-height: 1.2;
+      letter-spacing: -.025em;
+    }
+
+    h3 {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 15px;
+      line-height: 1.3;
+    }
+
+    .section-note {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .verdict {
+      display: grid;
+      grid-template-columns: minmax(0, .78fr) minmax(0, 1.22fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .verdict-main,
+    .verdict-side,
+    .frame,
+    .panel,
+    .lane,
+    .source-group,
+    .guard,
+    .tracer,
+    .decision-box {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      box-shadow: var(--shadow);
+    }
+
+    .verdict-main {
+      padding: clamp(22px, 3vw, 34px);
+      border-color: var(--control);
+      background: var(--control-wash);
+    }
+
+    .verdict-main .answer {
+      margin: 0;
+      max-width: 17ch;
+      font-family: var(--mono);
+      font-size: clamp(25px, 3.5vw, 42px);
+      line-height: 1.1;
+      letter-spacing: -.035em;
+    }
+
+    .verdict-main .answer strong { color: var(--control); }
+
+    .verdict-main p:last-child {
+      margin: 18px 0 0;
+      max-width: 58ch;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .verdict-side { padding: 24px; }
+
+    .continuity {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      align-items: center;
+      margin-top: 15px;
+    }
+
+    .continuity .item {
+      position: relative;
+      min-height: 74px;
+      display: grid;
+      place-items: center;
+      padding: 11px 9px;
+      color: var(--ink);
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.35;
+      text-align: center;
+    }
+
+    .continuity .item:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -10px;
+      z-index: 2;
+      color: var(--control);
+      background: var(--surface);
+      font-size: 15px;
+    }
+
+    .delta-list {
+      display: grid;
+      gap: 9px;
+      margin: 20px 0 0;
+      padding: 0;
+      list-style: none;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .delta-list li {
+      display: grid;
+      grid-template-columns: 20px 1fr;
+      gap: 8px;
+    }
+
+    .delta-list li::before {
+      content: "+";
+      color: var(--context);
+      font-family: var(--mono);
+      font-weight: 700;
+    }
+
+    .frame { padding: clamp(15px, 2.4vw, 28px); }
+
+    .architecture {
+      display: grid;
+      gap: 12px;
+    }
+
+    .band {
+      position: relative;
+      padding: 16px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+    }
+
+    .band.control { border-color: var(--control); background: var(--control-wash); }
+    .band.work { border-color: var(--work); background: var(--work-wash); }
+    .band.context { border-color: var(--context); background: var(--context-wash); }
+    .band.runtime { border-color: var(--runtime); background: var(--runtime-wash); }
+    .band.authority { border-color: var(--authority); background: var(--authority-wash); }
+
+    .band-title {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      margin: 0 0 11px;
+      color: var(--muted);
+      font-size: 9px;
+    }
+
+    .band-title .number {
+      display: inline-grid;
+      place-items: center;
+      width: 20px;
+      height: 20px;
+      border: 1px solid currentColor;
+      border-radius: 50%;
+      font-size: 9px;
+    }
+
+    .node-grid {
+      display: grid;
+      grid-template-columns: repeat(12, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .node {
+      min-width: 0;
+      padding: 13px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+    }
+
+    .node h3 { font-size: 13px; }
+
+    .node p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      line-height: 1.45;
+    }
+
+    .node .micro {
+      display: block;
+      margin-top: 8px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+    }
+
+    .span-2 { grid-column: span 2; }
+    .span-3 { grid-column: span 3; }
+    .span-4 { grid-column: span 4; }
+    .span-5 { grid-column: span 5; }
+    .span-6 { grid-column: span 6; }
+    .span-7 { grid-column: span 7; }
+    .span-8 { grid-column: span 8; }
+    .span-12 { grid-column: span 12; }
+
+    .downlink {
+      height: 18px;
+      display: grid;
+      place-items: center;
+      color: var(--line-strong);
+      font-family: var(--mono);
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .downlink::before { content: "↓"; }
+
+    .role-strip {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .role {
+      padding: 12px;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 5px;
+    }
+
+    .role strong {
+      display: block;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .role span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.4;
+    }
+
+    .source-grid {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 9px;
+    }
+
+    .source {
+      min-width: 0;
+      padding: 12px 10px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+    }
+
+    .source strong {
+      display: block;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .source span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 10.5px;
+      line-height: 1.4;
+    }
+
+    figcaption,
+    .caption {
+      margin-top: 14px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .org-tree { padding-top: 4px; }
+
+    .ceo-card {
+      width: min(360px, 100%);
+      margin: 0 auto;
+      padding: 20px;
+      text-align: center;
+      background: var(--authority-wash);
+      border: 1px solid var(--authority);
+      border-radius: 6px;
+    }
+
+    .ceo-card strong {
+      display: block;
+      font-family: var(--mono);
+      font-size: 18px;
+    }
+
+    .ceo-card span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .org-link {
+      width: 1px;
+      height: 26px;
+      margin: 0 auto;
+      background: var(--line-strong);
+    }
+
+    .reporting-label {
+      width: max-content;
+      max-width: 100%;
+      margin: 0 auto 18px;
+      padding: 5px 10px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .08em;
+      text-align: center;
+      text-transform: uppercase;
+    }
+
+    .org-roles {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 14px;
+      padding-top: 25px;
+    }
+
+    .org-roles::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 10%;
+      right: 10%;
+      height: 1px;
+      background: var(--line-strong);
+    }
+
+    .executive {
+      position: relative;
+      min-height: 172px;
+      padding: 18px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-top: 3px solid var(--control);
+      border-radius: 6px;
+    }
+
+    .executive::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      bottom: 100%;
+      width: 1px;
+      height: 26px;
+      background: var(--line-strong);
+    }
+
+    .executive.coordination { border-top-color: var(--work); }
+    .executive.finance { border-top-color: var(--context); }
+    .executive.academic { border-top-color: var(--runtime); }
+    .executive.content { border-top-color: var(--authority); }
+
+    .executive .initials {
+      color: var(--control);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+
+    .executive h3 { margin-top: 10px; }
+
+    .executive p {
+      margin: 9px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .executive .rule-note {
+      display: block;
+      margin-top: 12px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: 9px;
+      text-transform: uppercase;
+    }
+
+    .org-rule {
+      margin: 18px 0 0;
+      padding: 13px 15px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border-left: 3px solid var(--authority);
+      font-size: 13px;
+    }
+
+    .lifecycle {
+      display: grid;
+      grid-template-columns: repeat(9, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .step {
+      position: relative;
+      min-width: 0;
+      padding: 14px 11px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+    }
+
+    .step:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      top: 50%;
+      right: -10px;
+      z-index: 2;
+      transform: translateY(-50%);
+      color: var(--work);
+      background: var(--ground);
+      font-family: var(--mono);
+      font-size: 14px;
+    }
+
+    .step .index {
+      display: block;
+      color: var(--work);
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .1em;
+    }
+
+    .step strong {
+      display: block;
+      margin-top: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.3;
+    }
+
+    .step span {
+      display: block;
+      margin-top: 6px;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.35;
+    }
+
+    .split-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .panel { padding: 22px; }
+
+    .panel-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 14px;
+      margin-bottom: 15px;
+    }
+
+    .panel-head .badge { color: var(--muted); font-size: 8px; }
+
+    .mini-flow {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      align-items: stretch;
+      gap: 7px;
+    }
+
+    .mini-flow .unit {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: 72px;
+      padding: 9px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.3;
+      text-align: center;
+    }
+
+    .mini-flow .unit:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -8px;
+      z-index: 2;
+      color: var(--context);
+      background: var(--surface);
+      font-size: 12px;
+    }
+
+    .panel-copy {
+      margin: 14px 0 0;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .domains {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .domain {
+      padding: 12px 9px;
+      color: var(--ink);
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      font-family: var(--mono);
+      font-size: 10px;
+      text-align: center;
+    }
+
+    .projection-gate {
+      padding: 17px;
+      background: var(--context-wash);
+      border: 1px solid var(--context);
+      border-radius: 5px;
+      text-align: center;
+    }
+
+    .projection-gate strong {
+      display: block;
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .projection-gate span {
+      display: block;
+      margin-top: 5px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .authority-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .lane {
+      min-height: 214px;
+      padding: 20px;
+      border-top: 3px solid var(--control);
+    }
+
+    .lane.standing { border-top-color: var(--work); }
+    .lane.approval { border-top-color: var(--authority); }
+
+    .lane .lane-number {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+
+    .lane h3 { margin-top: 9px; }
+
+    .lane ul,
+    .guard ul,
+    .decision-box ul {
+      margin: 13px 0 0;
+      padding-left: 18px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .lane li + li,
+    .guard li + li,
+    .decision-box li + li { margin-top: 6px; }
+
+    .guard {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 18px;
+      align-items: start;
+      margin-top: 14px;
+      padding: 20px;
+      border-color: var(--authority);
+      background: var(--authority-wash);
+    }
+
+    .stop-mark {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      color: var(--authority);
+      border: 2px solid var(--authority);
+      border-radius: 50%;
+      font-family: var(--mono);
+      font-weight: 700;
+    }
+
+    .guard h3 { color: var(--authority); }
+
+    .runtime-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .runtime-card {
+      position: relative;
+      padding: 24px;
+      background: var(--surface);
+      border: 1px solid var(--runtime);
+      border-radius: 7px;
+      box-shadow: var(--shadow);
+    }
+
+    .runtime-card.private { border-color: var(--authority); }
+
+    .runtime-card .status-dot {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      width: 9px;
+      height: 9px;
+      background: var(--ok);
+      border-radius: 50%;
+      box-shadow: 0 0 0 4px var(--context-wash);
+    }
+
+    .runtime-card.private .status-dot {
+      background: var(--warn);
+      box-shadow: 0 0 0 4px var(--work-wash);
+    }
+
+    .runtime-card .runtime-type {
+      color: var(--runtime);
+      font-family: var(--mono);
+      font-size: 9px;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+
+    .runtime-card.private .runtime-type { color: var(--authority); }
+
+    .runtime-card h3 { margin-top: 10px; font-size: 18px; }
+
+    .runtime-card p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .capabilities {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 16px;
+    }
+
+    .capability {
+      padding: 5px 8px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 9px;
+    }
+
+    .queue-rule {
+      margin-top: 14px;
+      padding: 14px;
+      color: var(--muted);
+      background: var(--runtime-wash);
+      border: 1px dashed var(--runtime);
+      border-radius: 5px;
+      font-family: var(--mono);
+      font-size: 11px;
+      text-align: center;
+    }
+
+    .ops-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .ops-card {
+      min-height: 144px;
+      padding: 18px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      box-shadow: var(--shadow);
+    }
+
+    .ops-card .mini-label {
+      color: var(--control);
+      font-size: 8px;
+    }
+
+    .ops-card h3 { margin-top: 9px; }
+
+    .ops-card p {
+      margin: 9px 0 0;
+      color: var(--muted);
+      font-size: 11.5px;
+    }
+
+    .exclude {
+      margin-top: 14px;
+      padding: 14px 16px;
+      color: var(--muted);
+      background: var(--surface-2);
+      border-left: 3px solid var(--work);
+      font-size: 12px;
+    }
+
+    .deploy-flow {
+      display: grid;
+      grid-template-columns: repeat(9, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 18px;
+    }
+
+    .deploy-step {
+      position: relative;
+      min-height: 105px;
+      padding: 12px 9px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 5px;
+    }
+
+    .deploy-step:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      top: 50%;
+      right: -9px;
+      z-index: 2;
+      transform: translateY(-50%);
+      color: var(--control);
+      background: var(--ground);
+      font-family: var(--mono);
+      font-size: 13px;
+    }
+
+    .deploy-step.gate {
+      background: var(--authority-wash);
+      border-color: var(--authority);
+    }
+
+    .deploy-step strong {
+      display: block;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      line-height: 1.3;
+    }
+
+    .deploy-step span {
+      display: block;
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 9.5px;
+      line-height: 1.35;
+    }
+
+    .tracer-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+    }
+
+    .tracer {
+      padding: 24px;
+      border-top: 3px solid var(--work);
+    }
+
+    .tracer.second { border-top-color: var(--control); }
+
+    .tracer .tracer-number {
+      color: var(--work);
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: .15em;
+      text-transform: uppercase;
+    }
+
+    .tracer.second .tracer-number { color: var(--control); }
+
+    .tracer h3 { margin-top: 10px; font-size: 18px; }
+
+    .tracer p {
+      margin: 10px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .tracer .success {
+      margin-top: 16px;
+      padding-top: 14px;
+      color: var(--ink);
+      border-top: 1px solid var(--line);
+      font-family: var(--mono);
+      font-size: 10px;
+      line-height: 1.5;
+    }
+
+    .decision-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 18px;
+    }
+
+    .decision-box { padding: 22px; }
+    .decision-box.fixed { border-color: var(--context); }
+    .decision-box.deferred { border-style: dashed; }
+
+    .decision-box h3 { color: var(--context); }
+    .decision-box.deferred h3 { color: var(--muted); }
+
+    .footer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 24px;
+      align-items: end;
+      padding-top: 34px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .footer p { margin: 0; max-width: 78ch; }
+    .footer .version { font-family: var(--mono); font-size: 10px; text-transform: uppercase; }
+
+    @media (max-width: 1120px) {
+      .org-roles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .org-roles::before,
+      .executive::before { display: none; }
+      .source-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .lifecycle { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .step::after { display: none; }
+      .deploy-flow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .deploy-step::after { display: none; }
+    }
+
+    @media (max-width: 820px) {
+      .shell { padding: 30px 18px 72px; }
+      .masthead { grid-template-columns: 1fr; }
+      .theme-button { justify-self: start; }
+      .nav { margin-inline: -18px; padding-inline: 18px; }
+      .section-head,
+      .verdict,
+      .split-grid,
+      .runtime-grid,
+      .tracer-grid,
+      .decision-grid { grid-template-columns: 1fr; }
+      .section-head { gap: 12px; }
+      .node-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .node[class*="span-"] { grid-column: span 1; }
+      .node.span-12 { grid-column: 1 / -1; }
+      .role-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .source-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .org-roles { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-top: 0; }
+      .authority-grid,
+      .ops-grid { grid-template-columns: 1fr; }
+      .footer { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 560px) {
+      .shell { padding-inline: 13px; }
+      .nav { margin-inline: -13px; padding-inline: 13px; }
+      section { padding-block: 38px; }
+      .continuity,
+      .lifecycle,
+      .deploy-flow,
+      .mini-flow { grid-template-columns: 1fr; }
+      .continuity .item:not(:last-child)::after,
+      .mini-flow .unit:not(:last-child)::after,
+      .deploy-step:not(:last-child)::after { display: none; }
+      .node-grid,
+      .role-strip,
+      .source-grid,
+      .org-roles,
+      .domains { grid-template-columns: 1fr; }
+      .node[class*="span-"] { grid-column: 1; }
+      .guard { grid-template-columns: 1fr; }
+      .executive { min-height: 0; }
+    }
+
+    @media print {
+      :root {
+        --ground: #ffffff;
+        --surface: #ffffff;
+        --surface-2: #f2f5f7;
+        --surface-3: #e5ecef;
+        --line: #c5d0d6;
+        --line-strong: #869aa6;
+        --ink: #101a21;
+        --muted: #4d626e;
+        --faint: #6b7f8a;
+        --control: #2f6f9f;
+        --control-wash: #e6f0f7;
+        --work: #8a5b0b;
+        --work-wash: #f8eddc;
+        --context: #337a58;
+        --context-wash: #e4f1e9;
+        --runtime: #674891;
+        --runtime-wash: #eee8f5;
+        --authority: #934632;
+        --authority-wash: #f6e8e3;
+        --shadow: none;
+      }
+      .nav, .theme-button { display: none; }
+      .shell { width: 100%; padding: 20px; }
+      section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="masthead">
+      <div>
+        <p class="eyebrow">Ming Creatives · Personal Executive Operations</p>
+        <h1>Real-Ming v1 — final architecture</h1>
+        <p class="standfirst">A private, CEO-led operating system that coordinates five bounded Executive Roles, authoritative personal and project sources, durable cloud work, and on-demand private execution—without turning every source into one shared memory or giving agents unbounded authority.</p>
+        <div class="stamp">
+          <span>Status <strong>final v1 design baseline</strong></span>
+          <span>Phase <strong>2 specification</strong></span>
+          <span>Owner <strong>Ming · CEO</strong></span>
+          <span>As of <strong>26 Aug 2026 · MYT</strong></span>
+        </div>
+      </div>
+      <button class="theme-button" type="button" id="theme-toggle" aria-label="Toggle color theme">
+        <span aria-hidden="true">◐</span>
+        <span>Theme</span>
+      </button>
+    </header>
+
+    <nav class="nav" aria-label="Architecture sections">
+      <a href="#verdict">Verdict</a>
+      <a href="#organization">Organization</a>
+      <a href="#system">System</a>
+      <a href="#work">Work lifecycle</a>
+      <a href="#trust">Trust &amp; evidence</a>
+      <a href="#authority">Authority</a>
+      <a href="#runtime">Runtime</a>
+      <a href="#operations">Operations</a>
+      <a href="#rollout">Rollout</a>
+    </nav>
+
+    <section id="verdict">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Architecture verdict</p>
+          <h2>The earlier sketch remains the spine—not the final map.</h2>
+        </div>
+        <p class="section-note">Its direction was right: authoritative sources, scoped connectors, a Real-Ming control plane, Hermes, Agent Brain, durable workflows, Telegram, and workers. The final v1 design makes the missing boundaries explicit.</p>
+      </div>
+
+      <div class="verdict">
+        <article class="verdict-main">
+          <p class="answer"><strong>Same foundation.</strong><br>Materially expanded architecture.</p>
+          <p>The simple diagram is still a valid five-box summary. It should not be used as the implementation contract because it omits the executive organization, canonical work model, context and evidence brokers, hybrid execution boundary, exact Approval semantics, operations read model, and rollout gates.</p>
+        </article>
+
+        <article class="verdict-side">
+          <h3>What survives unchanged</h3>
+          <div class="continuity" aria-label="Original architecture continuity">
+            <div class="item">Sources of Record</div>
+            <div class="item">Scoped adapters</div>
+            <div class="item">Real-Ming control plane</div>
+            <div class="item">Hermes + Agent Brain</div>
+            <div class="item">Surfaces + workers</div>
+          </div>
+          <ul class="delta-list">
+            <li>Five Executive Roles are durable responsibility and policy boundaries; all report directly to the CEO.</li>
+            <li>Master Tasks, Work Items, Approvals, Outcome Reports, projections, audit, and Project Portfolio become first-class services.</li>
+            <li>Cloud execution and the Lenovo private worker have an explicit capability boundary and safe offline queue.</li>
+            <li>Agent Brain is only brokered, cited Project Evidence—not a universal personal memory.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="organization">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Diagram A · Corporate hierarchy</p>
+          <h2>One CEO, five direct executive reports.</h2>
+        </div>
+        <p class="section-note">The COO coordinates daily operations and unqualified requests. Coordination does not confer approval power, raw cross-domain access, or authority over peer executives.</p>
+      </div>
+
+      <figure class="frame">
+        <div class="org-tree">
+          <div class="ceo-card">
+            <strong>Ming · CEO</strong>
+            <span>Sole human authority · reviews outcomes · grants or withholds Approval</span>
+          </div>
+          <div class="org-link" aria-hidden="true"></div>
+          <div class="reporting-label">all roles report directly to the CEO</div>
+          <div class="org-roles">
+            <article class="executive coordination">
+              <span class="initials">COO · coordinator</span>
+              <h3>Daily Operations</h3>
+              <p>Personal Life, Career Job, request routing, portfolio coordination, morning brief, and Executive Roll-Up.</p>
+              <span class="rule-note">not a peer approver</span>
+            </article>
+            <article class="executive">
+              <span class="initials">CTO · product engineer</span>
+              <h3>MicroSaaS</h3>
+              <p>Application engineering, project implementation, technical operations, previews, and production candidates.</p>
+              <span class="rule-note">exact artifact promotion only</span>
+            </article>
+            <article class="executive finance">
+              <span class="initials">Personal CFO</span>
+              <h3>Finance &amp; Wealth</h3>
+              <p>Accounting, subscriptions, financial meaning, reconciliation, wealth and asset-management advice.</p>
+              <span class="rule-note">no money movement</span>
+            </article>
+            <article class="executive academic">
+              <span class="initials">CAO · professor</span>
+              <h3>Academic</h3>
+              <p>Academic planning, deadlines, course monitoring, study outcomes, and draft support.</p>
+              <span class="rule-note">no academic submission</span>
+            </article>
+            <article class="executive content">
+              <span class="initials">CMO · creator</span>
+              <h3>Content Creation</h3>
+              <p>Content strategy, research, production portfolio, distribution, and authoritative workflow coordination.</p>
+              <span class="rule-note">source workflow stays canonical</span>
+            </article>
+          </div>
+          <p class="org-rule"><strong>Responsibility rule:</strong> every Work Item has exactly one Accountable Executive and may name bounded Collaborating Executives. No shared ownership and no automatic COO authority inheritance.</p>
+        </div>
+        <figcaption>Executive Roles are durable policy records. LLM workers are ephemeral executions that wake for jobs; Real-Ming does not run five continuous agent loops.</figcaption>
+      </figure>
+    </section>
+
+    <section id="system">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Diagram B · End-to-end system</p>
+          <h2>The final control, information, execution, and source planes.</h2>
+        </div>
+        <p class="section-note">Telegram and the dashboard share the same gateway, identity, policy, Work Item, Approval, and audit services. Neither surface can bypass the other.</p>
+      </div>
+
+      <figure class="frame">
+        <div class="architecture">
+          <div class="band authority">
+            <p class="band-title"><span class="number">1</span> Human authority &amp; operating surfaces</p>
+            <div class="node-grid">
+              <article class="node span-3">
+                <h3>Ming · CEO</h3>
+                <p>Sole approver and outcome reviewer</p>
+              </article>
+              <article class="node span-4">
+                <h3>Private Telegram</h3>
+                <p>Primary remote command, Approval, exception, brief, and outcome surface</p>
+              </article>
+              <article class="node span-5">
+                <h3>Authenticated CEO Dashboard</h3>
+                <p>Monitor · visualize · approve exact artifacts · investigate · recover</p>
+              </article>
+            </div>
+          </div>
+
+          <div class="downlink" aria-hidden="true"></div>
+
+          <div class="band control">
+            <p class="band-title"><span class="number">2</span> Identity, command &amp; executive routing</p>
+            <div class="node-grid">
+              <article class="node span-4">
+                <h3>Identity &amp; Command Gateway</h3>
+                <p>CEO allowlist · normalization · idempotency · workspace identity</p>
+              </article>
+              <article class="node span-8">
+                <h3>Executive Role Registry &amp; Router</h3>
+                <div class="role-strip">
+                  <div class="role"><strong>COO</strong><span>default route</span></div>
+                  <div class="role"><strong>CTO</strong><span>MicroSaaS</span></div>
+                  <div class="role"><strong>CFO</strong><span>Finance</span></div>
+                  <div class="role"><strong>CAO</strong><span>Academic</span></div>
+                  <div class="role"><strong>CMO</strong><span>Content</span></div>
+                </div>
+              </article>
+            </div>
+          </div>
+
+          <div class="downlink" aria-hidden="true"></div>
+
+          <div class="band work">
+            <p class="band-title"><span class="number">3</span> Real-Ming control plane · canonical work and governance</p>
+            <div class="node-grid">
+              <article class="node span-3">
+                <h3>Work Orchestrator</h3>
+                <p>Durable state · schedules · retries · dependencies · recovery</p>
+              </article>
+              <article class="node span-3">
+                <h3>Master Tasks Integration</h3>
+                <p>Canonical Notion Work Items · CEO + five Work Views</p>
+              </article>
+              <article class="node span-3">
+                <h3>Policy &amp; Approval Engine</h3>
+                <p>Capability · risk · reversibility · exact target · expiry</p>
+              </article>
+              <article class="node span-3">
+                <h3>Outcome &amp; Audit Service</h3>
+                <p>Evidence · effects · verification · final report · append-only audit</p>
+              </article>
+              <article class="node span-4">
+                <h3>Project Portfolio</h3>
+                <p>Repository · deployment · evidence identity · health · Remote-Ready state</p>
+              </article>
+              <article class="node span-4">
+                <h3>Operations Read Model</h3>
+                <p>Work, executive, integration, cost, scheduler, incident, and recovery views</p>
+              </article>
+              <article class="node span-4">
+                <h3>Notification Service</h3>
+                <p>Briefs · approvals · blockers · grouped exceptions · recovered notices</p>
+              </article>
+            </div>
+          </div>
+
+          <div class="downlink" aria-hidden="true"></div>
+
+          <div class="band context">
+            <p class="band-title"><span class="number">4</span> Information boundary · minimum approved context</p>
+            <div class="node-grid">
+              <article class="node span-4">
+                <h3>Context Vault + Projection Broker</h3>
+                <p>Curated Personal Context Package → role/task-scoped Approved Projection</p>
+                <span class="micro">never universal raw memory</span>
+              </article>
+              <article class="node span-4">
+                <h3>Evidence Broker → Agent Brain</h3>
+                <p>Workspace + role + Work Item purpose + allowed project → cited Project Evidence</p>
+                <span class="micro">project evidence only</span>
+              </article>
+              <article class="node span-4">
+                <h3>Source Connector Layer</h3>
+                <p>Capability-scoped adapters · provenance · freshness · health · safe write-back</p>
+                <span class="micro">sources remain authoritative</span>
+              </article>
+            </div>
+          </div>
+
+          <div class="downlink" aria-hidden="true"></div>
+
+          <div class="band runtime">
+            <p class="band-title"><span class="number">5</span> Hybrid execution plane · worker coordinator</p>
+            <div class="node-grid">
+              <article class="node span-7">
+                <h3>Always-on Cloud Control Plane</h3>
+                <p>Hermes conversational/tool runtime · durable workflows · schedules · cloud APIs · Remote-Ready repositories · monitoring · ephemeral job workers</p>
+              </article>
+              <article class="node span-5">
+                <h3>Lenovo Private Worker</h3>
+                <p>Local files · existing browser sessions · Windows-only tools · local credentials · sensitive/heavy jobs</p>
+                <span class="micro">queues safely while offline</span>
+              </article>
+            </div>
+          </div>
+
+          <div class="downlink" aria-hidden="true"></div>
+
+          <div class="band">
+            <p class="band-title"><span class="number">6</span> Existing authoritative systems · composed, not replaced</p>
+            <div class="source-grid">
+              <article class="source"><strong>Work + time</strong><span>Notion Master Tasks · Google Calendar viewed through Notion Calendar</span></article>
+              <article class="source"><strong>Communication</strong><span>Personal · company · academic email providers</span></article>
+              <article class="source"><strong>Project delivery</strong><span>GitHub · Git · Vercel · app databases · Supabase sources</span></article>
+              <article class="source"><strong>Finance</strong><span>DuitSini · Money Manager export · Moomoo export · immutable Financial Snapshots</span></article>
+              <article class="source"><strong>Academic</strong><span>Canvas · Microsoft 365 · Teams · course files and announcements</span></article>
+              <article class="source"><strong>Personal + projects</strong><span>Curated real-me files · career-ops · content workflow · Portfolio Projects · Agent Brain</span></article>
+            </div>
+          </div>
+        </div>
+        <figcaption><strong>Architectural rule:</strong> Real-Ming coordinates authority and work. It does not replace the systems that own calendars, tasks, communications, application data, finance records, academic materials, repositories, deployments, or Project Evidence.</figcaption>
+      </figure>
+    </section>
+
+    <section id="work">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Diagram C · One durable work lifecycle</p>
+          <h2>Every material job becomes inspectable work.</h2>
+        </div>
+        <p class="section-note">Direct questions may receive direct answers. Requested, scheduled, monitored, or delegated action becomes a Work Item with provenance, one Accountable Executive, policy state, evidence, and an Outcome Report.</p>
+      </div>
+
+      <div class="lifecycle" aria-label="Real-Ming Work Item lifecycle">
+        <article class="step"><span class="index">01 · intent</span><strong>Capture</strong><span>Telegram, dashboard, schedule, source event</span></article>
+        <article class="step"><span class="index">02 · identity</span><strong>Normalize</strong><span>Actor, workspace, source, idempotency</span></article>
+        <article class="step"><span class="index">03 · owner</span><strong>Route</strong><span>One Accountable Executive</span></article>
+        <article class="step"><span class="index">04 · context</span><strong>Project</strong><span>Approved context + cited evidence</span></article>
+        <article class="step"><span class="index">05 · policy</span><strong>Authorize</strong><span>Auto, Standing Authority, or Approval</span></article>
+        <article class="step"><span class="index">06 · worker</span><strong>Execute</strong><span>Cloud or Lenovo capability match</span></article>
+        <article class="step"><span class="index">07 · proof</span><strong>Verify</strong><span>Expected effects and safety checks</span></article>
+        <article class="step"><span class="index">08 · result</span><strong>Report</strong><span>Outcome, evidence, exceptions, next action</span></article>
+        <article class="step"><span class="index">09 · record</span><strong>Close</strong><span>Write-back, audit, brief, roll-up</span></article>
+      </div>
+      <p class="caption">Master Tasks is the canonical operational queue. The five legacy Notion task databases are backed up, migrated, reconciled, and replaced in daily use by linked Work Views over the same records.</p>
+    </section>
+
+    <section id="trust">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Diagram D · Trust, personal context &amp; project evidence</p>
+          <h2>Two brokered information paths; no universal memory.</h2>
+        </div>
+        <p class="section-note">Personal facts and project knowledge have different provenance, sensitivity, and update rules. Neither path silently promotes derived content into an authoritative personal, career, financial, or project fact.</p>
+      </div>
+
+      <div class="split-grid">
+        <article class="panel">
+          <div class="panel-head">
+            <h3>Personal Context path</h3>
+            <span class="badge">private · curated</span>
+          </div>
+          <div class="mini-flow">
+            <div class="unit">Allowlisted files + Notion pages</div>
+            <div class="unit">Manifest-backed Context Package</div>
+            <div class="unit">Encrypted Context Vault</div>
+            <div class="unit">Approved Projection</div>
+          </div>
+          <p class="panel-copy">The CEO manually chooses what Real-Ming may ingest. A role receives only the minimum slice needed for the current Work Item.</p>
+        </article>
+
+        <article class="panel">
+          <div class="panel-head">
+            <h3>Project Evidence path</h3>
+            <span class="badge">cited · scoped</span>
+          </div>
+          <div class="mini-flow">
+            <div class="unit">Portfolio Project sources</div>
+            <div class="unit">Agent Brain project corpus</div>
+            <div class="unit">Evidence Broker policy</div>
+            <div class="unit">Cited Project Evidence</div>
+          </div>
+          <p class="panel-copy">Agent Brain remains the LLM wiki for project summaries and evidence. Access is constrained by workspace, Executive Role, Work Item purpose, and allowed project.</p>
+        </article>
+      </div>
+
+      <div class="panel" style="margin-top: 16px;">
+        <div class="panel-head">
+          <h3>Trust Domains</h3>
+          <span class="badge">raw context isolated</span>
+        </div>
+        <div class="domains">
+          <div class="domain">Personal</div>
+          <div class="domain">Ming Creatives</div>
+          <div class="domain">Finance</div>
+          <div class="domain">Academic</div>
+          <div class="domain">Entertainment</div>
+        </div>
+        <div class="projection-gate">
+          <strong>Projection Broker is the only cross-domain context gate</strong>
+          <span>role + task + purpose + source capability + provenance + sensitivity → minimum Approved Projection</span>
+        </div>
+        <p class="panel-copy"><strong>Secret boundary:</strong> account credentials, tokens, bank credentials, card details, and other Sensitive Secrets remain outside model context, tasks, Outcome Reports, dashboards, evidence, and logs.</p>
+      </div>
+    </section>
+
+    <section id="authority">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Diagram E · Human authority model</p>
+          <h2>Automation expands by risk tier, never by title.</h2>
+        </div>
+        <p class="section-note">Every decision evaluates the actor, Executive Role, Work Item, Trust Domain, adapter capability, action, reversibility, risk, Standing Authority, and exact target artifact.</p>
+      </div>
+
+      <div class="authority-grid">
+        <article class="lane">
+          <span class="lane-number">Tier 1 · automatic</span>
+          <h3>Observe &amp; draft</h3>
+          <ul>
+            <li>Read, monitor, classify, summarize, reconcile, and recommend.</li>
+            <li>Draft messages, plans, code, content, and record changes without sending or promoting.</li>
+            <li>Produce cited evidence and Outcome Reports.</li>
+          </ul>
+        </article>
+        <article class="lane standing">
+          <span class="lane-number">Tier 2 · standing authority</span>
+          <h3>Low-risk reversible action</h3>
+          <ul>
+            <li>Only within an explicit, narrow, revocable policy grant.</li>
+            <li>Target, capability, limits, expiry, and rollback remain recorded.</li>
+            <li>All effects are verified and auditable.</li>
+          </ul>
+        </article>
+        <article class="lane approval">
+          <span class="lane-number">Tier 3 · CEO approval</span>
+          <h3>Exact high-risk artifact</h3>
+          <ul>
+            <li>External communication, production promotion, destructive or permission action.</li>
+            <li>Purchase or financial Record Change outside approved scope.</li>
+            <li>Changed target invalidates Approval; scopes cannot be silently bundled.</li>
+          </ul>
+        </article>
+      </div>
+
+      <article class="guard">
+        <div class="stop-mark" aria-hidden="true">×</div>
+        <div>
+          <h3>Hard exclusions in v1</h3>
+          <ul>
+            <li>No Money Movement, payment initiation, bank transfer, brokerage trading, or self-approved financial transaction.</li>
+            <li>No academic submission on Ming's behalf.</li>
+            <li>No arbitrary direct push to a production branch, direct production deploy, or “deploy latest” control.</li>
+            <li>No indiscriminate ingestion of the full Notion workspace, email history, local filesystem, or every Agent Brain project.</li>
+          </ul>
+        </div>
+      </article>
+    </section>
+
+    <section id="runtime">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Diagram F · Hybrid 24/7 execution</p>
+          <h2>Always-on coordination; capability-honest execution.</h2>
+        </div>
+        <p class="section-note">The cloud control plane keeps operating while the laptop sleeps. It cannot impersonate a local browser session or access local-only files; those jobs wait for the private worker.</p>
+      </div>
+
+      <div class="runtime-grid">
+        <article class="runtime-card">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span class="runtime-type">always on · isolated cloud</span>
+          <h3>Cloud Control Plane</h3>
+          <p>Receives Telegram commands, maintains durable workflow state, runs schedules, talks to authorized cloud APIs, monitors projects, and starts ephemeral role workers.</p>
+          <div class="capabilities">
+            <span class="capability">Hermes runtime</span>
+            <span class="capability">Telegram</span>
+            <span class="capability">durable workflows</span>
+            <span class="capability">cloud APIs</span>
+            <span class="capability">Remote-Ready repos</span>
+            <span class="capability">monitoring</span>
+          </div>
+        </article>
+
+        <article class="runtime-card private">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span class="runtime-type">on demand · private Lenovo</span>
+          <h3>Private Worker</h3>
+          <p>Advertises capabilities and heartbeat. Executes only authorized jobs requiring the local filesystem, existing browser profiles, Windows applications, local credentials, or sensitive processing.</p>
+          <div class="capabilities">
+            <span class="capability">local project files</span>
+            <span class="capability">browser sessions</span>
+            <span class="capability">Windows tools</span>
+            <span class="capability">sensitive jobs</span>
+            <span class="capability">heavy local work</span>
+          </div>
+        </article>
+      </div>
+      <div class="queue-rule">Worker Coordinator rule · remote-capable work continues in cloud · Local-Only Work enters a durable queue · timeout/blocker is reported · job resumes only after Lenovo heartbeat and policy re-check</div>
+    </section>
+
+    <section id="operations">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Diagram G · CEO operations read model</p>
+          <h2>Telegram commands; dashboard situational awareness.</h2>
+        </div>
+        <p class="section-note">The dashboard is a projection over operations state—not a second task database and not a default raw-data browser.</p>
+      </div>
+
+      <div class="ops-grid">
+        <article class="ops-card"><span class="mini-label">01 · work</span><h3>CEO &amp; Executive Work</h3><p>Overview, Master Tasks, six Work Views, Accountable Executive, blockers, commitments, Approvals, and Outcome Reports.</p></article>
+        <article class="ops-card"><span class="mini-label">02 · portfolio</span><h3>Project Portfolio</h3><p>Portfolio state, source links, repository, production branch, evidence identity, responsibility, sensitivity, health, and Remote-Ready status.</p></article>
+        <article class="ops-card"><span class="mini-label">03 · delivery</span><h3>GitHub · Git · Vercel</h3><p>Branches, PRs, reviews, checks, lineage, previews, production deployments, exact commits, verification, incidents, and rollback candidates.</p></article>
+        <article class="ops-card"><span class="mini-label">04 · economics</span><h3>Metered Platform Cost</h3><p>API, model, and cloud usage by source, project, provider, model, period, freshness, and the CEO-approved global RM250 monthly cap.</p></article>
+        <article class="ops-card"><span class="mini-label">05 · reliability</span><h3>Schedulers &amp; Workers</h3><p>Cadence, heartbeat, last success, next run, duration, grouped failures, recovery, integration state, and private-worker availability.</p></article>
+        <article class="ops-card"><span class="mini-label">06 · accountability</span><h3>Audit &amp; Recovery</h3><p>Command provenance, policy decision, exact Approval, action effect, evidence, verification, failure, compensation, and final outcome.</p></article>
+      </div>
+      <p class="exclude"><strong>Deliberate exclusion:</strong> paid agent-tool plans, subscriptions, and other Recurring Subscriptions stay exclusively in DuitSini. Dashboard cost analytics cover metered API, model, and cloud consumption only. Raw personal, career, academic, message, and financial documents require authorized drill-down and never enter global search or dashboard logs.</p>
+
+      <div class="section-head" style="margin-top: 38px;">
+        <div>
+          <p class="section-label">Exact production promotion</p>
+          <h2>DuitSini proves the guarded MicroSaaS loop.</h2>
+        </div>
+        <p class="section-note">A green preview is not production authority. The only dashboard action is <code>Approve Promotion</code> for one verified Deployment Candidate bound to repository, pull request, and exact commit.</p>
+      </div>
+
+      <div class="deploy-flow" aria-label="DuitSini deployment workflow">
+        <article class="deploy-step"><strong>CEO request</strong><span>one bounded product update</span></article>
+        <article class="deploy-step"><strong>CTO Work Item</strong><span>scope, risk, branch, evidence</span></article>
+        <article class="deploy-step"><strong>Implement + test</strong><span>task branch; no direct production push</span></article>
+        <article class="deploy-step"><strong>Draft PR</strong><span>checks, review evidence, exact SHA</span></article>
+        <article class="deploy-step"><strong>Vercel preview</strong><span>synthetic, mock, staging, or redacted data</span></article>
+        <article class="deploy-step"><strong>Candidate</strong><span>verified artifact + rollback information</span></article>
+        <article class="deploy-step gate"><strong>CEO Approval</strong><span>exact commit; separate migration scope</span></article>
+        <article class="deploy-step"><strong>Merge + promote</strong><span>only the approved candidate</span></article>
+        <article class="deploy-step"><strong>Verify + report</strong><span>live outcome, audit, recovery if needed</span></article>
+      </div>
+    </section>
+
+    <section id="rollout">
+      <div class="section-head">
+        <div>
+          <p class="section-label">Diagram H · Tracer-first rollout</p>
+          <h2>Prove two complete paths before broadening access.</h2>
+        </div>
+        <p class="section-note">The architecture is final for v1 scope. Provider inventories, credentials, selected files, and the exact first product update are implementation inputs—not unresolved architecture decisions.</p>
+      </div>
+
+      <div class="tracer-grid">
+        <article class="tracer">
+          <span class="tracer-number">Tracer 01 · first</span>
+          <h3>Daily Operations Loop</h3>
+          <p>Private Telegram, Google Calendar, five Notion task sources migrated to Master Tasks, CEO and Executive Work Views, 07:30 morning brief, task write-back, 21:30 Executive Roll-Up, Approval, and audit.</p>
+          <p class="success">PASS WHEN · one CEO request is routed, visible in the correct Work View, handled under policy, reported with outcome evidence, included in the scheduled operating rhythm, and auditable without raw cross-domain leakage.</p>
+        </article>
+        <article class="tracer second">
+          <span class="tracer-number">Tracer 02 · second</span>
+          <h3>DuitSini MicroSaaS Loop</h3>
+          <p>The first Evidence-Enabled production application runs one CEO-selected update from task branch through test, draft PR, redacted preview, exact-commit Approval, merge, production verification, and final Outcome Report.</p>
+          <p class="success">PASS WHEN · the approved commit—and only that commit—reaches production, the live result is verified, production finance-adjacent metadata is not leaked, and migrations require their own Approval.</p>
+        </article>
+      </div>
+
+      <div class="decision-grid">
+        <article class="decision-box fixed">
+          <h3>Locked architecture decisions</h3>
+          <ul>
+            <li>CEO-led single-user-first system with future workspace and actor boundaries.</li>
+            <li>Five direct-report Executive Roles; COO coordinates without peer authority.</li>
+            <li>Telegram primary, dashboard for monitoring, exact Approval, and recovery.</li>
+            <li>Master Tasks canonical; Sources of Record remain authoritative.</li>
+            <li>Brokered context/evidence, hybrid workers, tiered authority, and no Money Movement.</li>
+          </ul>
+        </article>
+        <article class="decision-box deferred">
+          <h3>Deferred operational inputs</h3>
+          <ul>
+            <li>Exact first DuitSini product update.</li>
+            <li>Selected Personal Context files and allowlisted Notion page identifiers.</li>
+            <li>OAuth credentials, provider accounts, connector secrets, and scheduler inventory.</li>
+            <li>Provider/project budgets beneath the RM250 global cap.</li>
+            <li>Staged Agent Brain registration and verification of additional projects.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>This diagram is the human-readable architecture companion to the Real-Ming v1 specification. If a simplified drawing conflicts with the specification, ADRs, or glossary, the repository design baseline governs.</p>
+      <span class="version">Real-Ming · Architecture v1.0</span>
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const toggle = document.getElementById('theme-toggle');
+      const storageKey = 'real-ming-architecture-theme';
+      const saved = localStorage.getItem(storageKey);
+      if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
+
+      toggle.addEventListener('click', () => {
+        const next = root.dataset.theme === 'dark' ? 'light' : 'dark';
+        root.dataset.theme = next;
+        localStorage.setItem(storageKey, next);
+      });
+    })();
+  </script>
+</body>
+</html>
