@@ -1,0 +1,25 @@
+# Credential inventory
+
+Required for the Daily Operations tracer. This file records **no secret values** — only the variable name, who owns it, what it is for, where it lives, and how to revoke it. That is exactly what [issue #7](https://github.com/pmgwee/real-ming/issues/7) requires.
+
+Generated from `src/config/tracer-secrets.ts`; `test/system/tracer-secrets.system.test.ts` fails the build if the two drift or if any tracked file ever contains credential-shaped material.
+
+| Variable | Owner | Purpose | Environment | Revocation |
+| --- | --- | --- | --- | --- |
+| `REAL_MING_TELEGRAM_BOT_TOKEN` | CEO | Authenticate the private Telegram front door. | control-plane | Revoke with /revoke in BotFather, then issue a new token. |
+| `REAL_MING_TELEGRAM_CEO_ID` | CEO | Allowlist the single numeric Telegram identity that may command Real-Ming. | control-plane | Replace the allowlisted identity and redeploy configuration. |
+| `REAL_MING_NOTION_TOKEN` | CEO | Read and write Master Tasks and the linked Work Views. | control-plane | Delete the internal integration in Notion settings. |
+| `REAL_MING_NOTION_MASTER_TASKS_ID` | CEO | Identify the canonical Master Tasks data source. | control-plane | Unshare the data source from the integration. |
+| `REAL_MING_GOOGLE_CLIENT_ID` | CEO | Identify the Google authorization client for Calendar. | control-plane | Delete the OAuth client in the Google Cloud console. |
+| `REAL_MING_GOOGLE_CLIENT_SECRET` | CEO | Authorize the Google Calendar client. | control-plane | Rotate the client secret in the Google Cloud console. |
+| `REAL_MING_GOOGLE_REFRESH_TOKEN` | CEO | Maintain delegated Calendar access without re-consent. | control-plane | Revoke access from the Google Account permissions page. |
+| `REAL_MING_DASHBOARD_TOKEN` | CEO | Authenticate the CEO to the operations dashboard. | control-plane | Replace the stored token; sessions fail closed immediately. |
+| `REAL_MING_VAULT_KEY` | CEO | Derive the Knowledge Vault encryption key. | control-plane | Re-key the vault and republish each root generation. |
+| `REAL_MING_WORKER_SHARED_SECRET` | CEO | Authenticate the Lenovo private worker to the control plane. | private-worker | Rotate the shared secret on both the worker and control plane. |
+
+## Handling rules
+
+- Values live only in the authorized secret store or an ignored `.env`. `.env.example` carries names and never values.
+- Every credential above is rotatable and revocable without a code change; the application reads names, never literals.
+- No value may appear in Git, GitHub issue content, test fixtures, logs, or any model prompt.
+- Verify provisioning with `npm run secrets:preflight`, which reports present and missing **names** only.
