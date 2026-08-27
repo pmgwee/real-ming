@@ -10,6 +10,7 @@ personal-context/
 # Generated and temporary files
 tmp/
 .scratch/
+.playwright-mcp/
 node_modules/
 dist/
 coverage/
