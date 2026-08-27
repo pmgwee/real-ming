@@ -50,6 +50,23 @@ describe("CEO Office", () => {
     }
   });
 
+  it("surfaces every open decision on the status board", () => {
+    const board = officeFile("README.md");
+
+    expect(board).toContain("Decisions awaiting you");
+    expect(board).toContain("pull/46");
+    expect(board).toContain(
+      "GitHub shares one number space between issues and pull requests",
+    );
+  });
+
+  it("tells the next run to announce pull requests and branch per milestone", () => {
+    const prompt = officeFile("RESUME-PROMPT.md");
+
+    expect(prompt).toContain("Never let a PR appear that I have to discover");
+    expect(prompt).toContain("one PR per milestone");
+  });
+
   it("carries a resume prompt that drives the scheduler, not ticket numbers", () => {
     const prompt = officeFile("RESUME-PROMPT.md");
 
