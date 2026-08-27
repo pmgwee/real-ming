@@ -15,7 +15,7 @@ If it still says `BLOCKED ON YOU`, the gate issue is not closed on GitHub yet. C
 
 ```
 /goal Complete Real-Ming Phase 3 implementation via deterministic graph-governed execution loop.
-Repository: C:\Users\quekm\Desktop\projects\real-me Branch: docs/final-architecture-v1 Constraints: Do not merge main, reset working tree, discard existing changes, expose Sensitive Secrets, bypass human authority, or invoke Superpowers skills.
+Repository: C:\Users\quekm\Desktop\projects\real-me Branch: feat/tracer-1-daily-operations (branched from main; do NOT reuse docs/final-architecture-v1, it is merged) Constraints: Do not merge main, reset working tree, discard existing changes, expose Sensitive Secrets, bypass human authority, or invoke Superpowers skills.
 AUTHORITATIVE GRAPH Use real-ming-phase3-tickets.json (44 nodes + blocking edges) via `npm run graph:status`. Reconcile every iteration with live GitHub issues in pmgwee/real-ming; live GitHub state overrides stale local state. The scheduler chooses work; never pick tickets from memory or increment ticket numbers.
 OUTER GRAPH LOOP Repeat until the terminal condition:
 1. Run `npm run graph:status`.

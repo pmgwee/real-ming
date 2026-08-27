@@ -54,7 +54,6 @@ describe("CEO Office", () => {
     const board = officeFile("README.md");
 
     expect(board).toContain("Decisions awaiting you");
-    expect(board).toContain("pull/46");
     expect(board).toContain(
       "GitHub shares one number space between issues and pull requests",
     );
@@ -65,6 +64,7 @@ describe("CEO Office", () => {
 
     expect(prompt).toContain("Never let a PR appear that I have to discover");
     expect(prompt).toContain("one PR per milestone");
+    expect(prompt).toContain("feat/tracer-1-daily-operations");
   });
 
   it("carries a resume prompt that drives the scheduler, not ticket numbers", () => {

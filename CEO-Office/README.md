@@ -22,11 +22,11 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## 🔀 Decisions awaiting you
 
-| Decision | What it is | Recommendation |
-| --- | --- | --- |
-| Merge [PR #46](https://github.com/pmgwee/real-ming/pull/46) into `main` | The 7 closed tickets plus tooling and baseline — 17 commits, 65 files. Full review packet in the PR body. `MERGEABLE`, no conflicts. | **Merge it before restarting the loop.** See [Branching](#-branching-why-to-merge-before-restarting) below. |
+**None open.** Anything needing a yes/no from you appears here with a recommendation — a pull request, a vendor choice, an architecture change. You should never have to discover one yourself.
 
-> ⚠️ GitHub shares one number space between issues and pull requests. `#1` is the spec, `#2`–`#45` are the 44 tickets, and `#46` is the first **pull request** — it continues the same counter. A number alone does not tell you which kind it is.
+*Settled:* [PR #46](https://github.com/pmgwee/real-ming/pull/46) merged into `main` on 2026-08-27 with your approval — the 7 closed tickets plus tooling and baseline.
+
+> ⚠️ GitHub shares one number space between issues and pull requests. `#1` is the spec, `#2`–`#45` are the 44 tickets, and `#46` was the first **pull request** — it continues the same counter. A number alone does not tell you which kind it is.
 
 ---
 
@@ -79,26 +79,20 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 
 ---
 
-## 🌿 Branching: why to merge before restarting
+## 🌿 Branching plan — one PR per milestone
 
-The branch `docs/final-architecture-v1` started as a documentation branch and became the implementation branch. That is now a misnomer, and leaving one long-lived branch open has a cost:
+One long-lived branch would grow into a 44-ticket, 100-plus-file pull request nobody can meaningfully review, defeating the review discipline this system exists to enforce. So each milestone gets its own branch and its own PR.
 
-**If PR #46 stays open while the loop continues**, every new ticket lands on the same branch and the same PR. By RM-40 it would be a 44-ticket, 100-plus-file pull request that cannot be meaningfully reviewed. That defeats the review discipline this whole system is built around.
+| # | Branch | Contents | Review checkpoint | Status |
+| --- | --- | --- | --- | --- |
+| 1 | `docs/final-architecture-v1` | RM-01…RM-05, RM-08, RM-41 + tooling | foundation | ✅ **merged** |
+| 2 | `feat/tracer-1-daily-operations` | RM-07 … RM-16 | Tracer 1 proven | ⬅️ **next** |
+| 3 | `feat/context-and-portfolio` | RM-17 … RM-23, RM-42 | Context Vault + portfolio live | waiting |
+| 4 | `feat/microsaas-loop` | RM-25 … RM-28, RM-34 | DuitSini promotion proven | waiting |
+| 5 | `feat/domain-loops` | remainder → RM-40 | Full v1.1 readiness | waiting |
 
-**Recommended instead — one PR per milestone:**
+Each merge is a point where you review an increment you can actually hold in your head — the same principle as reviewing an Outcome Report instead of raw agent activity.
 
-| # | Branch | Contents | Review checkpoint |
-| --- | --- | --- | --- |
-| 1 | `docs/final-architecture-v1` → merge now | RM-01…RM-05, RM-08, RM-41 + tooling | ✅ ready, [PR #46](https://github.com/pmgwee/real-ming/pull/46) |
-| 2 | `feat/tracer-1-daily-operations` | RM-07 … RM-16 | Tracer 1 proven |
-| 3 | `feat/context-and-portfolio` | RM-17 … RM-23, RM-42 | Context Vault + portfolio live |
-| 4 | `feat/microsaas-loop` | RM-25 … RM-28, RM-34 | DuitSini promotion proven |
-| 5 | `feat/domain-loops` | remainder → RM-40 | Full v1.1 readiness |
-
-Each merge is a natural point for you to review an increment you can actually hold in your head — the same principle as reviewing an Outcome Report instead of raw agent activity.
-
-**Order of operations:** merge #46 → clear Gate 1 → restart the loop on a new branch.
-
-Merging is entirely your call; nothing breaks if you leave it open. But the review burden compounds.
+`main` now holds the merged foundation. Milestone 2 branches from it.
 
 > 💡 **No CI is configured.** `npm run check` currently runs only on my machine, so PR #46 carries my word rather than a green tick. Say *"add CI"* and I will add a GitHub Actions workflow that runs typecheck, tests, build, and audit on every push, so future PRs verify themselves.
