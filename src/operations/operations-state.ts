@@ -3,14 +3,17 @@ import { DatabaseSync } from "node:sqlite";
 
 import type {
   AuditEvent,
+  ConfirmedCommitment,
   EffectVerification,
   NormalizedCeoAction,
   OutcomeReport,
+  ProposedCommitment,
   WorkItem,
   WorkItemState,
   WorkerEffect,
   WorkerReceipt,
 } from "./contracts.js";
+import { lifecycleEventFor } from "./work-item-lifecycle.js";
 
 interface WorkItemRow {
   id: string;
@@ -22,6 +25,8 @@ interface WorkItemRow {
   accountable_executive: WorkItem["accountableExecutive"];
   workstream: WorkItem["workstream"];
   collaborating_executives_json: string;
+  confirmed_commitment_json: string | null;
+  proposed_commitment_json: string | null;
   state: WorkItemState;
   created_at: string;
   updated_at: string;
@@ -57,29 +62,6 @@ interface OutcomeEffectMigrationRow {
   accountable_executive: WorkItem["accountableExecutive"];
 }
 
-const allowedTransitions = [
-  {
-    from: "Captured",
-    to: "Executing",
-    event: "work-item.executing",
-  },
-  {
-    from: "Executing",
-    to: "Verifying",
-    event: "work-item.verifying",
-  },
-  {
-    from: "Executing",
-    to: "Waiting/Blocked",
-    event: "work-item.waiting-blocked",
-  },
-  {
-    from: "Verifying",
-    to: "Waiting/Blocked",
-    event: "work-item.waiting-blocked",
-  },
-] as const;
-
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
 }
@@ -99,6 +81,14 @@ function mapWorkItem(row: WorkItemRow): WorkItem {
     collaboratingExecutives: parseJson<
       WorkItem["collaboratingExecutives"]
     >(row.collaborating_executives_json),
+    confirmedCommitment:
+      row.confirmed_commitment_json === null
+        ? null
+        : parseJson<ConfirmedCommitment>(row.confirmed_commitment_json),
+    proposedCommitment:
+      row.proposed_commitment_json === null
+        ? null
+        : parseJson<ProposedCommitment>(row.proposed_commitment_json),
     state: row.state,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -140,6 +130,8 @@ export class OperationsState {
         accountable_executive TEXT NOT NULL,
         workstream TEXT,
         collaborating_executives_json TEXT NOT NULL,
+        confirmed_commitment_json TEXT,
+        proposed_commitment_json TEXT,
         state TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -284,9 +276,9 @@ export class OperationsState {
           `INSERT INTO work_items (
             id, actor_id, workspace_id, idempotency_key, intent,
             expected_effect_json, accountable_executive, workstream,
-            collaborating_executives_json, state,
-            created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Captured', ?, ?)`,
+            collaborating_executives_json, confirmed_commitment_json,
+            proposed_commitment_json, state, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'Captured', ?, ?)`,
         )
         .run(
           id,
@@ -327,19 +319,13 @@ export class OperationsState {
 
   transition(
     workItemId: string,
-    state: Exclude<WorkItemState, "Ready for CEO Review" | "Completed">,
-    eventType: AuditEvent["type"],
+    state: Exclude<WorkItemState, "Ready for CEO Review">,
     occurredAt: string,
     details: Readonly<Record<string, unknown>> = {},
   ): WorkItem {
     const current = this.#requireWorkItem(workItemId);
-    const allowed = allowedTransitions.some(
-      (rule) =>
-        rule.from === current.state &&
-        rule.to === state &&
-        rule.event === eventType,
-    );
-    if (!allowed) {
+    const eventType = lifecycleEventFor(current.state, state);
+    if (eventType === undefined) {
       throw new Error(
         `Work Item transition ${current.state} -> ${state} is not allowed.`,
       );
@@ -360,6 +346,81 @@ export class OperationsState {
     }
 
     return this.#requireWorkItem(workItemId);
+  }
+
+  recordRejectedTransition(
+    workItemId: string,
+    rejection: {
+      readonly actorId?: string;
+      readonly from: WorkItemState;
+      readonly to: WorkItemState;
+      readonly reason: string;
+    },
+    occurredAt: string,
+  ): void {
+    this.#appendAudit(
+      workItemId,
+      "work-item.transition-rejected",
+      occurredAt,
+      {
+        ...(rejection.actorId === undefined
+          ? {}
+          : { actorId: rejection.actorId }),
+        from: rejection.from,
+        to: rejection.to,
+        reason: rejection.reason,
+      },
+    );
+  }
+
+  recordCommitment(
+    workItemId: string,
+    commitment: ConfirmedCommitment | ProposedCommitment,
+    occurredAt: string,
+  ): WorkItem {
+    const statement =
+      commitment.kind === "Proposed Commitment"
+        ? "UPDATE work_items SET proposed_commitment_json = ?, updated_at = ? WHERE id = ?"
+        : "UPDATE work_items SET confirmed_commitment_json = ?, updated_at = ? WHERE id = ?";
+
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database
+        .prepare(statement)
+        .run(JSON.stringify(commitment), occurredAt, workItemId);
+      this.#appendAudit(
+        workItemId,
+        "work-item.commitment-recorded",
+        occurredAt,
+        {
+          kind: commitment.kind,
+          value: commitment.value,
+          provenance: commitment.provenance,
+        },
+      );
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+
+    return this.#requireWorkItem(workItemId);
+  }
+
+  recordRejectedCommitment(
+    workItemId: string,
+    rejection: {
+      readonly kind: (ConfirmedCommitment | ProposedCommitment)["kind"];
+      readonly reason: string;
+    },
+    occurredAt: string,
+  ): void {
+    this.#appendAudit(
+      workItemId,
+      "work-item.commitment-rejected",
+      occurredAt,
+      { kind: rejection.kind, reason: rejection.reason },
+    );
   }
 
   recordWorkerEffect(
@@ -413,7 +474,11 @@ export class OperationsState {
     occurredAt: string,
   ): { workItem: WorkItem; outcomeReport: OutcomeReport } {
     const current = this.#requireWorkItem(workItem.id);
-    if (current.state !== "Verifying") {
+    const reviewEvent = lifecycleEventFor(
+      current.state,
+      "Ready for CEO Review",
+    );
+    if (reviewEvent === undefined) {
       throw new Error(
         "Only a verifying Work Item can become Ready for CEO Review.",
       );
@@ -461,12 +526,9 @@ export class OperationsState {
           "UPDATE work_items SET state = 'Ready for CEO Review', updated_at = ? WHERE id = ?",
         )
         .run(occurredAt, workItem.id);
-      this.#appendAudit(
-        workItem.id,
-        "work-item.ready-for-ceo-review",
-        occurredAt,
-        { outcomeReportId: outcomeReport.id },
-      );
+      this.#appendAudit(workItem.id, reviewEvent, occurredAt, {
+        outcomeReportId: outcomeReport.id,
+      });
       this.#database.exec("COMMIT;");
     } catch (error) {
       this.#database.exec("ROLLBACK;");
@@ -504,6 +566,16 @@ export class OperationsState {
     if (!names.has("collaborating_executives_json")) {
       this.#database.exec(
         "ALTER TABLE work_items ADD COLUMN collaborating_executives_json TEXT NOT NULL DEFAULT '[]';",
+      );
+    }
+    if (!names.has("confirmed_commitment_json")) {
+      this.#database.exec(
+        "ALTER TABLE work_items ADD COLUMN confirmed_commitment_json TEXT;",
+      );
+    }
+    if (!names.has("proposed_commitment_json")) {
+      this.#database.exec(
+        "ALTER TABLE work_items ADD COLUMN proposed_commitment_json TEXT;",
       );
     }
   }

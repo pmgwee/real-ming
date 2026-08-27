@@ -90,10 +90,73 @@ export interface WorkItem {
   readonly accountableExecutive: ExecutiveRole;
   readonly workstream: Workstream | null;
   readonly collaboratingExecutives: readonly CollaboratingExecutiveAssignment[];
+  readonly confirmedCommitment: ConfirmedCommitment | null;
+  readonly proposedCommitment: ProposedCommitment | null;
   readonly state: WorkItemState;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
+
+export interface CeoSetCommitment {
+  readonly kind: "CEO-set";
+  readonly value: string;
+  readonly provenance: {
+    readonly actorId: string;
+    readonly recordedAt: string;
+  };
+}
+
+export interface ExternallySourcedCommitment {
+  readonly kind: "Externally Sourced";
+  readonly value: string;
+  readonly provenance: {
+    readonly sourceIdentity: string;
+    readonly sourceReference: string;
+    readonly asOf: string;
+    readonly recordedAt: string;
+  };
+}
+
+export interface ProposedCommitment {
+  readonly kind: "Proposed Commitment";
+  readonly value: string;
+  readonly provenance: {
+    readonly proposedBy: ExecutiveRole;
+    readonly proposedAt: string;
+  };
+}
+
+export type ConfirmedCommitment =
+  | CeoSetCommitment
+  | ExternallySourcedCommitment;
+
+export type CommitmentActor =
+  | { readonly kind: "CEO"; readonly actorId: string }
+  | {
+      readonly kind: "External Source";
+      readonly sourceIdentity: string;
+      readonly sourceReference: string;
+      readonly asOf: string;
+    }
+  | { readonly kind: "Executive Role"; readonly executive: ExecutiveRole };
+
+export interface RecordWorkItemCommitmentRequest {
+  readonly workItemId: string;
+  readonly value: string;
+  readonly actor: CommitmentActor;
+}
+
+interface CeoReviewRequestBase {
+  readonly workItemId: string;
+  readonly actorId: string;
+}
+
+export type CeoReviewRequest =
+  | (CeoReviewRequestBase & { readonly decision: "complete" })
+  | (CeoReviewRequestBase & {
+      readonly decision: "request-changes" | "cancel";
+      readonly reason: string;
+    });
 
 export interface WorkerEffect {
   readonly workItemId: string;
@@ -138,6 +201,9 @@ export interface AuditEvent {
   readonly workItemId: string;
   readonly type:
     | "work-item.captured"
+    | "work-item.triaged"
+    | "work-item.planned"
+    | "work-item.awaiting-approval"
     | "work-item.executing"
     | "worker.effect-recorded"
     | "worker.effect-failed"
@@ -147,7 +213,12 @@ export interface AuditEvent {
     | "worker.effect-verified"
     | "outcome-report.recorded"
     | "work-item.ready-for-ceo-review"
-    | "work-item.completed";
+    | "work-item.completed"
+    | "work-item.changes-requested"
+    | "work-item.cancelled"
+    | "work-item.transition-rejected"
+    | "work-item.commitment-recorded"
+    | "work-item.commitment-rejected";
   readonly occurredAt: string;
   readonly details: Readonly<Record<string, unknown>>;
 }

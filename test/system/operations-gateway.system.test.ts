@@ -78,6 +78,8 @@ describe("RM-01 Operations Gateway", () => {
     ]);
     expect(harness.auditTrail(result.workItem.id).map((event) => event.type)).toEqual([
       "work-item.captured",
+      "work-item.triaged",
+      "work-item.planned",
       "work-item.executing",
       "worker.effect-recorded",
       "work-item.verifying",
@@ -98,7 +100,7 @@ describe("RM-01 Operations Gateway", () => {
     expect(reopenedHarness.outcomeReport(result.workItem.id)).toEqual(
       result.outcomeReport,
     );
-    expect(reopenedHarness.auditTrail(result.workItem.id)).toHaveLength(7);
+    expect(reopenedHarness.auditTrail(result.workItem.id)).toHaveLength(9);
   });
 
   it("returns the existing result when the same command idempotency key is repeated", async () => {
@@ -121,7 +123,7 @@ describe("RM-01 Operations Gateway", () => {
     expect(repeated).toEqual(first);
     expect(harness.workItems()).toEqual([first.workItem]);
     expect(harness.controlledEffects()).toHaveLength(1);
-    expect(harness.auditTrail(first.workItem.id)).toHaveLength(7);
+    expect(harness.auditTrail(first.workItem.id)).toHaveLength(9);
   });
 
   it("does not complete a Work Item when the expected worker effect cannot be verified", async () => {
@@ -158,6 +160,8 @@ describe("RM-01 Operations Gateway", () => {
     expect(harness.auditTrail(workItem!.id).map((event) => event.type)).toEqual(
       [
         "work-item.captured",
+        "work-item.triaged",
+        "work-item.planned",
         "work-item.executing",
         "worker.effect-recorded",
         "work-item.verifying",
@@ -206,6 +210,8 @@ describe("RM-01 Operations Gateway", () => {
     expect(durableEvidence).not.toContain(sensitiveSecret);
     expect(harness.auditTrail(workItem!.id).map((event) => event.type)).toEqual([
       "work-item.captured",
+      "work-item.triaged",
+      "work-item.planned",
       "work-item.executing",
       "worker.effect-failed",
       "work-item.waiting-blocked",
