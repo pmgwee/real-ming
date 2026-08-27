@@ -1,4 +1,5 @@
 import type {
+  Approval,
   AuditEvent,
   CeoCommand,
   CeoCommandResult,
@@ -9,8 +10,13 @@ import type {
   NormalizedCeoAction,
   OperationsResult,
   OutcomeReport,
+  GrantApprovalRequest,
+  GrantStandingAuthorityRequest,
+  PolicyDecision,
   QuestionResponder,
   RecordWorkItemCommitmentRequest,
+  RequestedAction,
+  StandingAuthority,
   WorkItem,
   WorkerEffect,
   WorkerReceipt,
@@ -26,6 +32,14 @@ export interface RealMingSystemHarness {
   executeWorkItem(workItemId: string): Promise<OperationsResult>;
   reworkWorkItem(workItemId: string): Promise<OperationsResult>;
   stageWorkItemForApproval(workItemId: string): Promise<WorkItem>;
+  requestAction(action: RequestedAction): Promise<PolicyDecision>;
+  grantApproval(request: GrantApprovalRequest): Promise<Approval>;
+  grantStandingAuthority(
+    request: GrantStandingAuthorityRequest,
+  ): Promise<StandingAuthority>;
+  approval(id: string): Approval | undefined;
+  approvals(workItemId: string): Approval[];
+  standingAuthorities(): StandingAuthority[];
   reviewWorkItem(request: CeoReviewRequest): Promise<WorkItem>;
   recordWorkItemCommitment(
     request: RecordWorkItemCommitmentRequest,
@@ -150,6 +164,7 @@ export function createRealMingSystemHarness(options: {
     readonly errorMessage?: string;
     readonly evidence?: Readonly<Record<string, string>>;
   };
+  readonly now?: () => string;
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
   const ledger = new ControlledEffectLedger();
@@ -174,6 +189,7 @@ export function createRealMingSystemHarness(options: {
     verifier,
     questionResponder,
     commandClassifier,
+    ...(options.now === undefined ? {} : { now: options.now }),
   });
 
   return {
@@ -183,6 +199,13 @@ export function createRealMingSystemHarness(options: {
     reworkWorkItem: (workItemId) => gateway.reworkWorkItem(workItemId),
     stageWorkItemForApproval: (workItemId) =>
       gateway.stageWorkItemForApproval(workItemId),
+    requestAction: (action) => gateway.requestAction(action),
+    grantApproval: (request) => gateway.grantApproval(request),
+    grantStandingAuthority: (request) =>
+      gateway.grantStandingAuthority(request),
+    approval: (id) => state.approval(id),
+    approvals: (workItemId) => state.approvals(workItemId),
+    standingAuthorities: () => state.standingAuthorities(),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),
     recordWorkItemCommitment: (request) =>
       gateway.recordWorkItemCommitment(request),
@@ -200,8 +223,12 @@ export function createRealMingSystemHarness(options: {
 }
 
 export type {
+  Approval,
   AuditEvent,
   CeoReviewRequest,
+  PolicyDecision,
+  RequestedAction,
+  StandingAuthority,
   NormalizedCeoAction,
   OperationsResult,
   OutcomeReport,

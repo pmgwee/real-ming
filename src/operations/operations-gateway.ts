@@ -1,4 +1,10 @@
 import type {
+  Approval,
+  GrantApprovalRequest,
+  GrantStandingAuthorityRequest,
+  PolicyDecision,
+  RequestedAction,
+  StandingAuthority,
   CeoReviewRequest,
   ControlledWorker,
   CeoCommand,
@@ -18,6 +24,8 @@ import { OperationsState } from "./operations-state.js";
 import { isCeoActor } from "./actor-identity.js";
 import { routeAccountableExecutive } from "./executive-role-router.js";
 import { lifecyclePathTo } from "./work-item-lifecycle.js";
+import { evaluateAction, findEffectiveApproval } from "./policy-engine.js";
+import { detectSensitiveFields } from "./sensitive-secret.js";
 
 const reviewTargetStates = {
   complete: "Completed",
@@ -36,6 +44,11 @@ export interface OperationsGateway {
   recordWorkItemCommitment(
     request: RecordWorkItemCommitmentRequest,
   ): Promise<WorkItem>;
+  requestAction(action: RequestedAction): Promise<PolicyDecision>;
+  grantApproval(request: GrantApprovalRequest): Promise<Approval>;
+  grantStandingAuthority(
+    request: GrantStandingAuthorityRequest,
+  ): Promise<StandingAuthority>;
   reviewWorkItem(request: CeoReviewRequest): Promise<WorkItem>;
   stageWorkItemForApproval(workItemId: string): Promise<WorkItem>;
   submitCeoAction(action: NormalizedCeoAction): Promise<OperationsResult>;
@@ -249,7 +262,13 @@ export function createOperationsGateway(options: {
       );
     }
 
-    if (storedWorkItem.state === "Awaiting Approval") {
+    if (
+      storedWorkItem.state === "Awaiting Approval" &&
+      findEffectiveApproval(
+        options.state.approvals(workItemId),
+        now(),
+      ) === undefined
+    ) {
       options.state.recordRejectedTransition(
         workItemId,
         {
@@ -287,6 +306,175 @@ export function createOperationsGateway(options: {
 
     return runControlledExecution(storedWorkItem);
   };
+
+  const requestAction: OperationsGateway["requestAction"] = async (action) => {
+    const workItem = requireWorkItem(action.workItemId);
+
+    const sensitiveFields = detectSensitiveFields(action.payload);
+    if (sensitiveFields.length > 0) {
+      options.state.recordPolicyDecision(
+        workItem.id,
+        "policy.denied",
+        {
+          reason: "sensitive-secret-rejected",
+          operation: action.operation,
+          sensitiveFields,
+        },
+        now(),
+      );
+      return { kind: "denied", reason: "sensitive-secret-rejected", sensitiveFields };
+    }
+
+    const outcome = evaluateAction({
+      action,
+      standingAuthorities: options.state.standingAuthorities(),
+      approvals: options.state.approvals(workItem.id),
+      now: now(),
+    });
+
+    if (outcome.kind === "capability-not-grantable") {
+      options.state.recordPolicyDecision(
+        workItem.id,
+        "policy.denied",
+        {
+          reason: "capability-not-grantable",
+          capability: outcome.capability,
+          operation: action.operation,
+        },
+        now(),
+      );
+      return {
+        kind: "denied",
+        reason: "capability-not-grantable",
+        capability: outcome.capability,
+      };
+    }
+
+    if (outcome.kind === "automatic-baseline") {
+      options.state.recordPolicyDecision(
+        workItem.id,
+        "policy.permitted",
+        { basis: "automatic-baseline", operation: action.operation },
+        now(),
+      );
+      return { kind: "permitted", basis: "automatic-baseline" };
+    }
+
+    if (outcome.kind === "standing-authority") {
+      options.state.recordPolicyDecision(
+        workItem.id,
+        "policy.permitted",
+        {
+          basis: "standing-authority",
+          operation: action.operation,
+          standingAuthorityId: outcome.standingAuthority.id,
+        },
+        now(),
+      );
+      return {
+        kind: "permitted",
+        basis: "standing-authority",
+        standingAuthorityId: outcome.standingAuthority.id,
+      };
+    }
+
+    if (outcome.kind === "approval") {
+      options.state.recordPolicyDecision(
+        workItem.id,
+        "policy.permitted",
+        {
+          basis: "approval",
+          operation: action.operation,
+          approvalId: outcome.approval.id,
+        },
+        now(),
+      );
+      return { kind: "permitted", basis: "approval", approvalId: outcome.approval.id };
+    }
+
+    const target = action.target;
+    const scope = action.scope;
+    if (target === undefined || scope === undefined) {
+      options.state.recordPolicyDecision(
+        workItem.id,
+        "policy.denied",
+        { reason: "approval-target-required", operation: action.operation },
+        now(),
+      );
+      return { kind: "denied", reason: "approval-target-required" };
+    }
+
+    if (outcome.invalidatedApproval !== undefined) {
+      options.state.invalidateApproval(
+        outcome.invalidatedApproval.id,
+        outcome.reason === "approval-expired" ? "expired" : "invalidated",
+        {
+          reason:
+            outcome.reason === "approval-expired"
+              ? "approval-expired"
+              : "target-changed",
+          approvedVersion: outcome.invalidatedApproval.targetVersion,
+          requestedVersion: target.version,
+        },
+        now(),
+      );
+    }
+
+    if (workItem.state !== "Awaiting Approval") {
+      advanceWorkItem(workItem, "Awaiting Approval", "approval-staging-not-permitted");
+    }
+
+    const approval = options.state.requestApproval(
+      {
+        workItemId: workItem.id,
+        scope,
+        targetType: target.type,
+        targetIdentity: target.identity,
+        targetVersion: target.version,
+        riskClass: action.riskClass,
+        reason: outcome.reason,
+      },
+      now(),
+    );
+
+    return {
+      kind: "approval-required",
+      approvalId: approval.id,
+      scope,
+      target,
+      riskClass: action.riskClass,
+      reason: outcome.reason,
+    };
+  };
+
+  const grantApproval: OperationsGateway["grantApproval"] = async (request) => {
+    if (!isCeoActor(request.actorId)) {
+      throw new Error("Only the CEO may grant an Approval.");
+    }
+    const approval = options.state.approval(request.approvalId);
+    if (approval === undefined) {
+      throw new Error("The Approval does not exist.");
+    }
+    if (approval.state !== "requested") {
+      throw new Error("Only a requested Approval can be granted.");
+    }
+
+    return options.state.grantApproval(
+      request.approvalId,
+      request.actorId,
+      request.expiresAt,
+      now(),
+    );
+  };
+
+  const grantStandingAuthority: OperationsGateway["grantStandingAuthority"] =
+    async (request) => {
+      if (!isCeoActor(request.actorId)) {
+        throw new Error("Only the CEO may grant Standing Authority.");
+      }
+
+      return options.state.recordStandingAuthority(request, now());
+    };
 
   const stageWorkItemForApproval: OperationsGateway["stageWorkItemForApproval"] =
     async (workItemId) =>
@@ -440,6 +628,9 @@ export function createOperationsGateway(options: {
     acknowledgeCeoAction,
     executeWorkItem,
     reworkWorkItem,
+    requestAction,
+    grantApproval,
+    grantStandingAuthority,
     recordWorkItemCommitment,
     reviewWorkItem,
     stageWorkItemForApproval,

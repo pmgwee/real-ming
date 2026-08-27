@@ -21,6 +21,141 @@ export type Workstream =
   | "MicroSaaS"
   | "Content Creation";
 
+export type TrustDomain =
+  | "Personal"
+  | "Ming Creatives"
+  | "Academic"
+  | "Entertainment"
+  | "Finance";
+
+export type RiskClass = "low" | "medium" | "high";
+
+export type ActionOperation =
+  | "read"
+  | "monitor"
+  | "classify"
+  | "summarize"
+  | "draft"
+  | "write";
+
+export type ApprovalScope =
+  | "code-promotion"
+  | "database-migration"
+  | "production-data-change"
+  | "external-communication"
+  | "destructive-action"
+  | "permission-change"
+  | "purchase"
+  | "financial-record-change";
+
+export type ProhibitedCapability = "money-movement" | "brokerage-trading";
+
+export interface ActionTarget {
+  readonly type: string;
+  readonly identity: string;
+  readonly version: string;
+}
+
+export interface RequestedAction {
+  readonly workItemId: string;
+  readonly executive: ExecutiveRole;
+  readonly trustDomain: TrustDomain;
+  readonly operation: ActionOperation;
+  readonly reversibility: "reversible" | "irreversible";
+  readonly riskClass: RiskClass;
+  readonly scope?: ApprovalScope;
+  readonly capability?: ProhibitedCapability;
+  readonly target?: ActionTarget;
+  readonly payload?: Readonly<Record<string, string>>;
+}
+
+export type ApprovalRequiredReason =
+  | "approval-required"
+  | "approval-expired"
+  | "standing-authority-required"
+  | "standing-authority-expired"
+  | "target-changed";
+
+export type PolicyDecision =
+  | { readonly kind: "permitted"; readonly basis: "automatic-baseline" }
+  | {
+      readonly kind: "permitted";
+      readonly basis: "standing-authority";
+      readonly standingAuthorityId: string;
+    }
+  | {
+      readonly kind: "permitted";
+      readonly basis: "approval";
+      readonly approvalId: string;
+    }
+  | {
+      readonly kind: "approval-required";
+      readonly approvalId: string;
+      readonly scope: ApprovalScope;
+      readonly target: ActionTarget;
+      readonly riskClass: RiskClass;
+      readonly reason: ApprovalRequiredReason;
+    }
+  | {
+      readonly kind: "denied";
+      readonly reason: "capability-not-grantable";
+      readonly capability: ProhibitedCapability;
+    }
+  | {
+      readonly kind: "denied";
+      readonly reason: "sensitive-secret-rejected";
+      readonly sensitiveFields: readonly string[];
+    }
+  | {
+      readonly kind: "denied";
+      readonly reason: "approval-target-required";
+    };
+
+export type ApprovalState =
+  | "requested"
+  | "granted"
+  | "invalidated"
+  | "expired";
+
+export interface Approval {
+  readonly id: string;
+  readonly workItemId: string;
+  readonly actorId: string | null;
+  readonly scope: ApprovalScope;
+  readonly targetType: string;
+  readonly targetIdentity: string;
+  readonly targetVersion: string;
+  readonly riskClass: RiskClass;
+  readonly requestedAt: string;
+  readonly decidedAt: string | null;
+  readonly expiresAt: string | null;
+  readonly state: ApprovalState;
+}
+
+export interface GrantApprovalRequest {
+  readonly approvalId: string;
+  readonly actorId: string;
+  readonly expiresAt: string;
+}
+
+export interface StandingAuthority {
+  readonly id: string;
+  readonly grantedByActorId: string;
+  readonly executive: ExecutiveRole;
+  readonly trustDomain: TrustDomain;
+  readonly targetType: string;
+  readonly expiresAt: string;
+  readonly grantedAt: string;
+}
+
+export interface GrantStandingAuthorityRequest {
+  readonly actorId: string;
+  readonly executive: ExecutiveRole;
+  readonly trustDomain: TrustDomain;
+  readonly targetType: string;
+  readonly expiresAt: string;
+}
+
 export interface CollaboratingExecutiveRequest {
   readonly executive: ExecutiveRole;
   readonly contribution: string;
@@ -220,7 +355,13 @@ export interface AuditEvent {
     | "work-item.cancelled"
     | "work-item.transition-rejected"
     | "work-item.commitment-recorded"
-    | "work-item.commitment-rejected";
+    | "work-item.commitment-rejected"
+    | "policy.permitted"
+    | "policy.denied"
+    | "approval.requested"
+    | "approval.granted"
+    | "approval.invalidated"
+    | "standing-authority.granted";
   readonly occurredAt: string;
   readonly details: Readonly<Record<string, unknown>>;
 }

@@ -2,12 +2,18 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 import type {
+  Approval,
+  ApprovalScope,
+  ApprovalState,
   AuditEvent,
   ConfirmedCommitment,
   EffectVerification,
   NormalizedCeoAction,
   OutcomeReport,
   ProposedCommitment,
+  RiskClass,
+  StandingAuthority,
+  TrustDomain,
   WorkItem,
   WorkItemState,
   WorkerEffect,
@@ -50,6 +56,31 @@ interface AuditEventRow {
   event_type: AuditEvent["type"];
   occurred_at: string;
   details_json: string;
+}
+
+interface ApprovalRow {
+  id: string;
+  work_item_id: string;
+  actor_id: string | null;
+  scope: ApprovalScope;
+  target_type: string;
+  target_identity: string;
+  target_version: string;
+  risk_class: RiskClass;
+  requested_at: string;
+  decided_at: string | null;
+  expires_at: string | null;
+  state: ApprovalState;
+}
+
+interface StandingAuthorityRow {
+  id: string;
+  granted_by_actor_id: string;
+  executive: StandingAuthority["executive"];
+  trust_domain: TrustDomain;
+  target_type: string;
+  expires_at: string;
+  granted_at: string;
 }
 
 interface TableColumnRow {
@@ -111,6 +142,35 @@ function mapOutcomeReport(row: OutcomeReportRow): OutcomeReport {
     remainingRisks: parseJson<readonly string[]>(row.remaining_risks_json),
     requiredDecisions: parseJson<readonly string[]>(row.required_decisions_json),
     createdAt: row.created_at,
+  };
+}
+
+function mapApproval(row: ApprovalRow): Approval {
+  return {
+    id: row.id,
+    workItemId: row.work_item_id,
+    actorId: row.actor_id,
+    scope: row.scope,
+    targetType: row.target_type,
+    targetIdentity: row.target_identity,
+    targetVersion: row.target_version,
+    riskClass: row.risk_class,
+    requestedAt: row.requested_at,
+    decidedAt: row.decided_at,
+    expiresAt: row.expires_at,
+    state: row.state,
+  };
+}
+
+function mapStandingAuthority(row: StandingAuthorityRow): StandingAuthority {
+  return {
+    id: row.id,
+    grantedByActorId: row.granted_by_actor_id,
+    executive: row.executive,
+    trustDomain: row.trust_domain,
+    targetType: row.target_type,
+    expiresAt: row.expires_at,
+    grantedAt: row.granted_at,
   };
 }
 
@@ -178,6 +238,32 @@ export class OperationsState {
       BEGIN
         SELECT RAISE(ABORT, 'outcome_report_revisions are append-only');
       END;
+
+      CREATE TABLE IF NOT EXISTS approvals (
+        id TEXT PRIMARY KEY,
+        work_item_id TEXT NOT NULL,
+        actor_id TEXT,
+        scope TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_identity TEXT NOT NULL,
+        target_version TEXT NOT NULL,
+        risk_class TEXT NOT NULL,
+        requested_at TEXT NOT NULL,
+        decided_at TEXT,
+        expires_at TEXT,
+        state TEXT NOT NULL,
+        FOREIGN KEY (work_item_id) REFERENCES work_items(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS standing_authorities (
+        id TEXT PRIMARY KEY,
+        granted_by_actor_id TEXT NOT NULL,
+        executive TEXT NOT NULL,
+        trust_domain TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        granted_at TEXT NOT NULL
+      );
 
       CREATE TABLE IF NOT EXISTS audit_events (
         sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -400,6 +486,213 @@ export class OperationsState {
     }
 
     return this.#requireWorkItem(workItemId);
+  }
+
+  approval(id: string): Approval | undefined {
+    const row = this.#database
+      .prepare("SELECT * FROM approvals WHERE id = ?")
+      .get(id) as unknown as ApprovalRow | undefined;
+
+    return row === undefined ? undefined : mapApproval(row);
+  }
+
+  approvals(workItemId: string): Approval[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM approvals
+         WHERE work_item_id = ?
+         ORDER BY rowid ASC`,
+      )
+      .all(workItemId) as unknown as ApprovalRow[];
+
+    return rows.map(mapApproval);
+  }
+
+  standingAuthorities(): StandingAuthority[] {
+    const rows = this.#database
+      .prepare(
+        "SELECT * FROM standing_authorities ORDER BY granted_at ASC, id ASC",
+      )
+      .all() as unknown as StandingAuthorityRow[];
+
+    return rows.map(mapStandingAuthority);
+  }
+
+  requestApproval(
+    request: {
+      readonly workItemId: string;
+      readonly scope: ApprovalScope;
+      readonly targetType: string;
+      readonly targetIdentity: string;
+      readonly targetVersion: string;
+      readonly riskClass: RiskClass;
+      readonly reason: string;
+    },
+    occurredAt: string,
+  ): Approval {
+    const id = randomUUID();
+
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database
+        .prepare(
+          `INSERT INTO approvals (
+            id, work_item_id, actor_id, scope, target_type, target_identity,
+            target_version, risk_class, requested_at, decided_at, expires_at,
+            state
+          ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, NULL, NULL, 'requested')`,
+        )
+        .run(
+          id,
+          request.workItemId,
+          request.scope,
+          request.targetType,
+          request.targetIdentity,
+          request.targetVersion,
+          request.riskClass,
+          occurredAt,
+        );
+      this.#appendAudit(
+        request.workItemId,
+        "approval.requested",
+        occurredAt,
+        {
+          approvalId: id,
+          scope: request.scope,
+          targetType: request.targetType,
+          targetIdentity: request.targetIdentity,
+          targetVersion: request.targetVersion,
+          riskClass: request.riskClass,
+          reason: request.reason,
+        },
+      );
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+
+    return this.#requireApproval(id);
+  }
+
+  grantApproval(
+    approvalId: string,
+    actorId: string,
+    expiresAt: string,
+    occurredAt: string,
+  ): Approval {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database
+        .prepare(
+          `UPDATE approvals
+           SET actor_id = ?, decided_at = ?, expires_at = ?, state = 'granted'
+           WHERE id = ?`,
+        )
+        .run(actorId, occurredAt, expiresAt, approvalId);
+      const approval = this.#requireApproval(approvalId);
+      this.#appendAudit(
+        approval.workItemId,
+        "approval.granted",
+        occurredAt,
+        {
+          approvalId,
+          actorId,
+          scope: approval.scope,
+          targetType: approval.targetType,
+          targetIdentity: approval.targetIdentity,
+          targetVersion: approval.targetVersion,
+          expiresAt,
+        },
+      );
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+
+    return this.#requireApproval(approvalId);
+  }
+
+  invalidateApproval(
+    approvalId: string,
+    state: Extract<ApprovalState, "invalidated" | "expired">,
+    details: Readonly<Record<string, unknown>>,
+    occurredAt: string,
+  ): void {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const approval = this.#requireApproval(approvalId);
+      this.#database
+        .prepare("UPDATE approvals SET state = ? WHERE id = ?")
+        .run(state, approvalId);
+      this.#appendAudit(
+        approval.workItemId,
+        "approval.invalidated",
+        occurredAt,
+        { approvalId, state, ...details },
+      );
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  recordStandingAuthority(
+    request: {
+      readonly actorId: string;
+      readonly executive: StandingAuthority["executive"];
+      readonly trustDomain: TrustDomain;
+      readonly targetType: string;
+      readonly expiresAt: string;
+    },
+    occurredAt: string,
+  ): StandingAuthority {
+    const id = randomUUID();
+    this.#database
+      .prepare(
+        `INSERT INTO standing_authorities (
+          id, granted_by_actor_id, executive, trust_domain, target_type,
+          expires_at, granted_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        id,
+        request.actorId,
+        request.executive,
+        request.trustDomain,
+        request.targetType,
+        request.expiresAt,
+        occurredAt,
+      );
+
+    return {
+      id,
+      grantedByActorId: request.actorId,
+      executive: request.executive,
+      trustDomain: request.trustDomain,
+      targetType: request.targetType,
+      expiresAt: request.expiresAt,
+      grantedAt: occurredAt,
+    };
+  }
+
+  recordPolicyDecision(
+    workItemId: string,
+    type: Extract<AuditEvent["type"], "policy.permitted" | "policy.denied">,
+    details: Readonly<Record<string, unknown>>,
+    occurredAt: string,
+  ): void {
+    this.#appendAudit(workItemId, type, occurredAt, details);
+  }
+
+  #requireApproval(id: string): Approval {
+    const approval = this.approval(id);
+    if (approval === undefined) {
+      throw new Error("Approval was not found after a durable state change.");
+    }
+    return approval;
   }
 
   recordRejectedTransition(

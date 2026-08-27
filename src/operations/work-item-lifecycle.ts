@@ -70,6 +70,7 @@ const advanceableStates: readonly WorkItemState[] = [
   "Captured",
   "Triaged",
   "Planned",
+  "Awaiting Approval",
   "Waiting/Blocked",
   "Changes Requested",
 ];
