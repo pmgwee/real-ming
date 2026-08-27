@@ -11,6 +11,11 @@ personal-context/
 tmp/
 .scratch/
 node_modules/
+dist/
+coverage/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
 
 # OS and editor noise
 .DS_Store
