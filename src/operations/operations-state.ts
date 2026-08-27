@@ -330,7 +330,7 @@ export class OperationsState {
 
   workItems(): WorkItem[] {
     const rows = this.#database
-      .prepare("SELECT * FROM work_items ORDER BY created_at ASC, id ASC")
+      .prepare("SELECT * FROM work_items ORDER BY rowid ASC")
       .all() as unknown as WorkItemRow[];
 
     return rows.map(mapWorkItem);

@@ -25,6 +25,13 @@ import type {
 import { createOperationsGateway } from "../operations/operations-gateway.js";
 import { OperationsState } from "../operations/operations-state.js";
 import { createCommandClassifier } from "../operations/command-classifier.js";
+import {
+  createDashboardServer,
+  type DashboardCredential,
+  type DashboardServer,
+} from "../dashboard/dashboard-server.js";
+import { buildDashboardOverview } from "../dashboard/dashboard-read-model.js";
+import type { DashboardOverview } from "../dashboard/dashboard-read-model.js";
 
 export interface RealMingSystemHarness {
   submitCeoCommand(command: CeoCommand): Promise<CeoCommandResult>;
@@ -40,6 +47,13 @@ export interface RealMingSystemHarness {
   approval(id: string): Approval | undefined;
   approvals(workItemId: string): Approval[];
   standingAuthorities(): StandingAuthority[];
+  dashboardOverview(session: {
+    readonly actorId: string;
+    readonly workspaceId: string;
+  }): DashboardOverview;
+  startDashboard(
+    credentials: readonly DashboardCredential[],
+  ): Promise<DashboardServer>;
   reviewWorkItem(request: CeoReviewRequest): Promise<WorkItem>;
   recordWorkItemCommitment(
     request: RecordWorkItemCommitmentRequest,
@@ -206,6 +220,9 @@ export function createRealMingSystemHarness(options: {
     approval: (id) => state.approval(id),
     approvals: (workItemId) => state.approvals(workItemId),
     standingAuthorities: () => state.standingAuthorities(),
+    dashboardOverview: (session) => buildDashboardOverview(state, session),
+    startDashboard: (credentials) =>
+      createDashboardServer({ state, gateway, credentials }),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),
     recordWorkItemCommitment: (request) =>
       gateway.recordWorkItemCommitment(request),
@@ -225,6 +242,9 @@ export function createRealMingSystemHarness(options: {
 export type {
   Approval,
   AuditEvent,
+  DashboardCredential,
+  DashboardOverview,
+  DashboardServer,
   CeoReviewRequest,
   PolicyDecision,
   RequestedAction,
