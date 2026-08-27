@@ -14,6 +14,14 @@ The dashboard is the CEO's authenticated monitoring, visualization, Approval, an
 
 ## MicroSaaS operations center
 
+### Knowledge health
+
+- per-Trust-Domain last successful ingest, compile, publish, and lint time;
+- candidate backlog, quarantined conflicts, stale pages, failed citations, and current generation identity;
+- Knowledge Compiler and Obsidian projection health without exposing raw note content in global search or logs;
+- Hermes Hot Runtime Memory write requests and Approval status, but never the memory payload on summary surfaces;
+- Agent Brain evidence health remains a separate project-scoped signal rather than being merged into a universal memory status.
+
 ### GitHub Repository Center
 
 - repository and production-branch identity;

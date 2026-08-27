@@ -56,6 +56,26 @@ _Avoid_: Autonomy, blanket permission, full access
 The external domain system whose current record is authoritative; Real-Ming may reference or derive context from it but does not replace it.
 _Avoid_: Master database, copied source, central truth store
 
+**Candidate Envelope**:
+An immutable, provenance-bearing input to knowledge compilation that records the source identity, source reference, capture and `as of` times, content hash, Trust Domain, sensitivity, allowed roles, retention class, and either a bounded snapshot or a pointer to the Source of Record.
+_Avoid_: Memory dump, imported truth, whole-source copy
+
+**Compiled Knowledge**:
+Cited, derived Markdown produced from validated Candidate Envelopes; it may be regenerated or superseded but never silently overrides a Source of Record or canonical evidence.
+_Avoid_: Source of Record, raw memory, model belief
+
+**Knowledge Vault**:
+The encrypted, versioned, Obsidian-compatible Markdown knowledge service containing separate Personal, Ming Creatives, Academic, Entertainment, and Finance roots plus a CEO Approved-Projection root.
+_Avoid_: Universal memory, flat shared vault, Obsidian database, Source of Record
+
+**Knowledge Compiler**:
+The governed LLM Wiki pipeline that ingests Candidate Envelopes, reconciles conflicts, emits cited Compiled Knowledge, updates indexes and logs, lints the result, and publishes a new version atomically.
+_Avoid_: Memory writer, source synchronizer, automatic truth promoter
+
+**Hot Runtime Memory**:
+The deliberately small, write-gated Hermes memory or generated role brief loaded for execution convenience; it contains stable routing preferences and pointers, not domain corpora or authoritative facts.
+_Avoid_: Knowledge Vault, chat dump, durable personal memory
+
 **Personal Context**:
 Provenance-linked facts, preferences, policies, and summaries used to assist Ming without superseding their Sources of Record.
 _Avoid_: Data dump, complete profile, raw archive

@@ -1,0 +1,24 @@
+{
+  "name": "real-ming",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run test && npm run build",
+    "graph:status": "npm run build --silent && node dist/phase3/graph-status-cli.js",
+    "secrets:preflight": "npm run build --silent && node dist/config/secret-preflight-cli.js"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "playwright": "^1.62.1",
+    "typescript": "7.0.2",
+    "vitest": "4.1.11"
+  }
+}
