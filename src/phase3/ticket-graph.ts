@@ -350,13 +350,37 @@ export function renderGraphStatus(status: GraphStatus): string {
   }
 
   lines.push("");
-  lines.push(
-    status.nextTicket === undefined
-      ? status.onlyHumanWorkRemains
-        ? "next: none, only human-gated work remains"
-        : "next: none, every ticket is completed"
-      : `next: ${status.nextTicket.id} (#${status.nextTicket.issueNumber}) ${status.nextTicket.title}`,
-  );
+
+  if (status.nextTicket !== undefined) {
+    lines.push(
+      `next: ${status.nextTicket.id} (#${status.nextTicket.issueNumber}) ${status.nextTicket.title}`,
+    );
+    return lines.join("\n");
+  }
+
+  if (!status.onlyHumanWorkRemains) {
+    lines.push("next: none, every ticket is completed");
+    return lines.join("\n");
+  }
+
+  lines.push("next: none, only human-gated work remains");
+  lines.push("");
+  lines.push("BLOCKED ON YOU. Open CEO-Office/README.md for what to do next.");
+
+  for (const gate of status.tickets.filter(
+    (ticket) => ticket.status === "ready-for-human",
+  )) {
+    const blocked = status.tickets.filter(
+      (ticket) =>
+        ticket.status !== "completed" && ticket.humanGates.includes(gate.id),
+    ).length;
+    lines.push(
+      `  ${gate.id} (#${gate.issueNumber}) unblocks ${blocked} ticket${blocked === 1 ? "" : "s"} - ${gate.title}`,
+    );
+  }
+
+  lines.push("");
+  lines.push("Resume afterwards with the prompt in CEO-Office/RESUME-PROMPT.md.");
 
   return lines.join("\n");
 }

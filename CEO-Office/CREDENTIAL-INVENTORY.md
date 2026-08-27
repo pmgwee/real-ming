@@ -1,8 +1,10 @@
 # Credential inventory
 
-Required for the Daily Operations tracer. This file records **no secret values** — only the variable name, who owns it, what it is for, where it lives, and how to revoke it. That is exactly what [issue #7](https://github.com/pmgwee/real-ming/issues/7) requires.
+The ten credentials required for the Daily Operations tracer. This file records **no secret values** - only the variable name, who owns it, what it is for, where it lives, and how to revoke it. That is exactly what [issue #7](https://github.com/pmgwee/real-ming/issues/7) requires.
 
-Generated from `src/config/tracer-secrets.ts`; `test/system/tracer-secrets.system.test.ts` fails the build if the two drift or if any tracked file ever contains credential-shaped material.
+Step-by-step provisioning instructions are in [GATE-1-provisioning-runbook.md](GATE-1-provisioning-runbook.md).
+
+Generated from `src/config/tracer-secrets.ts`. A test fails the build if this table drifts from the code, or if any tracked file ever contains credential-shaped material.
 
 | Variable | Owner | Purpose | Environment | Revocation |
 | --- | --- | --- | --- | --- |
@@ -23,3 +25,7 @@ Generated from `src/config/tracer-secrets.ts`; `test/system/tracer-secrets.syste
 - Every credential above is rotatable and revocable without a code change; the application reads names, never literals.
 - No value may appear in Git, GitHub issue content, test fixtures, logs, or any model prompt.
 - Verify provisioning with `npm run secrets:preflight`, which reports present and missing **names** only.
+
+## If a credential leaks
+
+Revoke it at the provider first using the procedure above, generate a replacement, then update `.env`. No code change is required.

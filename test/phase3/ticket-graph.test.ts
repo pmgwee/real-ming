@@ -253,6 +253,34 @@ describe("Phase 3 graph status", () => {
     expect(status.tickets[1]?.humanGates).toEqual(["RM-01"]);
   });
 
+  it("tells the CEO exactly where to go when only human work remains", () => {
+    const rendered = renderGraphStatus(
+      classifyTicketGraph(graph, [
+        { issueNumber: 2, state: "closed" },
+        { issueNumber: 3, state: "closed" },
+        { issueNumber: 4, state: "closed" },
+      ]),
+    );
+
+    expect(rendered).toContain("next: none, only human-gated work remains");
+    expect(rendered).toContain(
+      "BLOCKED ON YOU. Open CEO-Office/README.md for what to do next.",
+    );
+    expect(rendered).toContain("RM-04 (#5) unblocks 2 tickets");
+    expect(rendered).toContain(
+      "Resume afterwards with the prompt in CEO-Office/RESUME-PROMPT.md.",
+    );
+  });
+
+  it("does not mention the CEO office while agent work remains", () => {
+    const rendered = renderGraphStatus(
+      classifyTicketGraph(graph, [{ issueNumber: 2, state: "closed" }]),
+    );
+
+    expect(rendered).toContain("next: RM-02 (#3)");
+    expect(rendered).not.toContain("CEO-Office");
+  });
+
   it("renders a readable status report", () => {
     const rendered = renderGraphStatus(
       classifyTicketGraph(graph, [{ issueNumber: 2, state: "closed" }]),
