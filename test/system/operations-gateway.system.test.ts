@@ -67,6 +67,9 @@ describe("RM-01 Operations Gateway", () => {
     });
     expect(harness.controlledEffects()).toEqual([
       {
+        workItemId: result.workItem.id,
+        executive: "COO",
+        authority: "accountable",
         idempotencyKey:
           "workspace:real-ming:telegram:update-task:2026-08-27T09:00:00+08:00:effect",
         kind: "record-note",

@@ -8,6 +8,7 @@ import type {
   OutcomeReport,
   WorkItem,
   WorkItemState,
+  WorkerEffect,
   WorkerReceipt,
 } from "./contracts.js";
 
@@ -18,6 +19,9 @@ interface WorkItemRow {
   idempotency_key: string;
   intent: string;
   expected_effect_json: string;
+  accountable_executive: WorkItem["accountableExecutive"];
+  workstream: WorkItem["workstream"];
+  collaborating_executives_json: string;
   state: WorkItemState;
   created_at: string;
   updated_at: string;
@@ -40,6 +44,17 @@ interface AuditEventRow {
   event_type: AuditEvent["type"];
   occurred_at: string;
   details_json: string;
+}
+
+interface TableColumnRow {
+  name: string;
+}
+
+interface OutcomeEffectMigrationRow {
+  id: string;
+  work_item_id: string;
+  completed_effect_json: string;
+  accountable_executive: WorkItem["accountableExecutive"];
 }
 
 const allowedTransitions = [
@@ -79,6 +94,11 @@ function mapWorkItem(row: WorkItemRow): WorkItem {
     expectedEffect: parseJson<WorkItem["expectedEffect"]>(
       row.expected_effect_json,
     ),
+    accountableExecutive: row.accountable_executive,
+    workstream: row.workstream,
+    collaboratingExecutives: parseJson<
+      WorkItem["collaboratingExecutives"]
+    >(row.collaborating_executives_json),
     state: row.state,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -117,6 +137,9 @@ export class OperationsState {
         idempotency_key TEXT NOT NULL,
         intent TEXT NOT NULL,
         expected_effect_json TEXT NOT NULL,
+        accountable_executive TEXT NOT NULL,
+        workstream TEXT,
+        collaborating_executives_json TEXT NOT NULL,
         state TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -166,6 +189,8 @@ export class OperationsState {
         SELECT RAISE(ABORT, 'review-ready work requires an Outcome Report');
       END;
     `);
+    this.#ensureWorkItemSchema();
+    this.#backfillRm01OutcomeEffects();
   }
 
   close(): void {
@@ -230,6 +255,27 @@ export class OperationsState {
 
   createWorkItem(action: NormalizedCeoAction, occurredAt: string): WorkItem {
     const id = randomUUID();
+    const accountableExecutive = action.accountableExecutive ?? "COO";
+    const collaboratorRoles = new Set<string>();
+    const collaboratingExecutives = (
+      action.collaboratingExecutives ?? []
+    ).map((request) => {
+      if (
+        request.executive === accountableExecutive ||
+        collaboratorRoles.has(request.executive) ||
+        request.contribution.trim().length === 0
+      ) {
+        throw new Error("Collaborating Executive assignment is not valid.");
+      }
+      collaboratorRoles.add(request.executive);
+      return {
+        executive: request.executive,
+        contribution: request.contribution,
+        authority: "contribute-only",
+        mayApproveParent: false,
+        mayCompleteParent: false,
+      } as const;
+    });
 
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
@@ -237,8 +283,10 @@ export class OperationsState {
         .prepare(
           `INSERT INTO work_items (
             id, actor_id, workspace_id, idempotency_key, intent,
-            expected_effect_json, state, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, 'Captured', ?, ?)`,
+            expected_effect_json, accountable_executive, workstream,
+            collaborating_executives_json, state,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'Captured', ?, ?)`,
         )
         .run(
           id,
@@ -247,6 +295,9 @@ export class OperationsState {
           action.idempotencyKey,
           action.intent,
           JSON.stringify(action.expectedEffect),
+          accountableExecutive,
+          action.workstream ?? null,
+          JSON.stringify(collaboratingExecutives),
           occurredAt,
           occurredAt,
         );
@@ -258,6 +309,11 @@ export class OperationsState {
           actorId: action.actorId,
           workspaceId: action.workspaceId,
           idempotencyKey: action.idempotencyKey,
+          accountableExecutive,
+          workstream: action.workstream ?? null,
+          collaboratingExecutives: collaboratingExecutives.map(
+            (assignment) => assignment.executive,
+          ),
         },
       );
       this.#database.exec("COMMIT;");
@@ -314,6 +370,8 @@ export class OperationsState {
     this.#appendAudit(workItemId, "worker.effect-recorded", occurredAt, {
       idempotencyKey: receipt.effect.idempotencyKey,
       kind: receipt.effect.kind,
+      executive: receipt.effect.executive,
+      authority: receipt.effect.authority,
       evidenceReference: receipt.effect.idempotencyKey,
     });
   }
@@ -427,6 +485,97 @@ export class OperationsState {
       throw new Error("Work Item was not found after a durable state change.");
     }
     return workItem;
+  }
+
+  #ensureWorkItemSchema(): void {
+    const columns = this.#database
+      .prepare("PRAGMA table_info(work_items)")
+      .all() as unknown as TableColumnRow[];
+    const names = new Set(columns.map((column) => column.name));
+
+    if (!names.has("accountable_executive")) {
+      this.#database.exec(
+        "ALTER TABLE work_items ADD COLUMN accountable_executive TEXT NOT NULL DEFAULT 'COO';",
+      );
+    }
+    if (!names.has("workstream")) {
+      this.#database.exec("ALTER TABLE work_items ADD COLUMN workstream TEXT;");
+    }
+    if (!names.has("collaborating_executives_json")) {
+      this.#database.exec(
+        "ALTER TABLE work_items ADD COLUMN collaborating_executives_json TEXT NOT NULL DEFAULT '[]';",
+      );
+    }
+  }
+
+  #backfillRm01OutcomeEffects(): void {
+    const rows = this.#database
+      .prepare(
+        `SELECT
+          outcome_reports.id,
+          outcome_reports.work_item_id,
+          outcome_reports.completed_effect_json,
+          work_items.accountable_executive
+        FROM outcome_reports
+        INNER JOIN work_items
+          ON work_items.id = outcome_reports.work_item_id`,
+      )
+      .all() as unknown as OutcomeEffectMigrationRow[];
+    const updates: Array<{ readonly id: string; readonly effect: WorkerEffect }> =
+      [];
+
+    for (const row of rows) {
+      const stored = parseJson<Partial<WorkerEffect>>(
+        row.completed_effect_json,
+      );
+      if (
+        typeof stored.workItemId === "string" &&
+        typeof stored.executive === "string" &&
+        (stored.authority === "accountable" ||
+          stored.authority === "contribute-only")
+      ) {
+        continue;
+      }
+      if (
+        typeof stored.idempotencyKey !== "string" ||
+        typeof stored.kind !== "string" ||
+        typeof stored.value !== "string"
+      ) {
+        throw new Error(
+          `Outcome Report ${row.id} has an unsupported completed effect.`,
+        );
+      }
+
+      updates.push({
+        id: row.id,
+        effect: {
+          workItemId: row.work_item_id,
+          executive: row.accountable_executive,
+          authority: "accountable",
+          idempotencyKey: stored.idempotencyKey,
+          kind: stored.kind,
+          value: stored.value,
+        },
+      });
+    }
+
+    if (updates.length === 0) {
+      return;
+    }
+
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const statement = this.#database.prepare(
+        "UPDATE outcome_reports SET completed_effect_json = ? WHERE id = ?",
+      );
+      for (const update of updates) {
+        statement.run(JSON.stringify(update.effect), update.id);
+      }
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
   }
 
   #appendAudit(

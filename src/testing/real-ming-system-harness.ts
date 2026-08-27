@@ -1,11 +1,14 @@
 import type {
   AuditEvent,
+  CeoCommand,
+  CeoCommandResult,
   ControlledWorker,
   EffectVerifier,
   ExpectedEffect,
   NormalizedCeoAction,
   OperationsResult,
   OutcomeReport,
+  QuestionResponder,
   WorkItem,
   WorkerEffect,
   WorkerReceipt,
@@ -13,9 +16,12 @@ import type {
 } from "../operations/contracts.js";
 import { createOperationsGateway } from "../operations/operations-gateway.js";
 import { OperationsState } from "../operations/operations-state.js";
+import { createCommandClassifier } from "../operations/command-classifier.js";
 
 export interface RealMingSystemHarness {
+  submitCeoCommand(command: CeoCommand): Promise<CeoCommandResult>;
   submitCeoAction(action: NormalizedCeoAction): Promise<OperationsResult>;
+  executeWorkItem(workItemId: string): Promise<OperationsResult>;
   workItem(id: string): WorkItem | undefined;
   workItems(): WorkItem[];
   outcomeReport(workItemId: string): OutcomeReport | undefined;
@@ -24,6 +30,14 @@ export interface RealMingSystemHarness {
   controlledReceipts(): readonly WorkerReceipt[];
   controlledVerificationResults(): readonly VerifierResult[];
   close(): void;
+}
+
+class ControlledQuestionResponder implements QuestionResponder {
+  constructor(private readonly answerText: string) {}
+
+  async answer(): Promise<string> {
+    return this.answerText;
+  }
 }
 
 class ControlledEffectLedger {
@@ -117,6 +131,7 @@ class ControlledEffectVerifier implements EffectVerifier {
 
 export function createRealMingSystemHarness(options: {
   readonly statePath: string;
+  readonly controlledQuestionAnswer?: string;
   readonly controlledWorker?: {
     readonly executionError?: string;
     readonly receiptEvidence?: Readonly<Record<string, string>>;
@@ -140,10 +155,22 @@ export function createRealMingSystemHarness(options: {
     options.controlledVerifier?.errorMessage,
     options.controlledVerifier?.evidence,
   );
-  const gateway = createOperationsGateway({ state, worker, verifier });
+  const questionResponder = new ControlledQuestionResponder(
+    options.controlledQuestionAnswer ?? "No controlled answer was configured.",
+  );
+  const commandClassifier = createCommandClassifier();
+  const gateway = createOperationsGateway({
+    state,
+    worker,
+    verifier,
+    questionResponder,
+    commandClassifier,
+  });
 
   return {
+    submitCeoCommand: (command) => gateway.submitCeoCommand(command),
     submitCeoAction: (action) => gateway.submitCeoAction(action),
+    executeWorkItem: (workItemId) => gateway.executeWorkItem(workItemId),
     workItem: (id) => state.workItem(id),
     workItems: () => state.workItems(),
     outcomeReport: (workItemId) => state.outcomeReport(workItemId),

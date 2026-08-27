@@ -11,6 +11,28 @@ export type WorkItemState =
   | "Cancelled"
   | "Completed";
 
+export type ExecutiveRole = "COO" | "CTO" | "Personal CFO" | "CAO" | "CMO";
+
+export type Workstream =
+  | "Personal Life"
+  | "Career Job"
+  | "Finance"
+  | "Academic"
+  | "MicroSaaS"
+  | "Content Creation";
+
+export interface CollaboratingExecutiveRequest {
+  readonly executive: ExecutiveRole;
+  readonly contribution: string;
+}
+
+export interface CollaboratingExecutiveAssignment
+  extends CollaboratingExecutiveRequest {
+  readonly authority: "contribute-only";
+  readonly mayApproveParent: false;
+  readonly mayCompleteParent: false;
+}
+
 export interface ExpectedEffect {
   readonly kind: string;
   readonly value: string;
@@ -22,7 +44,41 @@ export interface NormalizedCeoAction {
   readonly idempotencyKey: string;
   readonly intent: string;
   readonly expectedEffect: ExpectedEffect;
+  readonly accountableExecutive?: ExecutiveRole;
+  readonly workstream?: Workstream | null;
+  readonly collaboratingExecutives?: readonly CollaboratingExecutiveRequest[];
 }
+
+export interface CeoCommand {
+  readonly actorId: string;
+  readonly workspaceId: string;
+  readonly idempotencyKey: string;
+  readonly text: string;
+  readonly expectedEffect?: ExpectedEffect;
+  readonly addressedExecutive?: ExecutiveRole;
+  readonly workstream?: Workstream;
+  readonly collaboratingExecutives?: readonly CollaboratingExecutiveRequest[];
+}
+
+export interface InformationAnswer {
+  readonly kind: "information-answer";
+  readonly answer: string;
+}
+
+export interface Clarification {
+  readonly kind: "clarification";
+  readonly question: string;
+}
+
+export type CommandClassification =
+  | { readonly kind: "information-question" }
+  | { readonly kind: "action" }
+  | { readonly kind: "ambiguous" };
+
+export type CeoCommandResult =
+  | InformationAnswer
+  | Clarification
+  | WorkItemAcknowledgement;
 
 export interface WorkItem {
   readonly id: string;
@@ -31,12 +87,18 @@ export interface WorkItem {
   readonly idempotencyKey: string;
   readonly intent: string;
   readonly expectedEffect: ExpectedEffect;
+  readonly accountableExecutive: ExecutiveRole;
+  readonly workstream: Workstream | null;
+  readonly collaboratingExecutives: readonly CollaboratingExecutiveAssignment[];
   readonly state: WorkItemState;
   readonly createdAt: string;
   readonly updatedAt: string;
 }
 
 export interface WorkerEffect {
+  readonly workItemId: string;
+  readonly executive: ExecutiveRole;
+  readonly authority: "accountable" | "contribute-only";
   readonly idempotencyKey: string;
   readonly kind: string;
   readonly value: string;
@@ -95,6 +157,11 @@ export interface OperationsResult {
   readonly outcomeReport: OutcomeReport;
 }
 
+export interface WorkItemAcknowledgement {
+  readonly kind: "work-item-acknowledgement";
+  readonly workItem: WorkItem;
+}
+
 export interface ControlledWorker {
   execute(effect: WorkerEffect): Promise<WorkerReceipt>;
 }
@@ -104,4 +171,12 @@ export interface EffectVerifier {
     receipt: WorkerReceipt,
     expectedEffect: ExpectedEffect,
   ): Promise<VerifierResult>;
+}
+
+export interface QuestionResponder {
+  answer(command: CeoCommand): Promise<string>;
+}
+
+export interface CommandClassifier {
+  classify(command: CeoCommand): CommandClassification;
 }
