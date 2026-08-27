@@ -35,6 +35,7 @@ interface WorkItemRow {
 interface OutcomeReportRow {
   id: string;
   work_item_id: string;
+  revision: number;
   requested_intent: string;
   completed_effect_json: string;
   verification_json: string;
@@ -99,6 +100,7 @@ function mapOutcomeReport(row: OutcomeReportRow): OutcomeReport {
   return {
     id: row.id,
     workItemId: row.work_item_id,
+    revision: row.revision,
     requestedIntent: row.requested_intent,
     completedEffect: parseJson<OutcomeReport["completedEffect"]>(
       row.completed_effect_json,
@@ -141,6 +143,7 @@ export class OperationsState {
       CREATE TABLE IF NOT EXISTS outcome_reports (
         id TEXT PRIMARY KEY,
         work_item_id TEXT NOT NULL UNIQUE,
+        revision INTEGER NOT NULL DEFAULT 1,
         requested_intent TEXT NOT NULL,
         completed_effect_json TEXT NOT NULL,
         verification_json TEXT NOT NULL,
@@ -149,6 +152,32 @@ export class OperationsState {
         created_at TEXT NOT NULL,
         FOREIGN KEY (work_item_id) REFERENCES work_items(id)
       );
+
+      CREATE TABLE IF NOT EXISTS outcome_report_revisions (
+        id TEXT PRIMARY KEY,
+        work_item_id TEXT NOT NULL,
+        revision INTEGER NOT NULL,
+        requested_intent TEXT NOT NULL,
+        completed_effect_json TEXT NOT NULL,
+        verification_json TEXT NOT NULL,
+        remaining_risks_json TEXT NOT NULL,
+        required_decisions_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (work_item_id, revision),
+        FOREIGN KEY (work_item_id) REFERENCES work_items(id)
+      );
+
+      CREATE TRIGGER IF NOT EXISTS outcome_report_revisions_reject_update
+      BEFORE UPDATE ON outcome_report_revisions
+      BEGIN
+        SELECT RAISE(ABORT, 'outcome_report_revisions are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS outcome_report_revisions_reject_delete
+      BEFORE DELETE ON outcome_report_revisions
+      BEGIN
+        SELECT RAISE(ABORT, 'outcome_report_revisions are append-only');
+      END;
 
       CREATE TABLE IF NOT EXISTS audit_events (
         sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -182,7 +211,9 @@ export class OperationsState {
       END;
     `);
     this.#ensureWorkItemSchema();
+    this.#ensureOutcomeReportSchema();
     this.#backfillRm01OutcomeEffects();
+    this.#backfillOutcomeReportRevisions();
   }
 
   close(): void {
@@ -225,6 +256,29 @@ export class OperationsState {
       .get(workItemId) as unknown as OutcomeReportRow | undefined;
 
     return row === undefined ? undefined : mapOutcomeReport(row);
+  }
+
+  outcomeReportRevisions(workItemId: string): OutcomeReport[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM outcome_report_revisions
+         WHERE work_item_id = ?
+         ORDER BY revision ASC`,
+      )
+      .all(workItemId) as unknown as OutcomeReportRow[];
+
+    return rows.map(mapOutcomeReport);
+  }
+
+  nextOutcomeReportRevision(workItemId: string): number {
+    const row = this.#database
+      .prepare(
+        `SELECT MAX(revision) AS highest FROM outcome_report_revisions
+         WHERE work_item_id = ?`,
+      )
+      .get(workItemId) as unknown as { highest: number | null } | undefined;
+
+    return (row?.highest ?? 0) + 1;
   }
 
   auditTrail(workItemId: string): AuditEvent[] {
@@ -484,9 +538,11 @@ export class OperationsState {
       );
     }
 
+    const superseded = this.outcomeReport(workItem.id);
     const outcomeReport: OutcomeReport = {
       id: randomUUID(),
       workItemId: workItem.id,
+      revision: this.nextOutcomeReportRevision(workItem.id),
       requestedIntent: current.intent,
       completedEffect: receipt.effect,
       verification,
@@ -497,30 +553,73 @@ export class OperationsState {
 
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
+      const values = [
+        outcomeReport.workItemId,
+        outcomeReport.revision,
+        outcomeReport.requestedIntent,
+        JSON.stringify(outcomeReport.completedEffect),
+        JSON.stringify(outcomeReport.verification),
+        JSON.stringify(outcomeReport.remainingRisks),
+        JSON.stringify(outcomeReport.requiredDecisions),
+        outcomeReport.createdAt,
+      ] as const;
+
       this.#database
         .prepare(
-          `INSERT INTO outcome_reports (
-            id, work_item_id, requested_intent, completed_effect_json,
-            verification_json, remaining_risks_json,
+          `INSERT INTO outcome_report_revisions (
+            id, work_item_id, revision, requested_intent,
+            completed_effect_json, verification_json, remaining_risks_json,
             required_decisions_json, created_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(
-          outcomeReport.id,
-          outcomeReport.workItemId,
-          outcomeReport.requestedIntent,
-          JSON.stringify(outcomeReport.completedEffect),
-          JSON.stringify(outcomeReport.verification),
-          JSON.stringify(outcomeReport.remainingRisks),
-          JSON.stringify(outcomeReport.requiredDecisions),
-          outcomeReport.createdAt,
+        .run(outcomeReport.id, ...values);
+
+      if (superseded === undefined) {
+        this.#database
+          .prepare(
+            `INSERT INTO outcome_reports (
+              id, work_item_id, revision, requested_intent,
+              completed_effect_json, verification_json, remaining_risks_json,
+              required_decisions_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(outcomeReport.id, ...values);
+      } else {
+        this.#database
+          .prepare(
+            `UPDATE outcome_reports SET
+              id = ?, revision = ?, requested_intent = ?,
+              completed_effect_json = ?, verification_json = ?,
+              remaining_risks_json = ?, required_decisions_json = ?,
+              created_at = ?
+             WHERE work_item_id = ?`,
+          )
+          .run(
+            outcomeReport.id,
+            outcomeReport.revision,
+            outcomeReport.requestedIntent,
+            JSON.stringify(outcomeReport.completedEffect),
+            JSON.stringify(outcomeReport.verification),
+            JSON.stringify(outcomeReport.remainingRisks),
+            JSON.stringify(outcomeReport.requiredDecisions),
+            outcomeReport.createdAt,
+            outcomeReport.workItemId,
+          );
+        this.#appendAudit(
+          workItem.id,
+          "outcome-report.superseded",
+          occurredAt,
+          {
+            supersededOutcomeReportId: superseded.id,
+            supersededRevision: superseded.revision,
+          },
         );
-      this.#appendAudit(
-        workItem.id,
-        "outcome-report.recorded",
-        occurredAt,
-        { outcomeReportId: outcomeReport.id },
-      );
+      }
+
+      this.#appendAudit(workItem.id, "outcome-report.recorded", occurredAt, {
+        outcomeReportId: outcomeReport.id,
+        revision: outcomeReport.revision,
+      });
       this.#database
         .prepare(
           "UPDATE work_items SET state = 'Ready for CEO Review', updated_at = ? WHERE id = ?",
@@ -577,6 +676,47 @@ export class OperationsState {
       this.#database.exec(
         "ALTER TABLE work_items ADD COLUMN proposed_commitment_json TEXT;",
       );
+    }
+  }
+
+  #ensureOutcomeReportSchema(): void {
+    const columns = this.#database
+      .prepare("PRAGMA table_info(outcome_reports)")
+      .all() as unknown as TableColumnRow[];
+
+    if (!columns.some((column) => column.name === "revision")) {
+      this.#database.exec(
+        "ALTER TABLE outcome_reports ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;",
+      );
+    }
+  }
+
+  #backfillOutcomeReportRevisions(): void {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database.exec(
+        `INSERT INTO outcome_report_revisions (
+          id, work_item_id, revision, requested_intent, completed_effect_json,
+          verification_json, remaining_risks_json, required_decisions_json,
+          created_at
+        )
+        SELECT
+          outcome_reports.id, outcome_reports.work_item_id,
+          outcome_reports.revision, outcome_reports.requested_intent,
+          outcome_reports.completed_effect_json,
+          outcome_reports.verification_json,
+          outcome_reports.remaining_risks_json,
+          outcome_reports.required_decisions_json, outcome_reports.created_at
+        FROM outcome_reports
+        WHERE NOT EXISTS (
+          SELECT 1 FROM outcome_report_revisions
+          WHERE outcome_report_revisions.work_item_id = outcome_reports.work_item_id
+        );`,
+      );
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
     }
   }
 

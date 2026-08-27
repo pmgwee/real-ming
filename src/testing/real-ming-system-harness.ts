@@ -24,6 +24,7 @@ export interface RealMingSystemHarness {
   submitCeoCommand(command: CeoCommand): Promise<CeoCommandResult>;
   submitCeoAction(action: NormalizedCeoAction): Promise<OperationsResult>;
   executeWorkItem(workItemId: string): Promise<OperationsResult>;
+  reworkWorkItem(workItemId: string): Promise<OperationsResult>;
   stageWorkItemForApproval(workItemId: string): Promise<WorkItem>;
   reviewWorkItem(request: CeoReviewRequest): Promise<WorkItem>;
   recordWorkItemCommitment(
@@ -32,6 +33,7 @@ export interface RealMingSystemHarness {
   workItem(id: string): WorkItem | undefined;
   workItems(): WorkItem[];
   outcomeReport(workItemId: string): OutcomeReport | undefined;
+  outcomeReportRevisions(workItemId: string): OutcomeReport[];
   auditTrail(workItemId: string): AuditEvent[];
   controlledEffects(): readonly WorkerEffect[];
   controlledReceipts(): readonly WorkerReceipt[];
@@ -178,6 +180,7 @@ export function createRealMingSystemHarness(options: {
     submitCeoCommand: (command) => gateway.submitCeoCommand(command),
     submitCeoAction: (action) => gateway.submitCeoAction(action),
     executeWorkItem: (workItemId) => gateway.executeWorkItem(workItemId),
+    reworkWorkItem: (workItemId) => gateway.reworkWorkItem(workItemId),
     stageWorkItemForApproval: (workItemId) =>
       gateway.stageWorkItemForApproval(workItemId),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),
@@ -186,6 +189,8 @@ export function createRealMingSystemHarness(options: {
     workItem: (id) => state.workItem(id),
     workItems: () => state.workItems(),
     outcomeReport: (workItemId) => state.outcomeReport(workItemId),
+    outcomeReportRevisions: (workItemId) =>
+      state.outcomeReportRevisions(workItemId),
     auditTrail: (workItemId) => state.auditTrail(workItemId),
     controlledEffects: () => ledger.effects(),
     controlledReceipts: () => ledger.receipts(),

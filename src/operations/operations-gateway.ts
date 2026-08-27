@@ -32,6 +32,7 @@ export interface OperationsGateway {
     action: NormalizedCeoAction,
   ): Promise<WorkItemAcknowledgement>;
   executeWorkItem(workItemId: string): Promise<OperationsResult>;
+  reworkWorkItem(workItemId: string): Promise<OperationsResult>;
   recordWorkItemCommitment(
     request: RecordWorkItemCommitmentRequest,
   ): Promise<WorkItem>;
@@ -141,6 +142,85 @@ export function createOperationsGateway(options: {
     };
   };
 
+  const runControlledExecution = async (
+    entryWorkItem: WorkItem,
+  ): Promise<OperationsResult> => {
+    const revision = options.state.nextOutcomeReportRevision(entryWorkItem.id);
+    const revisionSuffix = revision === 1 ? "" : `:revision-${revision}`;
+
+    let workItem = advanceWorkItem(
+      entryWorkItem,
+      "Executing",
+      "execution-not-permitted",
+    );
+
+    for (const assignment of workItem.collaboratingExecutives) {
+      const contributionEffect: WorkerEffect = {
+        workItemId: workItem.id,
+        executive: assignment.executive,
+        authority: "contribute-only",
+        idempotencyKey: `${workItem.workspaceId}:${workItem.idempotencyKey}:contribution:${assignment.executive}${revisionSuffix}`,
+        kind: "executive-contribution",
+        value: assignment.contribution,
+      };
+      const contributionReceipt = await executeControlledEffect(
+        contributionEffect,
+        "collaborator-execution-failed",
+        "Controlled contribution failed before verification.",
+      );
+      options.state.recordWorkerEffect(
+        workItem.id,
+        contributionReceipt,
+        now(),
+      );
+    }
+
+    const effect: WorkerEffect = {
+      workItemId: workItem.id,
+      executive: workItem.accountableExecutive,
+      authority: "accountable",
+      idempotencyKey: `${workItem.workspaceId}:${workItem.idempotencyKey}:effect${revisionSuffix}`,
+      kind: workItem.expectedEffect.kind,
+      value: workItem.expectedEffect.value,
+    };
+    const receipt = await executeControlledEffect(
+      effect,
+      "worker-execution-failed",
+      "Controlled work failed before verification.",
+    );
+    options.state.recordWorkerEffect(workItem.id, receipt, now());
+
+    workItem = options.state.transition(workItem.id, "Verifying", now());
+    let verifierResult;
+    try {
+      verifierResult = await options.verifier.verify(
+        receipt,
+        workItem.expectedEffect,
+      );
+    } catch {
+      options.state.recordVerificationFailure(workItem.id, now());
+      options.state.transition(workItem.id, "Waiting/Blocked", now(), {
+        reason: "effect-verification-failed",
+      });
+      throw new Error("Controlled work could not be verified.");
+    }
+    const verification = {
+      status: verifierResult.status,
+      evidence: {
+        kind: "controlled-effect-reference",
+        reference: receipt.effect.idempotencyKey,
+      },
+    } as const;
+    options.state.recordVerification(workItem.id, verification, now());
+
+    return options.state.recordReviewReadyOutcome(
+      workItem,
+      receipt,
+      verification,
+      now(),
+    );
+  };
+
   const executeWorkItem: OperationsGateway["executeWorkItem"] = async (
     workItemId,
   ) => {
@@ -184,77 +264,28 @@ export function createOperationsGateway(options: {
       );
     }
 
-    let workItem = advanceWorkItem(
-      storedWorkItem,
-      "Executing",
-      "execution-not-permitted",
-    );
+    return runControlledExecution(storedWorkItem);
+  };
 
-    for (const assignment of workItem.collaboratingExecutives) {
-      const contributionEffect: WorkerEffect = {
-        workItemId: workItem.id,
-        executive: assignment.executive,
-        authority: "contribute-only",
-        idempotencyKey: `${workItem.workspaceId}:${workItem.idempotencyKey}:contribution:${assignment.executive}`,
-        kind: "executive-contribution",
-        value: assignment.contribution,
-      };
-      const contributionReceipt = await executeControlledEffect(
-        contributionEffect,
-        "collaborator-execution-failed",
-        "Controlled contribution failed before verification.",
-      );
-      options.state.recordWorkerEffect(
-        workItem.id,
-        contributionReceipt,
+  const reworkWorkItem: OperationsGateway["reworkWorkItem"] = async (
+    workItemId,
+  ) => {
+    const storedWorkItem = requireWorkItem(workItemId);
+
+    if (storedWorkItem.state !== "Changes Requested") {
+      options.state.recordRejectedTransition(
+        workItemId,
+        {
+          from: storedWorkItem.state,
+          to: "Executing",
+          reason: "changes-requested-required",
+        },
         now(),
       );
+      throw new Error("Only Changes Requested Work can be reworked.");
     }
 
-    const effect: WorkerEffect = {
-      workItemId: workItem.id,
-      executive: workItem.accountableExecutive,
-      authority: "accountable",
-      idempotencyKey: `${workItem.workspaceId}:${workItem.idempotencyKey}:effect`,
-      kind: workItem.expectedEffect.kind,
-      value: workItem.expectedEffect.value,
-    };
-    const receipt = await executeControlledEffect(
-      effect,
-      "worker-execution-failed",
-      "Controlled work failed before verification.",
-    );
-    options.state.recordWorkerEffect(workItem.id, receipt, now());
-
-    workItem = options.state.transition(workItem.id, "Verifying", now());
-    let verifierResult;
-    try {
-      verifierResult = await options.verifier.verify(
-        receipt,
-        workItem.expectedEffect,
-      );
-    } catch {
-      options.state.recordVerificationFailure(workItem.id, now());
-      options.state.transition(workItem.id, "Waiting/Blocked", now(), {
-        reason: "effect-verification-failed",
-      });
-      throw new Error("Controlled work could not be verified.");
-    }
-    const verification = {
-      status: verifierResult.status,
-      evidence: {
-        kind: "controlled-effect-reference",
-        reference: receipt.effect.idempotencyKey,
-      },
-    } as const;
-    options.state.recordVerification(workItem.id, verification, now());
-
-    return options.state.recordReviewReadyOutcome(
-      workItem,
-      receipt,
-      verification,
-      now(),
-    );
+    return runControlledExecution(storedWorkItem);
   };
 
   const stageWorkItemForApproval: OperationsGateway["stageWorkItemForApproval"] =
@@ -408,6 +439,7 @@ export function createOperationsGateway(options: {
   return {
     acknowledgeCeoAction,
     executeWorkItem,
+    reworkWorkItem,
     recordWorkItemCommitment,
     reviewWorkItem,
     stageWorkItemForApproval,

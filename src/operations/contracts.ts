@@ -188,6 +188,7 @@ export interface VerifierResult {
 export interface OutcomeReport {
   readonly id: string;
   readonly workItemId: string;
+  readonly revision: number;
   readonly requestedIntent: string;
   readonly completedEffect: WorkerEffect;
   readonly verification: EffectVerification;
@@ -212,6 +213,7 @@ export interface AuditEvent {
     | "work-item.waiting-blocked"
     | "worker.effect-verified"
     | "outcome-report.recorded"
+    | "outcome-report.superseded"
     | "work-item.ready-for-ceo-review"
     | "work-item.completed"
     | "work-item.changes-requested"

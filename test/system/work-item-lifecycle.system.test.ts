@@ -430,7 +430,7 @@ describe("RM-03 Work Item lifecycle and commitments", () => {
     });
   });
 
-  it("refuses to execute Changes Requested Work that already recorded an Outcome Report", async () => {
+  it("refuses to re-execute Changes Requested Work through the replay-safe entry", async () => {
     const harness = startHarness();
     const action = {
       actorId: "ceo:ming",
@@ -470,5 +470,282 @@ describe("RM-03 Work Item lifecycle and commitments", () => {
         reason: "recorded-outcome-cannot-be-replaced",
       },
     });
+  });
+
+  it("reworks Changes Requested Work into a new Outcome Report revision", async () => {
+    const harness = startHarness();
+    const captured = await captureWorkItem(harness, "telegram:rework:once");
+    const firstPass = await harness.executeWorkItem(captured.id);
+
+    expect(firstPass.outcomeReport.revision).toBe(1);
+
+    await harness.reviewWorkItem({
+      workItemId: captured.id,
+      actorId: "ceo:ming",
+      decision: "request-changes",
+      reason: "Revise the evidence summary",
+    });
+
+    const reworked = await harness.reworkWorkItem(captured.id);
+
+    expect(reworked.workItem.state).toBe("Ready for CEO Review");
+    expect(reworked.outcomeReport.revision).toBe(2);
+    expect(harness.outcomeReport(captured.id)).toEqual(reworked.outcomeReport);
+    expect(
+      harness.outcomeReportRevisions(captured.id).map((report) => report.revision),
+    ).toEqual([1, 2]);
+    expect(harness.outcomeReportRevisions(captured.id)[0]).toEqual(
+      firstPass.outcomeReport,
+    );
+
+    expect(
+      harness.auditTrail(captured.id).map((event) => event.type),
+    ).toEqual([
+      "work-item.captured",
+      "work-item.triaged",
+      "work-item.planned",
+      "work-item.executing",
+      "worker.effect-recorded",
+      "work-item.verifying",
+      "worker.effect-verified",
+      "outcome-report.recorded",
+      "work-item.ready-for-ceo-review",
+      "work-item.changes-requested",
+      "work-item.planned",
+      "work-item.executing",
+      "worker.effect-recorded",
+      "work-item.verifying",
+      "worker.effect-verified",
+      "outcome-report.superseded",
+      "outcome-report.recorded",
+      "work-item.ready-for-ceo-review",
+    ]);
+    expect(
+      harness
+        .auditTrail(captured.id)
+        .filter((event) => event.type === "outcome-report.superseded"),
+    ).toMatchObject([
+      {
+        details: {
+          supersededOutcomeReportId: firstPass.outcomeReport.id,
+          supersededRevision: 1,
+        },
+      },
+    ]);
+  });
+
+  it("gives every rework revision its own controlled effect identity", async () => {
+    const harness = startHarness();
+    const captured = await captureWorkItem(harness, "telegram:rework:identity");
+    await harness.executeWorkItem(captured.id);
+
+    await harness.reviewWorkItem({
+      workItemId: captured.id,
+      actorId: "ceo:ming",
+      decision: "request-changes",
+      reason: "Revise once",
+    });
+    await harness.reworkWorkItem(captured.id);
+
+    expect(
+      harness.controlledEffects().map((effect) => effect.idempotencyKey),
+    ).toEqual([
+      "workspace:real-ming:telegram:rework:identity:effect",
+      "workspace:real-ming:telegram:rework:identity:effect:revision-2",
+    ]);
+  });
+
+  it("supports repeated rework and keeps every superseded Outcome Report", async () => {
+    const harness = startHarness();
+    const captured = await captureWorkItem(harness, "telegram:rework:repeated");
+    await harness.executeWorkItem(captured.id);
+
+    for (const round of [2, 3, 4]) {
+      await harness.reviewWorkItem({
+        workItemId: captured.id,
+        actorId: "ceo:ming",
+        decision: "request-changes",
+        reason: `Revise for round ${round}`,
+      });
+      const reworked = await harness.reworkWorkItem(captured.id);
+      expect(reworked.outcomeReport.revision).toBe(round);
+    }
+
+    const revisions = harness.outcomeReportRevisions(captured.id);
+    expect(revisions.map((report) => report.revision)).toEqual([1, 2, 3, 4]);
+    expect(new Set(revisions.map((report) => report.id)).size).toBe(4);
+    expect(harness.outcomeReport(captured.id)?.revision).toBe(4);
+
+    const completed = await harness.reviewWorkItem({
+      workItemId: captured.id,
+      actorId: "ceo:ming",
+      decision: "complete",
+    });
+    expect(completed.state).toBe("Completed");
+    expect(harness.outcomeReportRevisions(captured.id)).toHaveLength(4);
+  });
+
+  it("refuses rework unless the CEO has requested changes", async () => {
+    const harness = startHarness();
+    const captured = await captureWorkItem(harness, "telegram:rework:guard");
+
+    await expect(harness.reworkWorkItem(captured.id)).rejects.toThrow(
+      "Only Changes Requested Work can be reworked.",
+    );
+
+    await harness.executeWorkItem(captured.id);
+    await expect(harness.reworkWorkItem(captured.id)).rejects.toThrow(
+      "Only Changes Requested Work can be reworked.",
+    );
+    expect(harness.auditTrail(captured.id).at(-1)).toMatchObject({
+      type: "work-item.transition-rejected",
+      details: {
+        from: "Ready for CEO Review",
+        to: "Executing",
+        reason: "changes-requested-required",
+      },
+    });
+  });
+
+  it("keeps Completed replay idempotent after rework", async () => {
+    const harness = startHarness();
+    const action = {
+      actorId: "ceo:ming",
+      workspaceId: "workspace:real-ming",
+      idempotencyKey: "telegram:rework:completed-replay",
+      intent: "Record one bounded lifecycle outcome",
+      expectedEffect: {
+        kind: "record-note",
+        value: "Completed replay after rework",
+      },
+    } as const;
+
+    const first = await harness.submitCeoAction(action);
+    await harness.reviewWorkItem({
+      workItemId: first.workItem.id,
+      actorId: "ceo:ming",
+      decision: "request-changes",
+      reason: "Revise once",
+    });
+    const reworked = await harness.reworkWorkItem(first.workItem.id);
+    await harness.reviewWorkItem({
+      workItemId: first.workItem.id,
+      actorId: "ceo:ming",
+      decision: "complete",
+    });
+
+    const repeated = await harness.submitCeoAction(action);
+
+    expect(repeated.workItem.state).toBe("Completed");
+    expect(repeated.outcomeReport).toEqual(reworked.outcomeReport);
+    expect(repeated.outcomeReport.revision).toBe(2);
+    expect(harness.controlledEffects()).toHaveLength(2);
+  });
+
+  it("migrates an existing Outcome Report into revision one without rebuilding it", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm03-outcome-"));
+    temporaryDirectories.push(directory);
+    const statePath = join(directory, "operations.sqlite");
+    const legacyDatabase = new DatabaseSync(statePath);
+    legacyDatabase.exec(`
+      CREATE TABLE work_items (
+        id TEXT PRIMARY KEY,
+        actor_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        intent TEXT NOT NULL,
+        expected_effect_json TEXT NOT NULL,
+        accountable_executive TEXT NOT NULL,
+        workstream TEXT,
+        collaborating_executives_json TEXT NOT NULL,
+        state TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (workspace_id, idempotency_key)
+      );
+
+      CREATE TABLE outcome_reports (
+        id TEXT PRIMARY KEY,
+        work_item_id TEXT NOT NULL UNIQUE,
+        requested_intent TEXT NOT NULL,
+        completed_effect_json TEXT NOT NULL,
+        verification_json TEXT NOT NULL,
+        remaining_risks_json TEXT NOT NULL,
+        required_decisions_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+    `);
+    legacyDatabase
+      .prepare(
+        `INSERT INTO work_items (
+          id, actor_id, workspace_id, idempotency_key, intent,
+          expected_effect_json, accountable_executive, workstream,
+          collaborating_executives_json, state, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, 'COO', NULL, '[]', 'Changes Requested', ?, ?)`,
+      )
+      .run(
+        "legacy-reworkable",
+        "ceo:ming",
+        "workspace:real-ming",
+        "telegram:legacy:reworkable",
+        "Preserve this legacy outcome through rework",
+        JSON.stringify({ kind: "record-note", value: "Legacy outcome" }),
+        "2026-08-27T00:00:00.000Z",
+        "2026-08-27T00:01:00.000Z",
+      );
+    legacyDatabase
+      .prepare(
+        `INSERT INTO outcome_reports (
+          id, work_item_id, requested_intent, completed_effect_json,
+          verification_json, remaining_risks_json,
+          required_decisions_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        "legacy-outcome",
+        "legacy-reworkable",
+        "Preserve this legacy outcome through rework",
+        JSON.stringify({
+          workItemId: "legacy-reworkable",
+          executive: "COO",
+          authority: "accountable",
+          idempotencyKey:
+            "workspace:real-ming:telegram:legacy:reworkable:effect",
+          kind: "record-note",
+          value: "Legacy outcome",
+        }),
+        JSON.stringify({
+          status: "verified",
+          evidence: {
+            kind: "controlled-effect-reference",
+            reference:
+              "workspace:real-ming:telegram:legacy:reworkable:effect",
+          },
+        }),
+        "[]",
+        JSON.stringify(["CEO review required before completion."]),
+        "2026-08-27T00:01:00.000Z",
+      );
+    legacyDatabase.close();
+
+    const harness = createRealMingSystemHarness({ statePath });
+    harnesses.push(harness);
+
+    expect(harness.outcomeReport("legacy-reworkable")).toMatchObject({
+      id: "legacy-outcome",
+      revision: 1,
+    });
+    expect(
+      harness.outcomeReportRevisions("legacy-reworkable"),
+    ).toMatchObject([{ id: "legacy-outcome", revision: 1 }]);
+
+    const reworked = await harness.reworkWorkItem("legacy-reworkable");
+
+    expect(reworked.outcomeReport.revision).toBe(2);
+    expect(
+      harness
+        .outcomeReportRevisions("legacy-reworkable")
+        .map((report) => report.id),
+    ).toEqual(["legacy-outcome", reworked.outcomeReport.id]);
   });
 });
