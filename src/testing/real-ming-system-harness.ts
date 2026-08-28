@@ -32,6 +32,24 @@ import {
 } from "../dashboard/dashboard-server.js";
 import { buildDashboardOverview } from "../dashboard/dashboard-read-model.js";
 import type { DashboardOverview } from "../dashboard/dashboard-read-model.js";
+import {
+  createTelegramFrontDoor,
+  type TelegramFrontDoor,
+} from "../telegram/telegram-front-door.js";
+import type {
+  PublishTelegramReviewControlsRequest,
+  TelegramAuditEvent,
+  TelegramDeliveryRetrySummary,
+  TelegramIngressResult,
+  TelegramInlineControl,
+  TelegramNotification,
+  TelegramNotificationResult,
+  TelegramOutboundMessage,
+  TelegramSendRequest,
+  TelegramTransport,
+  TelegramUpdate,
+} from "../telegram/contracts.js";
+import type { ProviderFailure } from "../providers/adapter-contract.js";
 
 export interface RealMingSystemHarness {
   submitCeoCommand(command: CeoCommand): Promise<CeoCommandResult>;
@@ -66,7 +84,76 @@ export interface RealMingSystemHarness {
   controlledEffects(): readonly WorkerEffect[];
   controlledReceipts(): readonly WorkerReceipt[];
   controlledVerificationResults(): readonly VerifierResult[];
+  receiveTelegramUpdate(update: TelegramUpdate): Promise<TelegramIngressResult>;
+  publishTelegramReviewControls(
+    request: PublishTelegramReviewControlsRequest,
+  ): Promise<readonly TelegramInlineControl[]>;
+  notifyTelegram(
+    notification: TelegramNotification,
+  ): Promise<TelegramNotificationResult>;
+  retryPendingTelegramDeliveries(): Promise<TelegramDeliveryRetrySummary>;
+  telegramMessages(): readonly TelegramOutboundMessage[];
+  telegramAuditTrail(): TelegramAuditEvent[];
   close(): void;
+}
+
+class ControlledTelegramTransport implements TelegramTransport {
+  readonly #messages = new Map<string, TelegramOutboundMessage>();
+
+  constructor(
+    private readonly failure?: ProviderFailure,
+    private readonly crashAfterSendError?: string,
+  ) {}
+
+  async send(message: TelegramSendRequest) {
+    if (this.failure !== undefined) {
+      return { kind: "failed" as const, failure: this.failure };
+    }
+    if (this.#messages.has(message.idempotencyKey)) {
+      return { kind: "sent" as const, deduplicated: true };
+    }
+    const { idempotencyKey: _idempotencyKey, ...outbound } = message;
+    this.#messages.set(message.idempotencyKey, outbound);
+    if (this.crashAfterSendError !== undefined) {
+      throw new Error(this.crashAfterSendError);
+    }
+    return { kind: "sent" as const, deduplicated: false };
+  }
+
+  messages(): readonly TelegramOutboundMessage[] {
+    return [...this.#messages.values()];
+  }
+}
+
+function normalizeHarnessTelegramUpdate(update: TelegramUpdate): TelegramUpdate {
+  if ("message" in update) {
+    return {
+      ...update,
+      message: {
+        ...update.message,
+        chatType: update.message.chatType ?? "private",
+      },
+    };
+  }
+  if ("callbackQuery" in update) {
+    return {
+      ...update,
+      callbackQuery: {
+        ...update.callbackQuery,
+        chatType: update.callbackQuery.chatType ?? "private",
+      },
+    };
+  }
+  if ("unsupported" in update) {
+    return {
+      ...update,
+      unsupported: {
+        ...update.unsupported,
+        chatType: update.unsupported.chatType ?? "private",
+      },
+    };
+  }
+  return update;
 }
 
 class ControlledQuestionResponder implements QuestionResponder {
@@ -179,6 +266,16 @@ export function createRealMingSystemHarness(options: {
     readonly evidence?: Readonly<Record<string, string>>;
   };
   readonly now?: () => string;
+  readonly telegram?: {
+    readonly ceoTelegramId: string;
+    readonly ceoTelegramChatId?: string;
+    readonly deliveryFailure?: ProviderFailure;
+    readonly crashAfterDelivery?: string;
+    readonly afterReviewAppliedError?: string;
+    readonly afterReviewControlClaimedError?: string;
+    readonly afterReplyDeliveredError?: string;
+    readonly auditPseudonymKey?: string;
+  };
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
   const ledger = new ControlledEffectLedger();
@@ -203,6 +300,45 @@ export function createRealMingSystemHarness(options: {
     verifier,
     questionResponder,
     commandClassifier,
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+  const telegramTransport = new ControlledTelegramTransport(
+    options.telegram?.deliveryFailure,
+    options.telegram?.crashAfterDelivery,
+  );
+  const telegramFrontDoor: TelegramFrontDoor = createTelegramFrontDoor({
+    ceoTelegramId: options.telegram?.ceoTelegramId ?? "100000001",
+    ceoTelegramChatId:
+      options.telegram?.ceoTelegramChatId ??
+      options.telegram?.ceoTelegramId ??
+      "100000001",
+    gateway,
+    state,
+    transport: telegramTransport,
+    auditPseudonymKey:
+      options.telegram?.auditPseudonymKey ??
+      "controlled-telegram-audit-pseudonym-key",
+    ...(options.telegram?.afterReviewAppliedError === undefined
+      ? {}
+      : {
+          afterReviewApplied: () => {
+            throw new Error(options.telegram?.afterReviewAppliedError);
+          },
+        }),
+    ...(options.telegram?.afterReviewControlClaimedError === undefined
+      ? {}
+      : {
+          afterReviewControlClaimed: () => {
+            throw new Error(options.telegram?.afterReviewControlClaimedError);
+          },
+        }),
+    ...(options.telegram?.afterReplyDeliveredError === undefined
+      ? {}
+      : {
+          afterReplyDelivered: () => {
+            throw new Error(options.telegram?.afterReplyDeliveredError);
+          },
+        }),
     ...(options.now === undefined ? {} : { now: options.now }),
   });
 
@@ -235,6 +371,15 @@ export function createRealMingSystemHarness(options: {
     controlledEffects: () => ledger.effects(),
     controlledReceipts: () => ledger.receipts(),
     controlledVerificationResults: () => verifier.results(),
+    receiveTelegramUpdate: (update) =>
+      telegramFrontDoor.receiveUpdate(normalizeHarnessTelegramUpdate(update)),
+    publishTelegramReviewControls: (request) =>
+      telegramFrontDoor.publishReviewControls(request),
+    notifyTelegram: (notification) => telegramFrontDoor.notify(notification),
+    retryPendingTelegramDeliveries: () =>
+      telegramFrontDoor.retryPendingDeliveries(),
+    telegramMessages: () => telegramTransport.messages(),
+    telegramAuditTrail: () => state.telegramAuditTrail(),
     close: () => state.close(),
   };
 }

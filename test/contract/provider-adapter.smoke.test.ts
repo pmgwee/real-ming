@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import { liveSmokeGate } from "../../src/testing/provider-adapter-contract-harness.js";
+import {
+  createEphemeralTelegramDeliveryLedger,
+  createTelegramProviderAdapter,
+} from "../../src/providers/telegram-provider-adapter.js";
 
-const requiredCredentials = ["REAL_MING_SMOKE_PROVIDER_TOKEN"] as const;
+const requiredCredentials = ["REAL_MING_TELEGRAM_BOT_TOKEN"] as const;
 
 const gate = liveSmokeGate(process.env, requiredCredentials);
 
@@ -18,14 +22,14 @@ describe("RM-05 live smoke gate", () => {
     ).toEqual({
       enabled: false,
       reason:
-        "Missing securely supplied credentials: REAL_MING_SMOKE_PROVIDER_TOKEN.",
+        "Missing securely supplied credentials: REAL_MING_TELEGRAM_BOT_TOKEN.",
     });
 
     expect(
       liveSmokeGate(
         {
           REAL_MING_LIVE_SMOKE: "1",
-          REAL_MING_SMOKE_PROVIDER_TOKEN: "   ",
+          REAL_MING_TELEGRAM_BOT_TOKEN: "   ",
         },
         requiredCredentials,
       ).enabled,
@@ -35,7 +39,7 @@ describe("RM-05 live smoke gate", () => {
       liveSmokeGate(
         {
           REAL_MING_LIVE_SMOKE: "1",
-          REAL_MING_SMOKE_PROVIDER_TOKEN: "supplied-at-run-time",
+          REAL_MING_TELEGRAM_BOT_TOKEN: "supplied-at-run-time",
         },
         requiredCredentials,
       ).enabled,
@@ -48,10 +52,21 @@ describe("RM-05 live smoke gate", () => {
   });
 });
 
-describe.skipIf(!gate.enabled)("RM-05 live provider smoke", () => {
-  it("reaches the live provider and reports normalized provenance", () => {
-    throw new Error(
-      "No live provider adapter is registered for smoke testing yet.",
-    );
+describe.skipIf(!gate.enabled)("RM-07 live Telegram read smoke", () => {
+  it("reaches Telegram only behind the explicit live-smoke gate", async () => {
+    const botToken = process.env["REAL_MING_TELEGRAM_BOT_TOKEN"];
+    if (botToken === undefined || botToken.trim().length === 0) {
+      throw new Error("The live Telegram credential is not supplied.");
+    }
+    const adapter = createTelegramProviderAdapter({
+      botToken,
+      workspaceId: "workspace:real-ming",
+      accountReference: "telegram:bot:real-ming",
+      deliveryLedger: createEphemeralTelegramDeliveryLedger(),
+    });
+
+    const result = await adapter.read({ reference: "live-smoke:get-updates" });
+
+    expect(result.kind).not.toBe("failed");
   });
 });

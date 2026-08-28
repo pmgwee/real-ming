@@ -19,6 +19,14 @@ import type {
   WorkerEffect,
   WorkerReceipt,
 } from "./contracts.js";
+import type {
+  TelegramAuditEvent,
+  TelegramOutboundMessage,
+  TelegramIngressResult,
+  TelegramReviewControl,
+  TelegramReviewDecision,
+} from "../telegram/contracts.js";
+import type { ProviderFailure } from "../providers/adapter-contract.js";
 import { lifecycleEventFor } from "./work-item-lifecycle.js";
 
 interface WorkItemRow {
@@ -81,6 +89,73 @@ interface StandingAuthorityRow {
   target_type: string;
   expires_at: string;
   granted_at: string;
+}
+
+interface TelegramReviewControlRow {
+  id: string;
+  work_item_id: string;
+  decision: TelegramReviewDecision;
+  target_version: string;
+  expires_at: string;
+  issued_at: string;
+  used_at: string | null;
+  claimed_update_id: number | null;
+  state: TelegramReviewControl["state"];
+}
+
+interface TelegramAuditEventRow {
+  sequence: number;
+  actor_id: string;
+  workspace_id: string;
+  event_type: TelegramAuditEvent["type"];
+  occurred_at: string;
+  details_json: string;
+}
+
+interface TelegramIngressResultRow {
+  update_id: number;
+  actor_id: string;
+  workspace_id: string;
+  result_json: string;
+  processed_at: string;
+}
+
+interface TelegramDeliveryReceiptRow {
+  idempotency_key: string;
+  actor_id: string;
+  workspace_id: string;
+  payload_digest: string;
+  delivered_at: string;
+}
+
+interface TelegramDeliveryOutboxRow {
+  idempotency_key: string;
+  actor_id: string;
+  workspace_id: string;
+  chat_id: string;
+  payload_json: string;
+  payload_digest: string;
+  state: "in-flight" | "sent" | "failed" | "uncertain";
+  attempt_count: number;
+  failure_class: ProviderFailure["class"] | null;
+  failure_retryable: number | null;
+  retry_after_ms: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type TelegramDeliveryClaim =
+  | { readonly kind: "send"; readonly attempt: number }
+  | { readonly kind: "sent" }
+  | { readonly kind: "uncertain" }
+  | { readonly kind: "deferred"; readonly failure: ProviderFailure }
+  | { readonly kind: "terminal-failure"; readonly failure: ProviderFailure }
+  | { readonly kind: "conflict" };
+
+export interface TelegramPendingDelivery {
+  readonly idempotencyKey: string;
+  readonly message: TelegramOutboundMessage;
+  readonly payloadDigest: string;
 }
 
 interface TableColumnRow {
@@ -171,6 +246,22 @@ function mapStandingAuthority(row: StandingAuthorityRow): StandingAuthority {
     targetType: row.target_type,
     expiresAt: row.expires_at,
     grantedAt: row.granted_at,
+  };
+}
+
+function mapTelegramReviewControl(
+  row: TelegramReviewControlRow,
+): TelegramReviewControl {
+  return {
+    id: row.id,
+    workItemId: row.work_item_id,
+    decision: row.decision,
+    targetVersion: row.target_version,
+    expiresAt: row.expires_at,
+    issuedAt: row.issued_at,
+    usedAt: row.used_at,
+    claimedUpdateId: row.claimed_update_id,
+    state: row.state,
   };
 }
 
@@ -274,6 +365,65 @@ export class OperationsState {
         FOREIGN KEY (work_item_id) REFERENCES work_items(id)
       );
 
+      CREATE TABLE IF NOT EXISTS telegram_audit_events (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        actor_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        occurred_at TEXT NOT NULL,
+        details_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS telegram_review_controls (
+        id TEXT PRIMARY KEY,
+        work_item_id TEXT NOT NULL,
+        decision TEXT NOT NULL,
+        target_version TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        issued_at TEXT NOT NULL,
+        used_at TEXT,
+        claimed_update_id INTEGER,
+        state TEXT NOT NULL,
+        FOREIGN KEY (work_item_id) REFERENCES work_items(id)
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS telegram_review_controls_exact_decision
+      ON telegram_review_controls (
+        work_item_id, target_version, expires_at, decision
+      );
+
+      CREATE TABLE IF NOT EXISTS telegram_ingress_results (
+        update_id INTEGER PRIMARY KEY,
+        actor_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        result_json TEXT NOT NULL,
+        processed_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS telegram_delivery_receipts (
+        idempotency_key TEXT PRIMARY KEY,
+        actor_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        payload_digest TEXT NOT NULL,
+        delivered_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS telegram_delivery_outbox (
+        idempotency_key TEXT PRIMARY KEY,
+        actor_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        chat_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        payload_digest TEXT NOT NULL,
+        state TEXT NOT NULL,
+        attempt_count INTEGER NOT NULL,
+        failure_class TEXT,
+        failure_retryable INTEGER,
+        retry_after_ms INTEGER,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
       CREATE TRIGGER IF NOT EXISTS audit_events_reject_update
       BEFORE UPDATE ON audit_events
       BEGIN
@@ -284,6 +434,42 @@ export class OperationsState {
       BEFORE DELETE ON audit_events
       BEGIN
         SELECT RAISE(ABORT, 'audit_events are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS telegram_audit_events_reject_update
+      BEFORE UPDATE ON telegram_audit_events
+      BEGIN
+        SELECT RAISE(ABORT, 'telegram_audit_events are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS telegram_audit_events_reject_delete
+      BEFORE DELETE ON telegram_audit_events
+      BEGIN
+        SELECT RAISE(ABORT, 'telegram_audit_events are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS telegram_ingress_results_reject_update
+      BEFORE UPDATE ON telegram_ingress_results
+      BEGIN
+        SELECT RAISE(ABORT, 'telegram_ingress_results are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS telegram_ingress_results_reject_delete
+      BEFORE DELETE ON telegram_ingress_results
+      BEGIN
+        SELECT RAISE(ABORT, 'telegram_ingress_results are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS telegram_delivery_receipts_reject_update
+      BEFORE UPDATE ON telegram_delivery_receipts
+      BEGIN
+        SELECT RAISE(ABORT, 'telegram_delivery_receipts are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS telegram_delivery_receipts_reject_delete
+      BEFORE DELETE ON telegram_delivery_receipts
+      BEGIN
+        SELECT RAISE(ABORT, 'telegram_delivery_receipts are append-only');
       END;
 
       CREATE TRIGGER IF NOT EXISTS work_items_require_outcome_before_review
@@ -298,6 +484,8 @@ export class OperationsState {
     `);
     this.#ensureWorkItemSchema();
     this.#ensureOutcomeReportSchema();
+    this.#ensureTelegramAuditSchema();
+    this.#ensureTelegramReviewControlSchema();
     this.#backfillRm01OutcomeEffects();
     this.#backfillOutcomeReportRevisions();
   }
@@ -383,6 +571,546 @@ export class OperationsState {
       occurredAt: row.occurred_at,
       details: parseJson<Record<string, unknown>>(row.details_json),
     }));
+  }
+
+  telegramAuditTrail(): TelegramAuditEvent[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT sequence, actor_id, workspace_id, event_type, occurred_at,
+                details_json
+         FROM telegram_audit_events
+         ORDER BY sequence ASC`,
+      )
+      .all() as unknown as TelegramAuditEventRow[];
+
+    return rows.map((row) => ({
+      sequence: row.sequence,
+      actorId: row.actor_id,
+      workspaceId: row.workspace_id,
+      type: row.event_type,
+      occurredAt: row.occurred_at,
+      details: parseJson<Record<string, unknown>>(row.details_json),
+    }));
+  }
+
+  recordTelegramAudit(
+    ownership: Pick<TelegramAuditEvent, "actorId" | "workspaceId">,
+    type: TelegramAuditEvent["type"],
+    occurredAt: string,
+    details: Readonly<Record<string, unknown>>,
+  ): void {
+    this.#appendTelegramAudit(ownership, type, occurredAt, details);
+  }
+
+  telegramIngressResult(updateId: number): TelegramIngressResult | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT update_id, actor_id, workspace_id, result_json, processed_at
+         FROM telegram_ingress_results WHERE update_id = ?`,
+      )
+      .get(updateId) as unknown as TelegramIngressResultRow | undefined;
+    return row === undefined
+      ? undefined
+      : parseJson<TelegramIngressResult>(row.result_json);
+  }
+
+  recordTelegramIngressResult(
+    updateId: number,
+    ownership: Pick<TelegramAuditEvent, "actorId" | "workspaceId">,
+    result: TelegramIngressResult,
+    processedAt: string,
+  ): TelegramIngressResult {
+    this.#database
+      .prepare(
+        `INSERT OR IGNORE INTO telegram_ingress_results (
+          update_id, actor_id, workspace_id, result_json, processed_at
+        ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        updateId,
+        ownership.actorId,
+        ownership.workspaceId,
+        JSON.stringify(result),
+        processedAt,
+      );
+    return this.telegramIngressResult(updateId) ?? result;
+  }
+
+  telegramDeliveryReceipt(
+    idempotencyKey: string,
+  ): { readonly payloadDigest: string; readonly deliveredAt: string } | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT idempotency_key, actor_id, workspace_id, payload_digest,
+                delivered_at
+         FROM telegram_delivery_receipts WHERE idempotency_key = ?`,
+      )
+      .get(idempotencyKey) as unknown as TelegramDeliveryReceiptRow | undefined;
+    return row === undefined
+      ? undefined
+      : { payloadDigest: row.payload_digest, deliveredAt: row.delivered_at };
+  }
+
+  recordTelegramDeliveryReceipt(
+    idempotencyKey: string,
+    ownership: Pick<TelegramAuditEvent, "actorId" | "workspaceId">,
+    payloadDigest: string,
+    deliveredAt: string,
+  ): void {
+    this.#database
+      .prepare(
+        `INSERT OR IGNORE INTO telegram_delivery_receipts (
+          idempotency_key, actor_id, workspace_id, payload_digest, delivered_at
+        ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        idempotencyKey,
+        ownership.actorId,
+        ownership.workspaceId,
+        payloadDigest,
+        deliveredAt,
+      );
+  }
+
+  claimTelegramDelivery(
+    idempotencyKey: string,
+    ownership: Pick<TelegramAuditEvent, "actorId" | "workspaceId">,
+    message: TelegramOutboundMessage,
+    payloadDigest: string,
+    occurredAt: string,
+  ): TelegramDeliveryClaim {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const row = this.#database
+        .prepare("SELECT * FROM telegram_delivery_outbox WHERE idempotency_key = ?")
+        .get(idempotencyKey) as unknown as TelegramDeliveryOutboxRow | undefined;
+      if (row !== undefined) {
+        if (row.payload_digest !== payloadDigest) {
+          this.#database.exec("COMMIT;");
+          return { kind: "conflict" };
+        }
+        if (row.state === "sent") {
+          this.#database.exec("COMMIT;");
+          return { kind: "sent" };
+        }
+        if (row.state === "in-flight" || row.state === "uncertain") {
+          this.#database.exec("COMMIT;");
+          return { kind: "uncertain" };
+        }
+        if (row.failure_retryable !== 1 || row.attempt_count >= 3) {
+          const failure: ProviderFailure = {
+            class: row.failure_class ?? "provider-error",
+            retryable: false,
+            message: "Telegram delivery exhausted its governed retry policy.",
+            ...(row.retry_after_ms === null
+              ? {}
+              : { retryAfterMs: row.retry_after_ms }),
+          };
+          this.#database.exec("COMMIT;");
+          return { kind: "terminal-failure", failure };
+        }
+        const retryAt =
+          Date.parse(row.updated_at) + (row.retry_after_ms ?? 0);
+        const currentTime = Date.parse(occurredAt);
+        if (
+          row.retry_after_ms !== null &&
+          Number.isFinite(retryAt) &&
+          Number.isFinite(currentTime) &&
+          currentTime < retryAt
+        ) {
+          const failure: ProviderFailure = {
+            class: row.failure_class ?? "rate-limited",
+            retryable: true,
+            message: "Telegram delivery is deferred by the provider retry policy.",
+            retryAfterMs: retryAt - currentTime,
+          };
+          this.#database.exec("COMMIT;");
+          return { kind: "deferred", failure };
+        }
+
+        this.#database
+          .prepare(
+            `UPDATE telegram_delivery_outbox
+             SET state = 'in-flight', attempt_count = attempt_count + 1,
+                 failure_class = NULL, failure_retryable = NULL,
+                 retry_after_ms = NULL, updated_at = ?
+             WHERE idempotency_key = ? AND state = 'failed'`,
+          )
+          .run(occurredAt, idempotencyKey);
+        this.#database.exec("COMMIT;");
+        return { kind: "send", attempt: row.attempt_count + 1 };
+      }
+
+      const legacyReceipt = this.telegramDeliveryReceipt(idempotencyKey);
+      if (legacyReceipt !== undefined) {
+        this.#database.exec("COMMIT;");
+        return legacyReceipt.payloadDigest === payloadDigest
+          ? { kind: "sent" }
+          : { kind: "conflict" };
+      }
+
+      this.#database
+        .prepare(
+          `INSERT INTO telegram_delivery_outbox (
+            idempotency_key, actor_id, workspace_id, chat_id, payload_json,
+            payload_digest, state, attempt_count, failure_class,
+            failure_retryable, retry_after_ms, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, 'in-flight', 1, NULL, NULL, NULL, ?, ?)`,
+        )
+        .run(
+          idempotencyKey,
+          ownership.actorId,
+          ownership.workspaceId,
+          message.chatId,
+          JSON.stringify(message),
+          payloadDigest,
+          occurredAt,
+          occurredAt,
+        );
+      this.#database.exec("COMMIT;");
+      return { kind: "send", attempt: 1 };
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  completeTelegramDelivery(
+    idempotencyKey: string,
+    ownership: Pick<TelegramAuditEvent, "actorId" | "workspaceId">,
+    payloadDigest: string,
+    occurredAt: string,
+  ): void {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const result = this.#database
+        .prepare(
+          `UPDATE telegram_delivery_outbox
+           SET state = 'sent', updated_at = ?
+           WHERE idempotency_key = ? AND payload_digest = ?
+             AND state = 'in-flight'`,
+        )
+        .run(occurredAt, idempotencyKey, payloadDigest);
+      if (result.changes !== 1) {
+        throw new Error("Telegram delivery claim changed before completion.");
+      }
+      this.#database
+        .prepare(
+          `INSERT OR IGNORE INTO telegram_delivery_receipts (
+            idempotency_key, actor_id, workspace_id, payload_digest, delivered_at
+          ) VALUES (?, ?, ?, ?, ?)`,
+        )
+        .run(
+          idempotencyKey,
+          ownership.actorId,
+          ownership.workspaceId,
+          payloadDigest,
+          occurredAt,
+        );
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  failTelegramDelivery(
+    idempotencyKey: string,
+    payloadDigest: string,
+    failure: ProviderFailure,
+    occurredAt: string,
+    outcome: "failed" | "uncertain" = "failed",
+  ): void {
+    const result = this.#database
+      .prepare(
+        `UPDATE telegram_delivery_outbox
+         SET state = ?, failure_class = ?, failure_retryable = ?,
+             retry_after_ms = ?, updated_at = ?
+         WHERE idempotency_key = ? AND payload_digest = ?
+           AND state = 'in-flight'`,
+      )
+      .run(
+        outcome,
+        failure.class,
+        failure.retryable ? 1 : 0,
+        failure.retryAfterMs ?? null,
+        occurredAt,
+        idempotencyKey,
+        payloadDigest,
+      );
+    if (result.changes !== 1) {
+      throw new Error("Telegram delivery claim changed before failure recording.");
+    }
+  }
+
+  pendingTelegramDeliveries(occurredAt: string): TelegramPendingDelivery[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT * FROM telegram_delivery_outbox
+         WHERE state = 'failed' AND failure_retryable = 1 AND attempt_count < 3
+         ORDER BY created_at ASC`,
+      )
+      .all() as unknown as TelegramDeliveryOutboxRow[];
+    const currentTime = Date.parse(occurredAt);
+    return rows
+      .filter((row) => {
+        if (row.retry_after_ms === null) {
+          return true;
+        }
+        const retryAt = Date.parse(row.updated_at) + row.retry_after_ms;
+        return Number.isFinite(currentTime) && currentTime >= retryAt;
+      })
+      .map((row) => ({
+        idempotencyKey: row.idempotency_key,
+        message: parseJson<TelegramOutboundMessage>(row.payload_json),
+        payloadDigest: row.payload_digest,
+      }));
+  }
+
+  telegramUncertainDeliveryCount(): number {
+    const row = this.#database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM telegram_delivery_outbox WHERE state IN ('in-flight', 'uncertain')",
+      )
+      .get() as unknown as { count: number };
+    return row.count;
+  }
+
+  issueTelegramReviewControls(
+    workItemId: string,
+    targetVersion: string,
+    expiresAt: string,
+    occurredAt: string,
+    expiryPolicy: string,
+  ): TelegramReviewControl[] {
+    const decisions: readonly TelegramReviewDecision[] = [
+      "approve",
+      "request-changes",
+      "reject",
+      "cancel",
+    ];
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const existingRows = this.#database
+        .prepare(
+          `SELECT * FROM telegram_review_controls
+           WHERE work_item_id = ? AND target_version = ?
+             AND expires_at = (
+               SELECT expires_at FROM telegram_review_controls
+               WHERE work_item_id = ? AND target_version = ?
+                 AND expires_at > ?
+                 AND state IN ('issued', 'awaiting-reason', 'applying')
+               ORDER BY issued_at DESC LIMIT 1
+             )`,
+        )
+        .all(
+          workItemId,
+          targetVersion,
+          workItemId,
+          targetVersion,
+          occurredAt,
+        ) as unknown as TelegramReviewControlRow[];
+      if (existingRows.length > 0) {
+        if (existingRows.length !== decisions.length) {
+          throw new Error(
+            "Telegram review-control set is incomplete for the exact target.",
+          );
+        }
+        const existing = existingRows
+          .map(mapTelegramReviewControl)
+          .sort(
+            (left, right) =>
+              decisions.indexOf(left.decision) -
+              decisions.indexOf(right.decision),
+          );
+        this.#database.exec("COMMIT;");
+        return existing;
+      }
+
+      const controls = decisions.map((decision) => ({
+        id: randomUUID(),
+        workItemId,
+        decision,
+        targetVersion,
+        expiresAt,
+        issuedAt: occurredAt,
+        usedAt: null,
+        claimedUpdateId: null,
+        state: "issued" as const,
+      }));
+      const statement = this.#database.prepare(
+        `INSERT INTO telegram_review_controls (
+          id, work_item_id, decision, target_version, expires_at,
+          issued_at, used_at, claimed_update_id, state
+        ) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, 'issued')`,
+      );
+      for (const control of controls) {
+        statement.run(
+          control.id,
+          control.workItemId,
+          control.decision,
+          control.targetVersion,
+          control.expiresAt,
+          control.issuedAt,
+        );
+      }
+      this.#appendTelegramAudit(
+        {
+          actorId: this.workItem(workItemId)?.actorId ?? "system:telegram",
+          workspaceId:
+            this.workItem(workItemId)?.workspaceId ?? "workspace:real-ming",
+        },
+        "telegram.review-controls-issued",
+        occurredAt,
+        {
+          workItemId,
+          targetVersion,
+          expiresAt,
+          expiryPolicy,
+          decisions,
+        },
+      );
+      this.#database.exec("COMMIT;");
+      return controls;
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+
+  }
+
+  telegramReviewControl(id: string): TelegramReviewControl | undefined {
+    const row = this.#database
+      .prepare("SELECT * FROM telegram_review_controls WHERE id = ?")
+      .get(id) as unknown as TelegramReviewControlRow | undefined;
+    return row === undefined ? undefined : mapTelegramReviewControl(row);
+  }
+
+  claimTelegramReviewControl(
+    id: string,
+    expectedState: "issued" | "awaiting-reason",
+    updateId: number,
+    occurredAt: string,
+  ): "claimed" | "replay" | "unavailable" {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const current = this.telegramReviewControl(id);
+      if (
+        current?.state === "applying" &&
+        current.claimedUpdateId === updateId
+      ) {
+        this.#database.exec("COMMIT;");
+        return "replay";
+      }
+      const result = this.#database
+        .prepare(
+          `UPDATE telegram_review_controls
+           SET state = 'applying', claimed_update_id = ?
+           WHERE id = ? AND state = ?`,
+        )
+        .run(updateId, id, expectedState);
+      if (result.changes !== 1) {
+        this.#database.exec("COMMIT;");
+        return "unavailable";
+      }
+      const control = this.telegramReviewControl(id);
+      this.#appendTelegramAudit(
+        {
+          actorId:
+            control === undefined
+              ? "system:telegram"
+              : (this.workItem(control.workItemId)?.actorId ??
+                "system:telegram"),
+          workspaceId:
+            control === undefined
+              ? "workspace:real-ming"
+              : (this.workItem(control.workItemId)?.workspaceId ??
+                "workspace:real-ming"),
+        },
+        "telegram.review-control-claimed",
+        occurredAt,
+        {
+          controlId: id,
+          workItemId: control?.workItemId,
+          decision: control?.decision,
+          updateId,
+        },
+      );
+      this.#database.exec("COMMIT;");
+      return "claimed";
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  markTelegramReviewControl(
+    id: string,
+    state: Exclude<TelegramReviewControl["state"], "issued">,
+    occurredAt: string,
+    reason?: string,
+    expectedState: TelegramReviewControl["state"] = "issued",
+    expectedUpdateId?: number,
+  ): boolean {
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const result = this.#database
+        .prepare(
+          `UPDATE telegram_review_controls
+           SET state = ?, used_at = CASE WHEN ? = 'used' THEN ? ELSE used_at END
+           WHERE id = ? AND state = ?
+             AND (? IS NULL OR claimed_update_id = ?)`,
+        )
+        .run(
+          state,
+          state,
+          occurredAt,
+          id,
+          expectedState,
+          expectedUpdateId ?? null,
+          expectedUpdateId ?? null,
+        );
+      if (result.changes !== 1) {
+        this.#database.exec("COMMIT;");
+        return false;
+      }
+
+      const control = this.telegramReviewControl(id);
+      this.#appendTelegramAudit(
+        {
+          actorId:
+            control === undefined
+              ? "system:telegram"
+              : (this.workItem(control.workItemId)?.actorId ??
+                "system:telegram"),
+          workspaceId:
+            control === undefined
+              ? "workspace:real-ming"
+              : (this.workItem(control.workItemId)?.workspaceId ??
+                "workspace:real-ming"),
+        },
+        state === "used"
+          ? "telegram.review-control-applied"
+          : state === "applying"
+            ? "telegram.review-control-claimed"
+            : state === "awaiting-reason"
+              ? "telegram.review-control-awaiting-reason"
+              : "telegram.review-control-rejected",
+        occurredAt,
+        {
+          controlId: id,
+          workItemId: control?.workItemId,
+          decision: control?.decision,
+          state,
+          ...(reason === undefined ? {} : { reason }),
+        },
+      );
+      this.#database.exec("COMMIT;");
+      return true;
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
   }
 
   createWorkItem(action: NormalizedCeoAction, occurredAt: string): WorkItem {
@@ -1096,5 +1824,57 @@ export class OperationsState {
         ) VALUES (?, ?, ?, ?)`,
       )
       .run(workItemId, type, occurredAt, JSON.stringify(details));
+  }
+
+  #ensureTelegramAuditSchema(): void {
+    const columns = this.#database
+      .prepare("PRAGMA table_info(telegram_audit_events)")
+      .all() as unknown as TableColumnRow[];
+    const names = new Set(columns.map((column) => column.name));
+
+    if (!names.has("actor_id")) {
+      this.#database.exec(
+        "ALTER TABLE telegram_audit_events ADD COLUMN actor_id TEXT NOT NULL DEFAULT 'system:legacy-telegram';",
+      );
+    }
+    if (!names.has("workspace_id")) {
+      this.#database.exec(
+        "ALTER TABLE telegram_audit_events ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'workspace:real-ming';",
+      );
+    }
+  }
+
+  #ensureTelegramReviewControlSchema(): void {
+    const columns = this.#database
+      .prepare("PRAGMA table_info(telegram_review_controls)")
+      .all() as unknown as TableColumnRow[];
+    const names = new Set(columns.map((column) => column.name));
+
+    if (!names.has("claimed_update_id")) {
+      this.#database.exec(
+        "ALTER TABLE telegram_review_controls ADD COLUMN claimed_update_id INTEGER;",
+      );
+    }
+  }
+
+  #appendTelegramAudit(
+    ownership: Pick<TelegramAuditEvent, "actorId" | "workspaceId">,
+    type: TelegramAuditEvent["type"],
+    occurredAt: string,
+    details: Readonly<Record<string, unknown>>,
+  ): void {
+    this.#database
+      .prepare(
+        `INSERT INTO telegram_audit_events (
+          actor_id, workspace_id, event_type, occurred_at, details_json
+        ) VALUES (?, ?, ?, ?, ?)`,
+      )
+      .run(
+        ownership.actorId,
+        ownership.workspaceId,
+        type,
+        occurredAt,
+        JSON.stringify(details),
+      );
   }
 }

@@ -11,6 +11,11 @@ import {
   type ProviderWriteResult,
 } from "../providers/adapter-contract.js";
 import { detectSensitiveFields } from "../operations/sensitive-secret.js";
+import {
+  createEphemeralTelegramDeliveryLedger,
+  createTelegramProviderAdapter,
+} from "../providers/telegram-provider-adapter.js";
+import type { TelegramDeliveryLedger } from "../providers/telegram-provider-adapter.js";
 
 export const contractSecretFixture = "provider-secret-must-never-be-reported";
 
@@ -21,11 +26,127 @@ export interface ContractScenario {
   readonly now?: string;
   readonly failure?: ProviderFailureClass;
   readonly emptyValue?: boolean;
+  readonly telegramDeliveryLedger?: TelegramDeliveryLedger;
+  readonly telegramUpdates?: readonly unknown[];
+  readonly telegramThrowAfterEffect?: boolean;
+  readonly telegramMalformedResponseAfterEffect?: boolean;
 }
 
-export interface ContractAdapter extends ProviderAdapter<readonly string[]> {
+export interface ContractAdapter extends ProviderAdapter<readonly unknown[]> {
   providerCallCount(): number;
   externalEffectCount(): number;
+  providerRequests(): readonly unknown[];
+}
+
+function createTelegramContractAdapter(
+  scenario: ContractScenario,
+): ContractAdapter {
+  const now = scenario.now ?? "2026-08-27T09:00:00.000Z";
+  const asOf = scenario.asOf ?? now;
+  let providerCalls = 0;
+  let externalEffects = 0;
+  const providerRequests: unknown[] = [];
+
+  const failureResponse = (
+    failureClass: ProviderFailureClass,
+  ): Response => {
+    const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
+      "authentication-failed": 401,
+      "invalid-input": 400,
+      "permission-denied": 403,
+      "rate-limited": 429,
+      "unsupported-capability": 400,
+      unavailable: 503,
+      "provider-error": 400,
+    };
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error_code: statusByClass[failureClass],
+        description: rawProviderError(failureClass),
+        ...(failureClass === "rate-limited"
+          ? { parameters: { retry_after: 1 } }
+          : {}),
+      }),
+      {
+        status: statusByClass[failureClass],
+        headers: { "content-type": "application/json" },
+      },
+    );
+  };
+
+  const fetchImplementation = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    providerCalls += 1;
+    if (scenario.failure !== undefined) {
+      return failureResponse(scenario.failure);
+    }
+
+    const url = String(input);
+    if (url.endsWith("/getUpdates")) {
+      providerRequests.push(
+        typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+      );
+      const result =
+        scenario.emptyValue === true
+          ? []
+          : scenario.telegramUpdates ?? [
+              {
+                update_id: 1,
+                message: {
+                  message_id: 1,
+                  date: Math.floor(Date.parse(asOf) / 1000),
+                  from: { id: 100000001 },
+                  chat: { id: 100000001, type: "private" },
+                  text: "Controlled contract update",
+                },
+              },
+            ];
+      return Response.json({ ok: true, result });
+    }
+
+    if (url.endsWith("/sendMessage")) {
+      externalEffects += 1;
+      providerRequests.push(
+        typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+      );
+      if (scenario.telegramThrowAfterEffect === true) {
+        throw new Error("Controlled ambiguous Telegram transport failure.");
+      }
+      if (scenario.telegramMalformedResponseAfterEffect === true) {
+        return new Response("{", {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return Response.json({ ok: true, result: { message_id: 1 } });
+    }
+
+    return Response.json(
+      { ok: false, error_code: 400 },
+      { status: 400 },
+    );
+  };
+
+  const adapter = createTelegramProviderAdapter({
+    botToken: "controlled-contract-token",
+    workspaceId: "workspace:real-ming",
+    accountReference: "telegram:account:real-ming",
+    deliveryLedger:
+      scenario.telegramDeliveryLedger ??
+      createEphemeralTelegramDeliveryLedger(),
+    fetch: fetchImplementation,
+    now: () => now,
+  });
+
+  return {
+    ...adapter,
+    providerCallCount: () => providerCalls,
+    externalEffectCount: () => externalEffects,
+    providerRequests: () => providerRequests,
+  };
 }
 
 export interface ProviderAdapterContractCase {
@@ -53,6 +174,7 @@ function createContractAdapter(options: {
     accountReference: `${provider}:account:real-ming`,
   };
   const performedEffects = new Map<string, string>();
+  const providerRequests: unknown[] = [];
   let providerCalls = 0;
 
   const provenanceFor = (reference: string): ProviderProvenance => ({
@@ -81,6 +203,7 @@ function createContractAdapter(options: {
     capabilities: () => capabilities,
     providerCallCount: () => providerCalls,
     externalEffectCount: () => performedEffects.size,
+    providerRequests: () => providerRequests,
 
     async read(
       request: ProviderReadRequest,
@@ -170,6 +293,7 @@ function createContractAdapter(options: {
       }
 
       performedEffects.set(request.idempotencyKey, request.reference);
+      providerRequests.push(request.payload);
       return {
         kind: "ok",
         identity,
@@ -204,6 +328,12 @@ export function providerAdapterContractCases(): readonly ProviderAdapterContract
           capabilities: ["read", "write"],
           scenario,
         }),
+    },
+    {
+      name: "telegram",
+      provider: "telegram",
+      capabilities: ["read", "write"],
+      createAdapter: createTelegramContractAdapter,
     },
   ];
 }

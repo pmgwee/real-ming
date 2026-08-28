@@ -289,7 +289,7 @@ interface CeoReviewRequestBase {
 export type CeoReviewRequest =
   | (CeoReviewRequestBase & { readonly decision: "complete" })
   | (CeoReviewRequestBase & {
-      readonly decision: "request-changes" | "cancel";
+      readonly decision: "request-changes" | "reject" | "cancel";
       readonly reason: string;
     });
 

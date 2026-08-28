@@ -30,6 +30,7 @@ import { detectSensitiveFields } from "./sensitive-secret.js";
 const reviewTargetStates = {
   complete: "Completed",
   "request-changes": "Changes Requested",
+  reject: "Cancelled",
   cancel: "Cancelled",
 } as const satisfies Readonly<
   Record<CeoReviewRequest["decision"], WorkItemState>
@@ -526,6 +527,7 @@ export function createOperationsGateway(options: {
       return options.state.transition(workItem.id, target, now(), {
         actorId: request.actorId,
         from: workItem.state,
+        decision: request.decision,
       });
     }
 
@@ -539,6 +541,7 @@ export function createOperationsGateway(options: {
     return options.state.transition(workItem.id, target, now(), {
       actorId: request.actorId,
       from: workItem.state,
+      decision: request.decision,
       reason: request.reason,
     });
   };

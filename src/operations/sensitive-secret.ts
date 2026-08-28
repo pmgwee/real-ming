@@ -19,6 +19,7 @@ const sensitiveValuePatterns: readonly RegExp[] = [
   /\bgh[pousr]_[A-Za-z0-9]{16,}\b/,
   /\bsk-[A-Za-z0-9-]{16,}\b/,
   /\bxox[abposr]-[A-Za-z0-9-]{10,}\b/,
+  /\b\d{5,12}:[A-Za-z0-9_-]{20,}\b/,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   /\b(?:\d[ -]?){13,19}\b/,
 ];

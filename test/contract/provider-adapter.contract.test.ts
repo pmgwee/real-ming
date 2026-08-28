@@ -10,18 +10,24 @@ import {
   providerFailure,
   type ProviderFailureClass,
 } from "../../src/providers/adapter-contract.js";
+import { createEphemeralTelegramDeliveryLedger } from "../../src/providers/telegram-provider-adapter.js";
+import type {
+  TelegramDeliveryLedger,
+  TelegramDeliveryLedgerReceipt,
+} from "../../src/providers/telegram-provider-adapter.js";
 
 const cases = providerAdapterContractCases();
 
 describe("RM-05 Provider Adapter Contract Harness", () => {
-  it("covers a read-only adapter and a read/write adapter", () => {
+  it("covers reference adapters and the Telegram read/write adapter", () => {
     expect(cases.map((entry) => entry.name)).toEqual([
       "read-only-reference",
       "read-write-reference",
+      "telegram",
     ]);
     expect(
       cases.map((entry) => entry.capabilities.includes("write")),
-    ).toEqual([false, true]);
+    ).toEqual([false, true, true]);
   });
 
   describe.each(cases)("$name", (contractCase: ProviderAdapterContractCase) => {
@@ -162,95 +168,448 @@ describe("RM-05 read-only adapter writes", () => {
 });
 
 describe("RM-05 read/write adapter effects", () => {
-  const readWriteCase = cases[1] as ProviderAdapterContractCase;
+  const writeCases = cases.filter((entry) =>
+    entry.capabilities.includes("write"),
+  );
 
-  it("performs one external effect and returns normalized provenance", async () => {
-    const adapter = readWriteCase.createAdapter({
-      now: "2026-08-27T09:00:00.000Z",
+  describe.each(writeCases)("$name", (contractCase) => {
+    it("performs one external effect and returns normalized provenance", async () => {
+      const adapter = contractCase.createAdapter({
+        now: "2026-08-27T09:00:00.000Z",
+      });
+
+      const result = await adapter.write({
+        idempotencyKey: "effect:1",
+        reference: "record:1",
+        payload: { note: "one bounded effect" },
+      });
+
+      expect(result).toMatchObject({
+        kind: "ok",
+        deduplicated: false,
+        effectReference: "effect:1",
+        provenance: { retrievedAt: "2026-08-27T09:00:00.000Z" },
+      });
+      expect(adapter.externalEffectCount()).toBe(1);
     });
 
-    const result = await adapter.write({
-      idempotencyKey: "effect:1",
-      reference: "record:1",
-      payload: { note: "one bounded effect" },
+    it("does not duplicate an external effect when a write is retried", async () => {
+      const adapter = contractCase.createAdapter({});
+      const request = {
+        idempotencyKey: "effect:1",
+        reference: "record:1",
+        payload: { note: "one bounded effect" },
+      };
+
+      const first = await adapter.write(request);
+      const retried = await adapter.write(request);
+
+      expect(first).toMatchObject({ kind: "ok", deduplicated: false });
+      expect(retried).toMatchObject({
+        kind: "ok",
+        deduplicated: true,
+        effectReference: "effect:1",
+      });
+      expect(adapter.externalEffectCount()).toBe(1);
     });
 
-    expect(result).toMatchObject({
+    it("does not record an external effect when the write fails", async () => {
+      const adapter = contractCase.createAdapter({ failure: "unavailable" });
+
+      const result = await adapter.write({
+        idempotencyKey: "effect:1",
+        reference: "record:1",
+        payload: { note: "one bounded effect" },
+      });
+
+      expect(result).toMatchObject({
+        kind: "failed",
+        failure: { class: "unavailable", retryable: true },
+      });
+      expect(adapter.externalEffectCount()).toBe(0);
+    });
+
+    it("rejects a write payload carrying a Sensitive Secret before any effect", async () => {
+      const adapter = contractCase.createAdapter({});
+
+      const result = await adapter.write({
+        idempotencyKey: "effect:1",
+        reference: "record:1",
+        payload: { transactionPassword: contractSecretFixture },
+      });
+
+      expect(result).toMatchObject({
+        kind: "failed",
+        failure: { class: "invalid-input", retryable: false },
+      });
+      expect(JSON.stringify(result)).not.toContain(contractSecretFixture);
+      expect(adapter.externalEffectCount()).toBe(0);
+      expect(adapter.providerCallCount()).toBe(0);
+    });
+
+    it("rejects an invalid idempotency key before contacting the provider", async () => {
+      const adapter = contractCase.createAdapter({});
+
+      const result = await adapter.write({
+        idempotencyKey: "",
+        reference: "record:1",
+        payload: { note: "one bounded effect" },
+      });
+
+      expect(result).toMatchObject({
+        kind: "failed",
+        failure: { class: "invalid-input", retryable: false },
+      });
+      expect(adapter.providerCallCount()).toBe(0);
+    });
+  });
+});
+
+describe("RM-07 Telegram review controls", () => {
+  it("claims a Telegram effect before concurrent provider calls", async () => {
+    const telegramCase = cases.find((entry) => entry.name === "telegram");
+    if (telegramCase === undefined) {
+      throw new Error("Expected the Telegram contract case.");
+    }
+    const adapter = telegramCase.createAdapter({});
+    const request = {
+      idempotencyKey: "telegram:concurrent-effect",
+      reference: "100000001",
+      payload: { text: "Deliver this concurrent effect once" },
+    } as const;
+
+    const results = await Promise.all([
+      adapter.write(request),
+      adapter.write(request),
+    ]);
+
+    expect(adapter.externalEffectCount()).toBe(1);
+    expect(results.filter((result) => result.kind === "ok")).toHaveLength(1);
+    expect(results.filter((result) => result.kind === "failed")).toMatchObject([
+      {
+        kind: "failed",
+        failure: {
+          class: "provider-error",
+          message: expect.stringContaining("already in flight"),
+        },
+      },
+    ]);
+  });
+
+  it("keeps an ambiguous Telegram effect claimed instead of retrying it", async () => {
+    const telegramCase = cases.find((entry) => entry.name === "telegram");
+    if (telegramCase === undefined) {
+      throw new Error("Expected the Telegram contract case.");
+    }
+    const adapter = telegramCase.createAdapter({
+      telegramThrowAfterEffect: true,
+    });
+    const request = {
+      idempotencyKey: "telegram:ambiguous-effect",
+      reference: "100000001",
+      payload: { text: "Deliver this ambiguous effect once" },
+    } as const;
+
+    await expect(adapter.write(request)).resolves.toMatchObject({
+      kind: "failed",
+      failure: {
+        class: "provider-error",
+        retryable: false,
+        message: expect.stringContaining("uncertain"),
+      },
+    });
+    await expect(adapter.write(request)).resolves.toMatchObject({
+      kind: "failed",
+      failure: { class: "provider-error", retryable: false },
+    });
+    expect(adapter.externalEffectCount()).toBe(1);
+  });
+
+  it("keeps a Telegram effect claimed when its success response is unreadable", async () => {
+    const telegramCase = cases.find((entry) => entry.name === "telegram");
+    if (telegramCase === undefined) {
+      throw new Error("Expected the Telegram contract case.");
+    }
+    const adapter = telegramCase.createAdapter({
+      telegramMalformedResponseAfterEffect: true,
+    });
+    const request = {
+      idempotencyKey: "telegram:malformed-success-effect",
+      reference: "100000001",
+      payload: { text: "Do not replay an unreadable success" },
+    } as const;
+
+    await expect(adapter.write(request)).resolves.toMatchObject({
+      kind: "failed",
+      failure: {
+        class: "provider-error",
+        retryable: false,
+        message: expect.stringContaining("uncertain"),
+      },
+    });
+    await expect(adapter.write(request)).resolves.toMatchObject({
+      kind: "failed",
+      failure: { class: "provider-error", retryable: false },
+    });
+    expect(adapter.externalEffectCount()).toBe(1);
+  });
+
+  it("keeps supported and identifiable unsupported updates in one polling batch", async () => {
+    const telegramCase = cases.find((entry) => entry.name === "telegram");
+    if (telegramCase === undefined) {
+      throw new Error("Expected the Telegram contract case.");
+    }
+    const adapter = telegramCase.createAdapter({
+      telegramUpdates: [
+        {
+          update_id: 51,
+          message: {
+            message_id: 501,
+            date: 1_787_866_800,
+            from: { id: 100000001 },
+            chat: { id: 100000001, type: "private" },
+            text: "/do Record the brief",
+          },
+        },
+        {
+          update_id: 52,
+          message: {
+            message_id: 502,
+            date: 1_787_866_801,
+            from: { id: 200000002 },
+            chat: { id: 200000002, type: "private" },
+            photo: [{ file_id: "must-not-persist" }],
+          },
+        },
+        {
+          update_id: 53,
+          edited_message: {
+            message_id: 503,
+            from: { id: 200000002 },
+            chat: { id: -100123, type: "supergroup" },
+            text: "must-not-enter-agent-context",
+          },
+        },
+        {
+          update_id: 54,
+          callback_query: {
+            id: "inline-callback",
+            from: { id: 200000002 },
+            inline_message_id: "opaque-inline-reference",
+            data: "rm-review:unknown",
+          },
+        },
+      ],
+    });
+
+    const result = await adapter.read({ reference: "offset:51" });
+
+    expect(result.kind).toBe("ok");
+    if (result.kind !== "ok") {
+      throw new Error("Expected a normalized Telegram read.");
+    }
+    expect(result.value).toEqual([
+      expect.objectContaining({
+        updateId: 51,
+        message: expect.objectContaining({ chatType: "private" }),
+      }),
+      {
+        updateId: 52,
+        unsupported: {
+          senderId: "200000002",
+          chatId: "200000002",
+          chatType: "private",
+          kind: "unsupported-message",
+        },
+      },
+      {
+        updateId: 53,
+        unsupported: {
+          senderId: "200000002",
+          chatId: "-100123",
+          chatType: "supergroup",
+          kind: "unsupported-message",
+        },
+      },
+      {
+        updateId: 54,
+        unattributed: { kind: "unsupported-update" },
+      },
+    ]);
+    expect(JSON.stringify(result.value)).not.toContain("must-not-persist");
+  });
+
+  it("does not duplicate a Telegram effect when the adapter is reconstructed", async () => {
+    const telegramCase = cases.find((entry) => entry.name === "telegram");
+    if (telegramCase === undefined) {
+      throw new Error("Expected the Telegram contract case.");
+    }
+    const ledger = createEphemeralTelegramDeliveryLedger();
+    const request = {
+      idempotencyKey: "telegram:restart-safe-effect",
+      reference: "100000001",
+      payload: { text: "Deliver this once across reconstruction" },
+    } as const;
+
+    const first = telegramCase.createAdapter({
+      telegramDeliveryLedger: ledger,
+    });
+    await expect(first.write(request)).resolves.toMatchObject({
       kind: "ok",
       deduplicated: false,
-      effectReference: "effect:1",
-      provenance: { retrievedAt: "2026-08-27T09:00:00.000Z" },
     });
-    expect(adapter.externalEffectCount()).toBe(1);
-  });
 
-  it("does not duplicate an external effect when a write is retried", async () => {
-    const adapter = readWriteCase.createAdapter({});
-    const request = {
-      idempotencyKey: "effect:1",
-      reference: "record:1",
-      payload: { note: "one bounded effect" },
-    };
-
-    const first = await adapter.write(request);
-    const retried = await adapter.write(request);
-
-    expect(first).toMatchObject({ kind: "ok", deduplicated: false });
-    expect(retried).toMatchObject({
+    const reconstructed = telegramCase.createAdapter({
+      telegramDeliveryLedger: ledger,
+    });
+    await expect(reconstructed.write(request)).resolves.toMatchObject({
       kind: "ok",
       deduplicated: true,
-      effectReference: "effect:1",
     });
-    expect(adapter.externalEffectCount()).toBe(1);
+    expect(first.externalEffectCount() + reconstructed.externalEffectCount()).toBe(1);
   });
 
-  it("does not record an external effect when the write fails", async () => {
-    const adapter = readWriteCase.createAdapter({ failure: "unavailable" });
+  it("does not replay an in-flight Telegram effect after adapter reconstruction", async () => {
+    const telegramCase = cases.find((entry) => entry.name === "telegram");
+    if (telegramCase === undefined) {
+      throw new Error("Expected the Telegram contract case.");
+    }
+    let inFlight: TelegramDeliveryLedgerReceipt | undefined;
+    const ledger: TelegramDeliveryLedger = {
+      claim: (_idempotencyKey, receipt) => {
+        if (inFlight === undefined) {
+          inFlight = receipt;
+          return "claimed";
+        }
+        return inFlight.reference === receipt.reference &&
+          inFlight.payloadDigest === receipt.payloadDigest
+          ? "in-flight"
+          : "conflict";
+      },
+      complete: () => {
+        // Simulate interruption after Telegram accepted the effect but before
+        // the durable ledger could mark it complete.
+      },
+      release: () => {
+        inFlight = undefined;
+      },
+    };
+    const request = {
+      idempotencyKey: "telegram:interrupted-effect",
+      reference: "100000001",
+      payload: { text: "Do not repeat an uncertain provider effect" },
+    } as const;
 
-    const result = await adapter.write({
-      idempotencyKey: "effect:1",
-      reference: "record:1",
-      payload: { note: "one bounded effect" },
+    const first = telegramCase.createAdapter({ telegramDeliveryLedger: ledger });
+    await expect(first.write(request)).resolves.toMatchObject({ kind: "ok" });
+
+    const reconstructed = telegramCase.createAdapter({
+      telegramDeliveryLedger: ledger,
     });
-
-    expect(result).toMatchObject({
+    await expect(reconstructed.write(request)).resolves.toMatchObject({
       kind: "failed",
-      failure: { class: "unavailable", retryable: true },
+      failure: {
+        class: "provider-error",
+        retryable: false,
+        message: expect.stringContaining("already in flight"),
+      },
     });
-    expect(adapter.externalEffectCount()).toBe(0);
+    expect(first.externalEffectCount() + reconstructed.externalEffectCount()).toBe(1);
   });
 
-  it("rejects a write payload carrying a Sensitive Secret before any effect", async () => {
-    const adapter = readWriteCase.createAdapter({});
+  it("advances Telegram polling from the requested durable offset", async () => {
+    const telegramCase = cases.find((entry) => entry.name === "telegram");
+    if (telegramCase === undefined) {
+      throw new Error("Expected the Telegram contract case.");
+    }
+    const adapter = telegramCase.createAdapter({});
+
+    await expect(adapter.read({ reference: "offset:42" })).resolves.toMatchObject({
+      kind: "ok",
+    });
+    expect(adapter.providerRequests()).toEqual([
+      {
+        offset: 42,
+        allowed_updates: ["message", "callback_query"],
+      },
+    ]);
+  });
+
+  it("renders one-time review controls as an inline keyboard", async () => {
+    const telegramCase = cases.find((entry) => entry.name === "telegram");
+    if (telegramCase === undefined) {
+      throw new Error("Expected the Telegram contract case.");
+    }
+    const adapter = telegramCase.createAdapter({});
 
     const result = await adapter.write({
-      idempotencyKey: "effect:1",
-      reference: "record:1",
-      payload: { transactionPassword: contractSecretFixture },
+      idempotencyKey: "telegram:review:work-item:outcome-report",
+      reference: "100000001",
+      payload: {
+        text: "Review this exact Outcome Report",
+        controls: JSON.stringify([
+          {
+            label: "Approve",
+            callbackData: "rm-review:00000000-0000-4000-8000-000000000001",
+          },
+          {
+            label: "Request changes",
+            callbackData: "rm-review:00000000-0000-4000-8000-000000000002",
+          },
+        ]),
+      },
+    });
+
+    expect(result).toMatchObject({ kind: "ok", deduplicated: false });
+    expect(adapter.providerRequests()).toEqual([
+      {
+        chat_id: "100000001",
+        text: "Review this exact Outcome Report",
+        reply_markup: {
+          inline_keyboard: [
+            [
+              {
+                text: "Approve",
+                callback_data:
+                  "rm-review:00000000-0000-4000-8000-000000000001",
+              },
+              {
+                text: "Request changes",
+                callback_data:
+                  "rm-review:00000000-0000-4000-8000-000000000002",
+              },
+            ],
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("rejects a Sensitive Secret embedded in inline review controls", async () => {
+    const telegramCase = cases.find((entry) => entry.name === "telegram");
+    if (telegramCase === undefined) {
+      throw new Error("Expected the Telegram contract case.");
+    }
+    const adapter = telegramCase.createAdapter({});
+    const sensitive = `sk-${"c".repeat(20)}`;
+
+    const result = await adapter.write({
+      idempotencyKey: "telegram:review:sensitive-control",
+      reference: "100000001",
+      payload: {
+        text: "Review this exact Outcome Report",
+        controls: JSON.stringify([
+          { label: "Approve", callbackData: sensitive },
+        ]),
+      },
     });
 
     expect(result).toMatchObject({
       kind: "failed",
       failure: { class: "invalid-input", retryable: false },
     });
-    expect(JSON.stringify(result)).not.toContain(contractSecretFixture);
+    expect(JSON.stringify(result)).not.toContain(sensitive);
     expect(adapter.externalEffectCount()).toBe(0);
-    expect(adapter.providerCallCount()).toBe(0);
-  });
-
-  it("rejects an invalid idempotency key before contacting the provider", async () => {
-    const adapter = readWriteCase.createAdapter({});
-
-    const result = await adapter.write({
-      idempotencyKey: "",
-      reference: "record:1",
-      payload: { note: "one bounded effect" },
-    });
-
-    expect(result).toMatchObject({
-      kind: "failed",
-      failure: { class: "invalid-input", retryable: false },
-    });
     expect(adapter.providerCallCount()).toBe(0);
   });
 });
