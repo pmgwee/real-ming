@@ -91,13 +91,15 @@
 
 While the app's publishing status is **Testing**, Google expires refresh tokens after **7 days**. The morning brief would work for a week and then silently stop authenticating.
 
-**First complete Branding.** Google refuses to publish while the OAuth configuration is incomplete, reporting *"Your app's OAuth configuration is incomplete"*. Only two fields are actually required:
+**First complete Branding.** Google refuses to publish while the OAuth configuration is incomplete, reporting *"Your app's OAuth configuration is incomplete"*. Google marks required fields with an asterisk. There are exactly three; **every other field on the page is optional**:
 
-| Field | Action |
+| Required field | Action |
 | --- | --- |
 | **App name** | Any identifiable name, shown on the consent screen |
-| **User support email** | Required — select your own account |
-| **Developer contact → Email addresses** | Required — your own address |
+| **User support email** | Select your own account |
+| **Developer contact → Email addresses** | Your own address. Reusing the support address is fine, but use one you actually read — Google sends project, OAuth, and security notices there, including a disabled client or a flagged scope. |
+
+If the incomplete-configuration message persists after the first two are filled, it is the Developer contact address that is still empty.
 
 ❌ **Do not upload an App logo.** The page states that uploading one forces verification unless the app is Internal or still in Testing — and you are about to leave Testing. A logo would push a personal app into Google's verification queue for no benefit.
 
