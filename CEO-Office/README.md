@@ -8,15 +8,15 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## 🚦 Current status
 
-*As of 2026-08-27 · run `npm run graph:status` for live truth*
+*As of 2026-08-28 · run `npm run graph:status` for live truth*
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **7 of 44** |
-| Startable by an agent right now | **0** |
-| Waiting on you | **2 gates** |
+| Phase 3 tickets closed | **9 of 44** |
+| Startable by an agent right now | **2** |
+| Waiting on you | **nothing** |
 
-**Agent work is fully stopped.** Every one of the 37 remaining tickets traces back to the two gates below. Nothing else can start until at least one is closed.
+**Both gates are closed, so agent work is unblocked.** The scheduler names `RM-07 · Operate the private Telegram front door` as next.
 
 ---
 
@@ -32,12 +32,19 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## ✅ What needs you
 
-| Priority | Gate | Unblocks | Runbook | Time |
-| --- | --- | --- | --- | --- |
-| **1 — do this first** | RM-06 · provision identities and secrets · [#7](https://github.com/pmgwee/real-ming/issues/7) | **36 tickets** | [GATE-1-provisioning-runbook.md](GATE-1-provisioning-runbook.md) | ~45 min |
-| 2 — can wait | RM-24 · choose the DuitSini pilot update · [#25](https://github.com/pmgwee/real-ming/issues/25) | 5 tickets | [GATE-2-pilot-selection-runbook.md](GATE-2-pilot-selection-runbook.md) | ~20 min thinking |
+**Nothing right now.** Both gates are closed:
 
-**Gate 1 is the whole bottleneck.** Gate 2 blocks only the DuitSini promotion chain and is not needed until late — you can leave it until the rest is built.
+| Gate | Closed | Outcome |
+| --- | --- | --- |
+| RM-06 · identities and secrets · [#7](https://github.com/pmgwee/real-ming/issues/7) | ✅ 28 Aug 2026 | 9/9 provisioned, TC-01 to TC-05 all pass. Control plane runs locally; always-on host deferred to RM-15. |
+| RM-24 · DuitSini pilot update · [#25](https://github.com/pmgwee/real-ming/issues/25) | ✅ 28 Aug 2026 | Add OpenCode and CommandCode provider presets. Code change plus a Supabase migration, so two separate Approvals. |
+
+Two things will come back to you mid-flight, both by design:
+
+- **RM-09** needs one Notion page shared with the `Real-Ming` connection, so it has somewhere to create Master Tasks. About a minute; it will ask.
+- **RM-11** needs a CEO-accepted status for every active item across your five legacy Notion task databases, plus Approval of the cutover plan before anything is mutated. That is a working session, not a rubber stamp.
+
+The runbooks stay as the record of what was done: [Gate 1](GATE-1-provisioning-runbook.md) · [Gate 2](GATE-2-pilot-selection-runbook.md).
 
 ---
 

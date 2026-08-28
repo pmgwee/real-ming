@@ -41,6 +41,53 @@ Keep working across turns until demonstrably satisfied.
 
 ---
 
+## Using a different agent (Codex, or anything else)
+
+`/goal` is a Claude Code slash command. It installs a stop condition that keeps the session working across turns. **Codex has no equivalent**, so it will read that line as ordinary text and is likely to stop after one ticket.
+
+Use this version instead. It drops the slash command, points the agent at the files that carry the conventions, and states the continuation rule in words rather than relying on a hook.
+
+```
+Continue the Real-Ming Phase 3 implementation.
+
+Repository: C:\Users\quekm\Desktop\projects\real-me
+Branch: feat/tracer-1-daily-operations (branched from main; docs/final-architecture-v1 is merged and retired)
+
+FIRST, read these in full before doing anything:
+  AGENTS.md                     - how work is selected, definition of done, branching, blockers, secrets
+  CEO-Office/README.md          - current status and anything waiting on the CEO
+  CONTEXT.md                    - the domain vocabulary; use these terms exactly
+  docs/specs/real-ming-v1.1.md  - the specification
+  docs/BASELINE.md              - the artifacts that must stay in step
+
+Then repeat this loop until the terminal condition holds:
+  1. Run `npm run graph:status` and take the node it names. Never pick a ticket
+     from memory and never increment a ticket number.
+  2. Assign that GitHub issue to yourself.
+  3. Read the issue, its comments, and the relevant ADRs under docs/adr/.
+  4. Implement only that issue's acceptance criteria.
+  5. Red-to-green TDD through the two approved harnesses only.
+  6. Run `npm run check`, `npm audit --audit-level=high`, `git diff --check`.
+     Verify by exit code, not by matching output text.
+  7. Run independent Standards and Spec reviews against the previous commit.
+     Reproduce any suspected defect with a failing test before fixing it.
+  8. Commit only that ticket's work, push, and close the issue with evidence.
+  9. Recompute the graph and immediately start the next node.
+
+DO NOT STOP after one ticket. A completion report is a checkpoint, not permission
+to stop. Keep going until `npm run graph:status` reports no ready-for-agent node.
+
+If you become blocked on something only the CEO can do, stop and say so plainly in
+your reply, write a runbook in CEO-Office/ following the existing format, refresh
+CEO-Office/README.md, and point him at it. Never bury a blocker in a summary.
+
+Ask before any outward-facing or hard-to-reverse action on a live account.
+
+Do not merge into main without explicit approval.
+```
+
+Everything else the agent needs is committed: `AGENTS.md` carries the working agreement, `CEO-Office/` carries the runbook format, and `docs/BASELINE.md` carries the milestone branching plan. No convention lives only in a chat transcript.
+
 ## What changed from the first run
 
 Two lines were added, both from what went wrong last time:

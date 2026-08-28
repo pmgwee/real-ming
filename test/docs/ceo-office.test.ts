@@ -67,6 +67,30 @@ describe("CEO Office", () => {
     expect(prompt).toContain("feat/tracer-1-daily-operations");
   });
 
+  it("carries a portable prompt for agents without Claude Code slash commands", () => {
+    const prompt = officeFile("RESUME-PROMPT.md");
+
+    expect(prompt).toContain("Codex has no equivalent");
+    expect(prompt).toContain("DO NOT STOP after one ticket");
+    expect(prompt).toContain("AGENTS.md");
+    expect(prompt).toContain("CONTEXT.md");
+  });
+
+  it("keeps the working agreement in AGENTS.md where any agent will read it", () => {
+    const agents = readFileSync(`${repositoryRoot}AGENTS.md`, "utf8");
+
+    for (const convention of [
+      "npm run graph:status",
+      "CEO-Office/",
+      "one pull request per milestone",
+      "Real-Ming System Harness",
+      "npm run secrets:preflight",
+      "Real-Ming v1.1",
+    ]) {
+      expect(agents).toContain(convention);
+    }
+  });
+
   it("carries a resume prompt that drives the scheduler, not ticket numbers", () => {
     const prompt = officeFile("RESUME-PROMPT.md");
 
