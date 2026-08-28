@@ -34,12 +34,23 @@
 
 ✅ **Expected:** a token containing a `:` and a numeric id of 9–10 digits.
 
-## Step B · Notion integration
+## Step B · Notion connection
 
-1. Go to **notion.so/my-integrations** → **New integration** → type **Internal** → pick your workspace.
-2. Copy the **Internal Integration Secret** → `REAL_MING_NOTION_TOKEN`
-3. Open the Notion page holding your **Master Tasks** database → `···` menu → **Connections** → **Connect to** → select your new integration.
-4. Copy the database id from the URL. In `notion.so/<workspace>/<32-char-id>?v=...` the 32-character hex string is the id → `REAL_MING_NOTION_MASTER_TASKS_ID`
+> 📛 **Notion renamed this UI.** What older guides call an *integration* is now a **connection**, and *Internal* is now the **Access token** authentication method. Same thing.
+
+1. Go to **notion.so/my-integrations** — it lands on **Developer tools → Connections**, listing any connections you already own.
+2. Click **+ New connection**.
+3. **Connection name:** `Real-Ming`
+4. **Authentication method:** select **Access token** — workspace-scoped, static, one workspace.
+
+   ❌ **Not OAuth.** OAuth is user-scoped for multi-workspace, Marketplace-eligible apps. Real-Ming needs a single workspace-scoped token.
+
+5. **Create connection**, then copy the token → `REAL_MING_NOTION_TOKEN`
+6. Confirm the connection's capabilities include **Read content**, **Update content**, and **Insert content**. Master Tasks is read/write, so all three are required.
+7. Open the Notion page holding your **Master Tasks** database → `···` menu → **Connections** → **Connect to** → select `Real-Ming`.
+8. Copy the database id from the URL. In `notion.so/<workspace>/<32-char-id>?v=...` the 32-character hex string is the id → `REAL_MING_NOTION_MASTER_TASKS_ID`
+
+> ⚠️ **Create a new connection — do not reuse an existing one.** If you already have connections such as `MingCreatives` or `content-creation-workflow`, leave them alone. Each credential must be independently revocable; sharing one token means revoking Real-Ming would also break whatever else uses it.
 
 > ⚠️ If Master Tasks does not exist yet, that is fine — RM-09 creates it. Share **one** existing task database now and update this value after RM-09.
 
@@ -133,6 +144,9 @@ Then restart the loop with [RESUME-PROMPT.md](RESUME-PROMPT.md).
 | `npm run check` fails on the credential scan | A real credential reached a tracked file. Remove it, rotate that credential immediately, and re-run. |
 | `.env` shows up in `git status` | Your `.gitignore` was modified. It must contain `.env`, `.env.*`, and `!.env.example`. |
 | Notion 32-char id looks wrong | You copied a *page* id, not a *database* id. Open the database as a full page first, then copy from the URL. |
+| Cannot find "New integration" in Notion | Notion renamed it. Use **+ New connection** on Developer tools -> Connections, and pick **Access token**, not OAuth. |
+| Notion API returns 404 for the database | The database is not shared with the connection. Redo Step B item 7 - sharing the parent page does not always cascade. |
+| Notion API returns 403 on a write | The connection lacks Update or Insert content capability. Fix it in the connection settings. |
 | BotFather token has no `:` | You copied the username, not the token. Re-run `/mybots` → your bot → **API Token**. |
 | Google consent screen blocks you | Add your own Google account under **Test users** on the OAuth consent screen. |
 
