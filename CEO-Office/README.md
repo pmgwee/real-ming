@@ -50,11 +50,12 @@ The runbooks stay as the record of what was done: [Gate 1](GATE-1-provisioning-r
 
 ## ▶️ How to restart agent work
 
-1. Finish a runbook above and close its GitHub issue.
-2. Run `npm run graph:status` — it should now name a real next ticket.
-3. Open [RESUME-PROMPT.md](RESUME-PROMPT.md), copy the whole block, paste it to Claude.
+1. Run `npm run graph:status` and confirm it names a ticket rather than `BLOCKED ON YOU`.
+2. Open [RESUME-PROMPT.md](RESUME-PROMPT.md) and copy the block that matches your agent.
 
 Nothing needs restarting or re-explaining. The scheduler reconciles against live GitHub, so a closed issue is all it takes.
+
+> 💡 **Using Codex or another agent?** `/goal` is a Claude Code slash command that installs a stop condition; other agents read it as plain text and are likely to stop after one ticket. `RESUME-PROMPT.md` carries a portable version for exactly that case. The conventions themselves live in `AGENTS.md`, which agents read by convention, so they do not depend on which tool you use.
 
 ---
 
