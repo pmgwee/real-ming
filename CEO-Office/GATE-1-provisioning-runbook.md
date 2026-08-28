@@ -91,6 +91,20 @@
 
 While the app's publishing status is **Testing**, Google expires refresh tokens after **7 days**. The morning brief would work for a week and then silently stop authenticating.
 
+**First complete Branding.** Google refuses to publish while the OAuth configuration is incomplete, reporting *"Your app's OAuth configuration is incomplete"*. Only two fields are actually required:
+
+| Field | Action |
+| --- | --- |
+| **App name** | Any identifiable name, shown on the consent screen |
+| **User support email** | Required — select your own account |
+| **Developer contact → Email addresses** | Required — your own address |
+
+❌ **Do not upload an App logo.** The page states that uploading one forces verification unless the app is Internal or still in Testing — and you are about to leave Testing. A logo would push a personal app into Google's verification queue for no benefit.
+
+❌ **Leave Application home page, privacy policy, Terms of Service, and Authorised domains blank.** A Desktop app authenticates over loopback and has no domain, so filling these only pulls Authorised domains into scope.
+
+Then:
+
 - **Google Auth Platform → Audience → Publish app** (status becomes *In production*).
 - Calendar is a sensitive scope, so an unverified app shows an "unverified app" warning at consent. For your own account that is fine — **Advanced → Go to Real-Ming (unsafe)**. Unverified apps with sensitive scopes are capped at 100 users; you need one.
 - Once published, the refresh token persists until you revoke it, change your password, or leave it unused for six months.
@@ -188,6 +202,9 @@ Then restart the loop with [RESUME-PROMPT.md](RESUME-PROMPT.md).
 | Google returns 403 on every Calendar call | The Calendar API is not enabled on the project, or the scope is missing under Data access. |
 | Google returns 403 only on writing an event | You granted `calendar.readonly` instead of `calendar.events`. Fix the scope, then re-consent to mint a new refresh token. |
 | Consent shows an "unverified app" warning | Expected for a sensitive scope on an unverified app. Choose **Advanced -> Go to Real-Ming (unsafe)**. |
+| "Your app's OAuth configuration is incomplete" when publishing | Branding is unfinished. Fill User support email and Developer contact email, then save. Those two are the only required fields. |
+| Google asks you to submit the app for verification | You uploaded an App logo, or filled a domain field. Remove them; neither is needed for a Desktop app used only by its owner. |
+| "Advanced settings are available for apps in production" | Informational. It disappears once the app is published on the Audience page. |
 
 ---
 
