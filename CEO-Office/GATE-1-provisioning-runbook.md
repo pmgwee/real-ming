@@ -105,6 +105,8 @@ If the incomplete-configuration message persists after the first two are filled,
 
 ❌ **Leave Application home page, privacy policy, Terms of Service, and Authorised domains blank.** A Desktop app authenticates over loopback and has no domain, so filling these only pulls Authorised domains into scope.
 
+⚠️ **Do not click "+ Add domain".** Empty means *no rows at all*, not *a blank row*. Adding a row makes it required, and the blank row then fails with *"Invalid domain: must not be empty"*, which blocks the whole page from saving. If you already added one, delete the row with the trash icon at the right of the field — hover over the row if it is not visible — rather than filling it in.
+
 Then:
 
 - **Google Auth Platform → Audience → Publish app** (status becomes *In production*).
@@ -204,7 +206,8 @@ Then restart the loop with [RESUME-PROMPT.md](RESUME-PROMPT.md).
 | Google returns 403 on every Calendar call | The Calendar API is not enabled on the project, or the scope is missing under Data access. |
 | Google returns 403 only on writing an event | You granted `calendar.readonly` instead of `calendar.events`. Fix the scope, then re-consent to mint a new refresh token. |
 | Consent shows an "unverified app" warning | Expected for a sensitive scope on an unverified app. Choose **Advanced -> Go to Real-Ming (unsafe)**. |
-| "Your app's OAuth configuration is incomplete" when publishing | Branding is unfinished. Fill User support email and Developer contact email, then save. Those two are the only required fields. |
+| "Your app's OAuth configuration is incomplete" when publishing | Branding is unfinished. Fill User support email and Developer contact email, then save. Those are the only required fields left once App name is set. |
+| "Invalid domain: must not be empty" under Authorised domains | You clicked **+ Add domain**, which created a required blank row. Delete the row with its trash icon. Do not fill it; a Desktop app has no domain. |
 | Google asks you to submit the app for verification | You uploaded an App logo, or filled a domain field. Remove them; neither is needed for a Desktop app used only by its owner. |
 | "Advanced settings are available for apps in production" | Informational. It disappears once the app is published on the Audience page. |
 
