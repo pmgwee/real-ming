@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   contractSecretFixture,
+  createNotionProvisioningContractHarness,
   providerAdapterContractCases,
   type ProviderAdapterContractCase,
 } from "../../src/testing/provider-adapter-contract-harness.js";
@@ -19,15 +20,16 @@ import type {
 const cases = providerAdapterContractCases();
 
 describe("RM-05 Provider Adapter Contract Harness", () => {
-  it("covers reference adapters and the Telegram read/write adapter", () => {
+  it("covers reference adapters plus the Telegram and Notion read/write adapters", () => {
     expect(cases.map((entry) => entry.name)).toEqual([
       "read-only-reference",
       "read-write-reference",
       "telegram",
+      "notion",
     ]);
     expect(
       cases.map((entry) => entry.capabilities.includes("write")),
-    ).toEqual([false, true, true]);
+    ).toEqual([false, true, true, true]);
   });
 
   describe.each(cases)("$name", (contractCase: ProviderAdapterContractCase) => {
@@ -611,6 +613,90 @@ describe("RM-07 Telegram review controls", () => {
     expect(JSON.stringify(result)).not.toContain(sensitive);
     expect(adapter.externalEffectCount()).toBe(0);
     expect(adapter.providerCallCount()).toBe(0);
+  });
+});
+
+describe("RM-09 Notion Master Tasks provisioning", () => {
+  it("creates the canonical schema and exactly six views over one data source", async () => {
+    const harness = createNotionProvisioningContractHarness();
+
+    const result = await harness.adapter.provisionMasterTasks({
+      parentPageId: "parent:real-ming-operations",
+      idempotencyKey: "rm09:provision:v1",
+    });
+
+    expect(result).toMatchObject({
+      kind: "ok",
+      value: {
+        dataSourceName: "Master Tasks",
+        views: [
+          { name: "CEO All Work", accountableExecutive: null },
+          { name: "COO Work View", accountableExecutive: "COO" },
+          {
+            name: "Personal CFO Work View",
+            accountableExecutive: "Personal CFO",
+          },
+          { name: "CAO Work View", accountableExecutive: "CAO" },
+          { name: "CTO Work View", accountableExecutive: "CTO" },
+          { name: "CMO Work View", accountableExecutive: "CMO" },
+        ],
+      },
+    });
+    if (result.kind !== "ok") {
+      throw new Error("Expected successful Notion provisioning.");
+    }
+    expect(new Set(result.value.views.map((view) => view.dataSourceId))).toEqual(
+      new Set([result.value.dataSourceId]),
+    );
+    expect(harness.databaseCreateCount()).toBe(1);
+    expect(harness.viewCreateCount()).toBe(6);
+    expect(harness.createdSchemaNames()).toEqual(
+      result.value.schema.map((property) => property.name),
+    );
+  });
+
+  it("reconciles the desired resources on replay without creating duplicates", async () => {
+    const harness = createNotionProvisioningContractHarness();
+    const request = {
+      parentPageId: "parent:real-ming-operations",
+      idempotencyKey: "rm09:provision:v1",
+    } as const;
+
+    const first = await harness.adapter.provisionMasterTasks(request);
+    const replay = await harness.adapter.provisionMasterTasks(request);
+
+    expect(first).toEqual(replay);
+    expect(harness.databaseCreateCount()).toBe(1);
+    expect(harness.viewCreateCount()).toBe(6);
+  });
+
+  it("resumes an interrupted partial run and creates only the missing views", async () => {
+    const harness = createNotionProvisioningContractHarness({
+      failViewCreateOnceAt: 3,
+    });
+    const request = {
+      parentPageId: "parent:real-ming-operations",
+      idempotencyKey: "rm09:provision:v1",
+    } as const;
+
+    await expect(harness.adapter.provisionMasterTasks(request)).resolves.toMatchObject({
+      kind: "failed",
+      failure: { class: "unavailable", retryable: true },
+    });
+    await expect(harness.adapter.provisionMasterTasks(request)).resolves.toMatchObject({
+      kind: "ok",
+      value: { views: expect.arrayContaining([expect.any(Object)]) },
+    });
+    expect(harness.databaseCreateCount()).toBe(1);
+    expect(harness.viewCreateCount()).toBe(6);
+    expect(harness.viewNames()).toEqual([
+      "CEO All Work",
+      "COO Work View",
+      "Personal CFO Work View",
+      "CAO Work View",
+      "CTO Work View",
+      "CMO Work View",
+    ]);
   });
 });
 

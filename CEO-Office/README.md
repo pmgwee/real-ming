@@ -12,11 +12,11 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **9 of 44** |
-| Startable by an agent right now | **2** |
-| Waiting on you | **nothing** |
+| Phase 3 tickets closed | **10 of 44** |
+| Startable by an agent right now | **RM-09 after the action below** |
+| Waiting on you | **Share one empty Notion parent page** |
 
-**Both gates are closed, so agent work is unblocked.** The scheduler names `RM-07 · Operate the private Telegram front door` as next.
+**RM-07 is complete. RM-09 is selected and waiting on one Notion access action from Ming.** Follow [RM-09 — Share the Master Tasks parent page](RM-09-master-tasks-provisioning-runbook.md), then send the page link and explicit approval sentence to the implementation agent.
 
 ---
 
@@ -32,16 +32,17 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## ✅ What needs you
 
-**Nothing right now.** Both gates are closed:
+**One action for RM-09:** create an empty Notion page named `Real-Ming Operations`, connect the existing `Real-Ming` connection, and send its page link with approval to create Master Tasks. Full steps: [RM-09 provisioning runbook](RM-09-master-tasks-provisioning-runbook.md).
+
+Both initial gates remain closed:
 
 | Gate | Closed | Outcome |
 | --- | --- | --- |
 | RM-06 · identities and secrets · [#7](https://github.com/pmgwee/real-ming/issues/7) | ✅ 28 Aug 2026 | 9/9 provisioned, TC-01 to TC-05 all pass. Control plane runs locally; always-on host deferred to RM-15. |
 | RM-24 · DuitSini pilot update · [#25](https://github.com/pmgwee/real-ming/issues/25) | ✅ 28 Aug 2026 | Add OpenCode and CommandCode provider presets. Code change plus a Supabase migration, so two separate Approvals. |
 
-Two things will come back to you mid-flight, both by design:
+One further working session will come back to you mid-flight, by design:
 
-- **RM-09** needs one Notion page shared with the `Real-Ming` connection, so it has somewhere to create Master Tasks. About a minute; it will ask.
 - **RM-11** needs a CEO-accepted status for every active item across your five legacy Notion task databases, plus Approval of the cutover plan before anything is mutated. That is a working session, not a rubber stamp.
 
 The runbooks stay as the record of what was done: [Gate 1](GATE-1-provisioning-runbook.md) · [Gate 2](GATE-2-pilot-selection-runbook.md).
@@ -83,6 +84,7 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [RESUME-PROMPT.md](RESUME-PROMPT.md) | The prompt to paste to restart the graph loop |
 | [GATE-1-provisioning-runbook.md](GATE-1-provisioning-runbook.md) | Step-by-step: create identities, store secrets, verify |
 | [GATE-2-pilot-selection-runbook.md](GATE-2-pilot-selection-runbook.md) | Step-by-step: choose and capture the DuitSini pilot |
+| [RM-09-master-tasks-provisioning-runbook.md](RM-09-master-tasks-provisioning-runbook.md) | One-minute Notion parent-page share required to create Master Tasks |
 | [CREDENTIAL-INVENTORY.md](CREDENTIAL-INVENTORY.md) | All ten credentials: owner, purpose, environment, revocation — **no values** |
 
 ---

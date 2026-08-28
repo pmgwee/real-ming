@@ -50,8 +50,30 @@ import type {
   TelegramUpdate,
 } from "../telegram/contracts.js";
 import type { ProviderFailure } from "../providers/adapter-contract.js";
+import {
+  InMemoryMasterTasksWorkspace,
+  type EditMasterTaskThroughViewRequest,
+  type MasterTaskRecord,
+  type MasterTasksProvisioning,
+  type MasterTasksViewName,
+  type PutMasterTaskRequest,
+  type TransitionMasterTaskRequest,
+} from "../master-tasks/master-tasks.js";
 
 export interface RealMingSystemHarness {
+  provisionMasterTasks(request: {
+    readonly parentPageId: string;
+    readonly idempotencyKey: string;
+  }): Promise<MasterTasksProvisioning>;
+  putMasterTask(request: PutMasterTaskRequest): Promise<MasterTaskRecord>;
+  editMasterTaskThroughView(
+    request: EditMasterTaskThroughViewRequest,
+  ): Promise<MasterTaskRecord>;
+  transitionMasterTask(
+    request: TransitionMasterTaskRequest,
+  ): Promise<MasterTaskRecord>;
+  masterTasksView(name: MasterTasksViewName): readonly MasterTaskRecord[];
+  masterTasksExternalEffectCount(): number;
   submitCeoCommand(command: CeoCommand): Promise<CeoCommandResult>;
   submitCeoAction(action: NormalizedCeoAction): Promise<OperationsResult>;
   executeWorkItem(workItemId: string): Promise<OperationsResult>;
@@ -278,6 +300,7 @@ export function createRealMingSystemHarness(options: {
   };
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
+  const masterTasks = new InMemoryMasterTasksWorkspace(options.now);
   const ledger = new ControlledEffectLedger();
   const worker = new InMemoryControlledWorker(
     ledger,
@@ -343,6 +366,13 @@ export function createRealMingSystemHarness(options: {
   });
 
   return {
+    provisionMasterTasks: async (request) => masterTasks.provision(request),
+    putMasterTask: async (request) => masterTasks.put(request),
+    editMasterTaskThroughView: async (request) =>
+      masterTasks.editThroughView(request),
+    transitionMasterTask: async (request) => masterTasks.transition(request),
+    masterTasksView: (name) => masterTasks.view(name),
+    masterTasksExternalEffectCount: () => masterTasks.externalEffectCount(),
     submitCeoCommand: (command) => gateway.submitCeoCommand(command),
     submitCeoAction: (action) => gateway.submitCeoAction(action),
     executeWorkItem: (workItemId) => gateway.executeWorkItem(workItemId),

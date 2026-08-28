@@ -16,6 +16,10 @@ import {
   createTelegramProviderAdapter,
 } from "../providers/telegram-provider-adapter.js";
 import type { TelegramDeliveryLedger } from "../providers/telegram-provider-adapter.js";
+import {
+  createNotionProviderAdapter,
+  type NotionProviderAdapter,
+} from "../providers/notion-provider-adapter.js";
 
 export const contractSecretFixture = "provider-secret-must-never-be-reported";
 
@@ -146,6 +150,251 @@ function createTelegramContractAdapter(
     providerCallCount: () => providerCalls,
     externalEffectCount: () => externalEffects,
     providerRequests: () => providerRequests,
+  };
+}
+
+function createNotionContractAdapter(
+  scenario: ContractScenario,
+): ContractAdapter {
+  const now = scenario.now ?? "2026-08-27T09:00:00.000Z";
+  const asOf = scenario.asOf ?? now;
+  let providerCalls = 0;
+  let externalEffects = 0;
+  const providerRequests: unknown[] = [];
+
+  const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
+    "authentication-failed": 401,
+    "invalid-input": 404,
+    "permission-denied": 403,
+    "rate-limited": 429,
+    "unsupported-capability": 400,
+    unavailable: 503,
+    "provider-error": 422,
+  };
+
+  const fetchImplementation = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    providerCalls += 1;
+    if (scenario.failure !== undefined) {
+      return Response.json(
+        {
+          object: "error",
+          message: rawProviderError(scenario.failure),
+        },
+        {
+          status: statusByClass[scenario.failure],
+          ...(scenario.failure === "rate-limited"
+            ? { headers: { "retry-after": "1" } }
+            : {}),
+        },
+      );
+    }
+
+    const url = String(input);
+    providerRequests.push({
+      url,
+      method: init?.method ?? "GET",
+      body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+    });
+    if (url.includes("/query")) {
+      return Response.json({
+        object: "list",
+        results:
+          scenario.emptyValue === true
+            ? []
+            : [{ id: "notion-page:1", last_edited_time: asOf }],
+        has_more: false,
+        next_cursor: null,
+      });
+    }
+    if ((init?.method ?? "GET") === "PATCH") {
+      externalEffects += 1;
+      return Response.json({ object: "page", id: "notion-page:1" });
+    }
+    return Response.json({ object: "error", message: "Unsupported fixture request." }, { status: 422 });
+  };
+
+  const adapter = createNotionProviderAdapter({
+    token: contractSecretFixture,
+    workspaceId: "workspace:real-ming",
+    accountReference: "notion:account:real-ming",
+    fetch: fetchImplementation,
+    now: () => now,
+  });
+
+  return {
+    ...adapter,
+    providerCallCount: () => providerCalls,
+    externalEffectCount: () => externalEffects,
+    providerRequests: () => providerRequests,
+  };
+}
+
+export interface NotionProvisioningContractHarness {
+  readonly adapter: NotionProviderAdapter;
+  databaseCreateCount(): number;
+  viewCreateCount(): number;
+  createdSchemaNames(): readonly string[];
+  viewNames(): readonly string[];
+}
+
+export function createNotionProvisioningContractHarness(options: {
+  readonly failViewCreateOnceAt?: number;
+} = {}): NotionProvisioningContractHarness {
+  const databaseId = "notion-database:master-tasks";
+  const dataSourceId = "notion-data-source:master-tasks";
+  let databaseExists = false;
+  let databasesCreated = 0;
+  let viewAttempts = 0;
+  let viewsCreated = 0;
+  let failedConfiguredAttempt = false;
+  let schemaNames: readonly string[] = [];
+  let createdSchema: Readonly<Record<string, unknown>> = {};
+  const views: Array<{ readonly id: string; readonly name: string }> = [];
+
+  const databaseResponse = () => ({
+    object: "database",
+    id: databaseId,
+    data_sources: [{ id: dataSourceId, name: "Master Tasks" }],
+  });
+
+  const fetchImplementation = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+
+    if (url.pathname.includes("/blocks/") && url.pathname.endsWith("/children")) {
+      return Response.json({
+        object: "list",
+        results: databaseExists
+          ? [
+              {
+                object: "block",
+                id: databaseId,
+                type: "child_database",
+                child_database: { title: "Master Tasks" },
+              },
+            ]
+          : [],
+        has_more: false,
+        next_cursor: null,
+      });
+    }
+
+    if (url.pathname === "/v1/databases" && method === "POST") {
+      const body =
+        typeof init?.body === "string"
+          ? (JSON.parse(init.body) as Record<string, unknown>)
+          : {};
+      const initial = body["initial_data_source"];
+      const properties =
+        typeof initial === "object" && initial !== null
+          ? (initial as Record<string, unknown>)["properties"]
+          : undefined;
+      schemaNames =
+        typeof properties === "object" && properties !== null
+          ? Object.keys(properties)
+          : [];
+      createdSchema =
+        typeof properties === "object" && properties !== null
+          ? (properties as Readonly<Record<string, unknown>>)
+          : {};
+      databaseExists = true;
+      databasesCreated += 1;
+      return Response.json(databaseResponse());
+    }
+
+    if (url.pathname === `/v1/databases/${databaseId}` && method === "GET") {
+      return Response.json(databaseResponse());
+    }
+
+    if (url.pathname === `/v1/data_sources/${dataSourceId}` && method === "GET") {
+      return Response.json({
+        object: "data_source",
+        id: dataSourceId,
+        properties: Object.fromEntries(
+          Object.entries(createdSchema).map(([name, schema]) => {
+            const type =
+              typeof schema === "object" && schema !== null
+                ? Object.keys(schema)[0]
+                : undefined;
+            return [name, { ...(schema as object), type }];
+          }),
+        ),
+      });
+    }
+
+    if (url.pathname === "/v1/views" && method === "GET") {
+      return Response.json({
+        object: "list",
+        results: views.map((view) => ({ object: "view", id: view.id })),
+        has_more: false,
+        next_cursor: null,
+      });
+    }
+
+    if (url.pathname.startsWith("/v1/views/") && method === "GET") {
+      const id = url.pathname.slice("/v1/views/".length);
+      const view = views.find((candidate) => candidate.id === id);
+      return view === undefined
+        ? Response.json(
+            { object: "error", message: "Unknown controlled view." },
+            { status: 404 },
+          )
+        : Response.json(view);
+    }
+
+    if (url.pathname === "/v1/views" && method === "POST") {
+      viewAttempts += 1;
+      if (
+        options.failViewCreateOnceAt === viewAttempts &&
+        !failedConfiguredAttempt
+      ) {
+        failedConfiguredAttempt = true;
+        return Response.json(
+          { object: "error", message: "Controlled Notion interruption." },
+          { status: 503 },
+        );
+      }
+      const body =
+        typeof init?.body === "string"
+          ? (JSON.parse(init.body) as Record<string, unknown>)
+          : {};
+      const name = body["name"];
+      if (typeof name !== "string") {
+        return Response.json(
+          { object: "error", message: "View name is required." },
+          { status: 422 },
+        );
+      }
+      const view = { id: `notion-view:${views.length + 1}`, name };
+      views.push(view);
+      viewsCreated += 1;
+      return Response.json(view);
+    }
+
+    return Response.json(
+      { object: "error", message: `Unsupported fixture request: ${method} ${url.pathname}` },
+      { status: 422 },
+    );
+  };
+
+  return {
+    adapter: createNotionProviderAdapter({
+      token: contractSecretFixture,
+      workspaceId: "workspace:real-ming",
+      accountReference: "notion:account:real-ming",
+      fetch: fetchImplementation,
+      now: () => "2026-08-27T09:00:00.000Z",
+    }),
+    databaseCreateCount: () => databasesCreated,
+    viewCreateCount: () => viewsCreated,
+    createdSchemaNames: () => schemaNames,
+    viewNames: () => views.map((view) => view.name),
   };
 }
 
@@ -334,6 +583,12 @@ export function providerAdapterContractCases(): readonly ProviderAdapterContract
       provider: "telegram",
       capabilities: ["read", "write"],
       createAdapter: createTelegramContractAdapter,
+    },
+    {
+      name: "notion",
+      provider: "notion",
+      capabilities: ["read", "write"],
+      createAdapter: createNotionContractAdapter,
     },
   ];
 }
