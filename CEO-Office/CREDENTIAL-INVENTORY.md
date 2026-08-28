@@ -19,6 +19,18 @@ Generated from `src/config/tracer-secrets.ts`. A test fails the build if this ta
 | `REAL_MING_VAULT_KEY` | CEO | Derive the Knowledge Vault encryption key. | Provision during Gate 1 | control-plane | Re-key the vault and republish each root generation. |
 | `REAL_MING_WORKER_SHARED_SECRET` | CEO | Authenticate the Lenovo private worker to the control plane. | Provision during Gate 1 | private-worker | Rotate the shared secret on both the worker and control plane. |
 
+## Where the control plane runs
+
+Recorded 28 August 2026 as part of RM-06.
+
+| | |
+| --- | --- |
+| **Today** | Ming's local machine, with values in a gitignored `.env` at the repository root. |
+| **Secret storage** | The same `.env`. Never committed; `.gitignore` carries `.env` and `.env.*` with `!.env.example` as the sole exception. |
+| **Still to choose** | A genuinely always-on host. Deferred to RM-15, *Run Daily Operations in the always-on environment*, which is where it first matters. |
+
+RM-07 through RM-14 are implemented and verified locally, so the local machine is sufficient for them. RM-15 is the point at which a laptop that sleeps stops being adequate: a 07:30 brief cannot fire reliably from a machine that is closed. The specification deliberately leaves the hosting vendor out of scope, so that choice stays open until RM-15 forces it.
+
 ## Handling rules
 
 - Values live only in the authorized secret store or an ignored `.env`. `.env.example` carries names and never values.
