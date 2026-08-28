@@ -12,6 +12,18 @@ The repository uses the five canonical triage labels. See `docs/agents/triage-la
 
 This is a single-context repository with `CONTEXT.md` and system-wide ADRs under `docs/adr/`. See `docs/agents/domain.md`.
 
+## Environment prerequisites
+
+The loop needs three things present before the first ticket:
+
+| Requirement | Check | Fix |
+| --- | --- | --- |
+| `gh` authenticated | `gh auth status` | `gh auth login` |
+| Chromium for the browser tests | `node -e "require('playwright').chromium.launch({headless:true}).then(b=>b.close())"` | `npx playwright install chromium` |
+| `.env` present | `npm run secrets:preflight` | see `CEO-Office/GATE-1-provisioning-runbook.md` |
+
+`npm run check` runs a real browser test for the CEO dashboard and **fails rather than skips** when Chromium cannot launch. That is deliberate: a silent skip would let the dashboard read model go unproven while the suite still reported green. Install the browser rather than weakening the test.
+
 ## How work is selected
 
 Never choose a ticket from memory, and never increment a ticket number. The scheduler decides:
