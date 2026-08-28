@@ -56,12 +56,31 @@
 
 ## Step C · Google OAuth client for Calendar
 
+> 📛 **Google renamed this UI too.** The old *APIs & Services → Credentials → OAuth consent screen* is now **Google Auth Platform** with its own left nav:
+>
+> | Old name | Now |
+> | --- | --- |
+> | Credentials | **Clients** |
+> | OAuth consent screen | **Audience** (plus **Branding**) |
+> | Scopes | **Data access** |
+
 1. **console.cloud.google.com** → create or select a project.
-2. **APIs & Services → Library** → enable **Google Calendar API**.
-3. **OAuth consent screen** → External → add yourself as a **Test user**.
-4. **Credentials → Create credentials → OAuth client ID → Desktop app**.
-5. Copy → `REAL_MING_GOOGLE_CLIENT_ID` and `REAL_MING_GOOGLE_CLIENT_SECRET`
-6. You also need a **refresh token** (`REAL_MING_GOOGLE_REFRESH_TOKEN`) so the system keeps access without re-consenting.
+2. **APIs & Services → Library** → enable **Google Calendar API**. Do this first; without it the client is created fine but every call returns 403.
+3. **Google Auth Platform → Audience** → user type **External** → add your own Google account under **Test users**.
+4. **Google Auth Platform → Data access** → add the Calendar scope your account needs (`.../auth/calendar` for read/write, or `.../auth/calendar.readonly` to start read-only).
+5. **Google Auth Platform → Clients → Create client** → Application type **Desktop app** → name it `Real-Ming` rather than leaving `Desktop client 1`, so it is identifiable when you revoke it.
+6. Copy → `REAL_MING_GOOGLE_CLIENT_ID` and `REAL_MING_GOOGLE_CLIENT_SECRET`
+7. You also need a **refresh token** (`REAL_MING_GOOGLE_REFRESH_TOKEN`) so the system keeps access without re-consenting.
+
+### ⏰ Publish the app, or the refresh token dies in 7 days
+
+While the app's publishing status is **Testing**, Google expires refresh tokens after **7 days**. The morning brief would work for a week and then silently stop authenticating.
+
+- **Google Auth Platform → Audience → Publish app** (status becomes *In production*).
+- Calendar is a sensitive scope, so an unverified app shows an "unverified app" warning at consent. For your own account that is fine — **Advanced → Go to Real-Ming (unsafe)**. Unverified apps with sensitive scopes are capped at 100 users; you need one.
+- Once published, the refresh token persists until you revoke it, change your password, or leave it unused for six months.
+
+Do this **before** minting the refresh token in item 7, otherwise you will mint one that expires and have to redo it.
 
 > 🙋 **The refresh token step is fiddly.** Tell me and I will add a one-time local helper that runs the consent flow in your browser and writes the token straight into `.env` — I never see the value. Say *"add the Google OAuth helper"*.
 
@@ -148,7 +167,11 @@ Then restart the loop with [RESUME-PROMPT.md](RESUME-PROMPT.md).
 | Notion API returns 404 for the database | The database is not shared with the connection. Redo Step B item 7 - sharing the parent page does not always cascade. |
 | Notion API returns 403 on a write | The connection lacks Update or Insert content capability. Fix it in the connection settings. |
 | BotFather token has no `:` | You copied the username, not the token. Re-run `/mybots` → your bot → **API Token**. |
-| Google consent screen blocks you | Add your own Google account under **Test users** on the OAuth consent screen. |
+| Google consent screen blocks you | Add your own Google account under **Test users** on Google Auth Platform -> Audience. |
+| Cannot find "Credentials" or "OAuth consent screen" in Google | Renamed. Credentials is now **Clients**, OAuth consent screen is now **Audience**, Scopes is now **Data access**, all under Google Auth Platform. |
+| Calendar worked for about a week then stopped authenticating | The app is still in **Testing**, so the refresh token expired after 7 days. Publish the app, then mint a new refresh token. |
+| Google returns 403 on every Calendar call | The Calendar API is not enabled on the project, or the scope is missing under Data access. |
+| Consent shows an "unverified app" warning | Expected for a sensitive scope on an unverified app. Choose **Advanced -> Go to Real-Ming (unsafe)**. |
 
 ---
 
