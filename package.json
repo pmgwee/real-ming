@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm run test && npm run build",
     "graph:status": "npm run build --silent && node dist/phase3/graph-status-cli.js",
-    "secrets:preflight": "npm run build --silent && node dist/config/secret-preflight-cli.js"
+    "secrets:preflight": "npm run build --silent && node --env-file-if-exists=.env dist/config/secret-preflight-cli.js",
+    "google:refresh-token": "npm run build --silent && node --env-file-if-exists=.env dist/config/google-refresh-token-cli.js"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

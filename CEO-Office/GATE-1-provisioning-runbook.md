@@ -85,7 +85,15 @@
    🤔 **One judgement call.** `calendar.events.owned` is narrower than `calendar.events` — *calendars that you own* rather than *all of your calendars*. If every calendar you care about is one you created, prefer `.owned`. If any are subscribed or shared with you, such as a university academic calendar, `.owned` cannot see them and the morning brief would silently miss those commitments. Default to `calendar.events` unless you are certain.
 5. **Google Auth Platform → Clients → Create client** → Application type **Desktop app** → name it `Real-Ming` rather than leaving `Desktop client 1`, so it is identifiable when you revoke it.
 6. Copy → `REAL_MING_GOOGLE_CLIENT_ID` and `REAL_MING_GOOGLE_CLIENT_SECRET`
-7. You also need a **refresh token** (`REAL_MING_GOOGLE_REFRESH_TOKEN`) so the system keeps access without re-consenting.
+7. Mint the **refresh token** (`REAL_MING_GOOGLE_REFRESH_TOKEN`) so the system keeps access without re-consenting. Put the client id and secret in `.env` first, then run:
+
+   ```bash
+   npm run google:refresh-token
+   ```
+
+   It prints a consent URL, waits on a loopback port, exchanges the code, and writes the token straight into `.env`. The value is never printed, logged, or sent anywhere else. Expect the unverified-app warning; choose **Advanced** and continue, then approve both Calendar permissions.
+
+   Confirm with `npm run secrets:preflight`, which reports names only.
 
 ### ⏰ Publish the app, or the refresh token dies in 7 days
 
@@ -202,7 +210,10 @@ Then restart the loop with [RESUME-PROMPT.md](RESUME-PROMPT.md).
 | Symptom | Cause → Fix |
 | --- | --- |
 | `secrets:preflight` says missing but you filled it in | The value is blank or whitespace only. Blank counts as missing by design. |
-| `secrets:preflight` still 0/10 | It reads `process.env`, not `.env` automatically. Either export the vars in your shell, or tell me to wire `.env` loading in. |
+| `secrets:preflight` still 0/10 | It now loads `.env` automatically. If it still reports zero, the values are blank or `.env` is not at the repository root. |
+| `npm run google:refresh-token` says the client id is not set | Fill `REAL_MING_GOOGLE_CLIENT_ID` and `REAL_MING_GOOGLE_CLIENT_SECRET` in `.env` first; the helper reads them from there. |
+| The helper reports that Google returned no refresh token | The account has already consented. Revoke Real-Ming at https://myaccount.google.com/permissions and run the helper again. |
+| The helper reports a state mismatch | The callback did not come from the URL it printed. Nothing was written. Re-run it and use the fresh URL. |
 | `npm run check` fails on the credential scan | A real credential reached a tracked file. Remove it, rotate that credential immediately, and re-run. |
 | `.env` shows up in `git status` | Your `.gitignore` was modified. It must contain `.env`, `.env.*`, and `!.env.example`. |
 | Notion 32-char id looks wrong | You copied a *page* id, not a *database* id. Open the database as a full page first, then copy from the URL. |
