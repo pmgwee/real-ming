@@ -6,6 +6,7 @@ export interface TracerCredential {
   readonly purpose: string;
   readonly environment: SecretEnvironment;
   readonly revocation: string;
+  readonly producedBy?: string;
 }
 
 export const tracerCredentials: readonly TracerCredential[] = [
@@ -36,6 +37,7 @@ export const tracerCredentials: readonly TracerCredential[] = [
     purpose: "Identify the canonical Master Tasks data source.",
     environment: "control-plane",
     revocation: "Unshare the data source from the integration.",
+    producedBy: "RM-09",
   },
   {
     name: "REAL_MING_GOOGLE_CLIENT_ID",
@@ -82,10 +84,16 @@ export const tracerCredentials: readonly TracerCredential[] = [
   },
 ];
 
+export interface DeferredCredential {
+  readonly name: string;
+  readonly producedBy: string;
+}
+
 export interface SecretPreflight {
   readonly ready: boolean;
   readonly present: readonly string[];
   readonly missing: readonly string[];
+  readonly deferred: readonly DeferredCredential[];
 }
 
 export function preflightTracerSecrets(
@@ -94,28 +102,41 @@ export function preflightTracerSecrets(
 ): SecretPreflight {
   const present: string[] = [];
   const missing: string[] = [];
+  const deferred: DeferredCredential[] = [];
 
   for (const credential of credentials) {
     const supplied = (environment[credential.name] ?? "").trim();
-    (supplied.length > 0 ? present : missing).push(credential.name);
+    if (supplied.length > 0) {
+      present.push(credential.name);
+    } else if (credential.producedBy === undefined) {
+      missing.push(credential.name);
+    } else {
+      deferred.push({
+        name: credential.name,
+        producedBy: credential.producedBy,
+      });
+    }
   }
 
-  return { ready: missing.length === 0, present, missing };
+  return { ready: missing.length === 0, present, missing, deferred };
 }
 
 export function renderCredentialInventory(
   credentials: readonly TracerCredential[] = tracerCredentials,
 ): string {
   const rows = credentials
-    .map(
-      (credential) =>
-        `| \`${credential.name}\` | ${credential.owner} | ${credential.purpose} | ${credential.environment} | ${credential.revocation} |`,
-    )
+    .map((credential) => {
+      const provisioning =
+        credential.producedBy === undefined
+          ? "Provision during Gate 1"
+          : `Produced by ${credential.producedBy}; leave empty until then`;
+      return `| \`${credential.name}\` | ${credential.owner} | ${credential.purpose} | ${provisioning} | ${credential.environment} | ${credential.revocation} |`;
+    })
     .join("\n");
 
   return [
-    "| Variable | Owner | Purpose | Environment | Revocation |",
-    "| --- | --- | --- | --- | --- |",
+    "| Variable | Owner | Purpose | When | Environment | Revocation |",
+    "| --- | --- | --- | --- | --- | --- |",
     rows,
   ].join("\n");
 }

@@ -6,18 +6,18 @@ Step-by-step provisioning instructions are in [GATE-1-provisioning-runbook.md](G
 
 Generated from `src/config/tracer-secrets.ts`. A test fails the build if this table drifts from the code, or if any tracked file ever contains credential-shaped material.
 
-| Variable | Owner | Purpose | Environment | Revocation |
-| --- | --- | --- | --- | --- |
-| `REAL_MING_TELEGRAM_BOT_TOKEN` | CEO | Authenticate the private Telegram front door. | control-plane | Revoke with /revoke in BotFather, then issue a new token. |
-| `REAL_MING_TELEGRAM_CEO_ID` | CEO | Allowlist the single numeric Telegram identity that may command Real-Ming. | control-plane | Replace the allowlisted identity and redeploy configuration. |
-| `REAL_MING_NOTION_TOKEN` | CEO | Read and write Master Tasks and the linked Work Views. | control-plane | Delete the internal integration in Notion settings. |
-| `REAL_MING_NOTION_MASTER_TASKS_ID` | CEO | Identify the canonical Master Tasks data source. | control-plane | Unshare the data source from the integration. |
-| `REAL_MING_GOOGLE_CLIENT_ID` | CEO | Identify the Google authorization client for Calendar. | control-plane | Delete the OAuth client in the Google Cloud console. |
-| `REAL_MING_GOOGLE_CLIENT_SECRET` | CEO | Authorize the Google Calendar client. | control-plane | Rotate the client secret in the Google Cloud console. |
-| `REAL_MING_GOOGLE_REFRESH_TOKEN` | CEO | Maintain delegated Calendar access without re-consent, scoped to calendar.events and calendar.calendarlist.readonly only. | control-plane | Revoke access from the Google Account permissions page. |
-| `REAL_MING_DASHBOARD_TOKEN` | CEO | Authenticate the CEO to the operations dashboard. | control-plane | Replace the stored token; sessions fail closed immediately. |
-| `REAL_MING_VAULT_KEY` | CEO | Derive the Knowledge Vault encryption key. | control-plane | Re-key the vault and republish each root generation. |
-| `REAL_MING_WORKER_SHARED_SECRET` | CEO | Authenticate the Lenovo private worker to the control plane. | private-worker | Rotate the shared secret on both the worker and control plane. |
+| Variable | Owner | Purpose | When | Environment | Revocation |
+| --- | --- | --- | --- | --- | --- |
+| `REAL_MING_TELEGRAM_BOT_TOKEN` | CEO | Authenticate the private Telegram front door. | Provision during Gate 1 | control-plane | Revoke with /revoke in BotFather, then issue a new token. |
+| `REAL_MING_TELEGRAM_CEO_ID` | CEO | Allowlist the single numeric Telegram identity that may command Real-Ming. | Provision during Gate 1 | control-plane | Replace the allowlisted identity and redeploy configuration. |
+| `REAL_MING_NOTION_TOKEN` | CEO | Read and write Master Tasks and the linked Work Views. | Provision during Gate 1 | control-plane | Delete the internal integration in Notion settings. |
+| `REAL_MING_NOTION_MASTER_TASKS_ID` | CEO | Identify the canonical Master Tasks data source. | Produced by RM-09; leave empty until then | control-plane | Unshare the data source from the integration. |
+| `REAL_MING_GOOGLE_CLIENT_ID` | CEO | Identify the Google authorization client for Calendar. | Provision during Gate 1 | control-plane | Delete the OAuth client in the Google Cloud console. |
+| `REAL_MING_GOOGLE_CLIENT_SECRET` | CEO | Authorize the Google Calendar client. | Provision during Gate 1 | control-plane | Rotate the client secret in the Google Cloud console. |
+| `REAL_MING_GOOGLE_REFRESH_TOKEN` | CEO | Maintain delegated Calendar access without re-consent, scoped to calendar.events and calendar.calendarlist.readonly only. | Provision during Gate 1 | control-plane | Revoke access from the Google Account permissions page. |
+| `REAL_MING_DASHBOARD_TOKEN` | CEO | Authenticate the CEO to the operations dashboard. | Provision during Gate 1 | control-plane | Replace the stored token; sessions fail closed immediately. |
+| `REAL_MING_VAULT_KEY` | CEO | Derive the Knowledge Vault encryption key. | Provision during Gate 1 | control-plane | Re-key the vault and republish each root generation. |
+| `REAL_MING_WORKER_SHARED_SECRET` | CEO | Authenticate the Lenovo private worker to the control plane. | Provision during Gate 1 | private-worker | Rotate the shared secret on both the worker and control plane. |
 
 ## Handling rules
 

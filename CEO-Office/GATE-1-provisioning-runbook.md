@@ -48,11 +48,11 @@
 5. **Create connection**, then copy the token → `REAL_MING_NOTION_TOKEN`
 6. Confirm the connection's capabilities include **Read content**, **Update content**, and **Insert content**. Master Tasks is read/write, so all three are required.
 7. Open the Notion page holding your **Master Tasks** database → `···` menu → **Connections** → **Connect to** → select `Real-Ming`.
-8. Copy the database id from the URL. In `notion.so/<workspace>/<32-char-id>?v=...` the 32-character hex string is the id → `REAL_MING_NOTION_MASTER_TASKS_ID`
+8. **Skip `REAL_MING_NOTION_MASTER_TASKS_ID` for now.** Leave it empty in `.env`. Master Tasks does not exist yet, and inventing an id here would be a placeholder the preflight cannot distinguish from a real one.
 
 > ⚠️ **Create a new connection — do not reuse an existing one.** If you already have connections such as `MingCreatives` or `content-creation-workflow`, leave them alone. Each credential must be independently revocable; sharing one token means revoking Real-Ming would also break whatever else uses it.
 
-> ⚠️ If Master Tasks does not exist yet, that is fine — RM-09 creates it. Share **one** existing task database now and update this value after RM-09.
+> ℹ️ **RM-09 produces this value, not you.** The preflight reports it as *deferred* rather than missing, so it does not block Gate 1. RM-09 will need a Notion page shared with the `Real-Ming` connection to create Master Tasks inside; it asks for that when it runs, which takes about a minute. Do not hand-create a stand-in database: RM-09's acceptance criterion is that it creates Master Tasks, and adopting a hand-made one makes that harder to evidence honestly.
 
 ## Step C · Google OAuth client for Calendar
 
@@ -180,7 +180,7 @@ cp .env.example .env
 | # | Test | Command | Expected |
 | --- | --- | --- | --- |
 | TC-01 | Preflight before filling | `npm run secrets:preflight` | `0/10 supplied`, ten `missing` lines, exit code 1 |
-| TC-02 | Preflight after filling | `npm run secrets:preflight` | `10/10 supplied`, no `missing` lines, exit code 0 |
+| TC-02 | Preflight after filling | `npm run secrets:preflight` | `9/9 supplied`, no `missing` lines, one `deferred` line for `REAL_MING_NOTION_MASTER_TASKS_ID`, exit code 0 |
 | TC-03 | No value ever printed | inspect TC-02 output | only variable **names** appear — never a value |
 | TC-04 | Nothing leaked into Git | `npm run check` | all tests pass, including the tracked-file credential scan |
 | TC-05 | `.env` is untracked | `git status --porcelain` | `.env` does **not** appear |
@@ -194,10 +194,10 @@ cp .env.example .env
 Comment on [#7](https://github.com/pmgwee/real-ming/issues/7) confirming:
 
 - [ ] All five identities exist (bot, Notion integration, Google client, environment, secret store)
-- [ ] All ten values are stored outside Git and issue text
+- [ ] All nine provisioned values are stored outside Git and issue text
 - [ ] Each is rotatable and revocable without a code change
 - [ ] The inventory is complete and records no values
-- [ ] `npm run secrets:preflight` reports 10/10
+- [ ] `npm run secrets:preflight` reports 9/9 with one deferred value and exits 0
 
 Then close it. **Paste no values into the comment.**
 

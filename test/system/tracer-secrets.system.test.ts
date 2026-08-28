@@ -50,10 +50,39 @@ describe("RM-06 credential inventory and preflight", () => {
     expect(preflightTracerSecrets(supplied)).toMatchObject({
       ready: true,
       missing: [],
+      deferred: [],
     });
     expect(preflightTracerSecrets({}).ready).toBe(false);
     expect(preflightTracerSecrets({}).missing).toEqual(
-      tracerCredentials.map((credential) => credential.name),
+      tracerCredentials
+        .filter((credential) => credential.producedBy === undefined)
+        .map((credential) => credential.name),
+    );
+  });
+
+  it("does not let a value produced by a later ticket block Gate 1", () => {
+    const provisioned = Object.fromEntries(
+      tracerCredentials
+        .filter((credential) => credential.producedBy === undefined)
+        .map((credential) => [credential.name, "supplied"]),
+    );
+    const preflight = preflightTracerSecrets(provisioned);
+
+    expect(preflight.ready).toBe(true);
+    expect(preflight.missing).toEqual([]);
+    expect(preflight.deferred).toEqual([
+      { name: "REAL_MING_NOTION_MASTER_TASKS_ID", producedBy: "RM-09" },
+    ]);
+  });
+
+  it("counts a deferred value as supplied once it is filled in", () => {
+    const everything = Object.fromEntries(
+      tracerCredentials.map((credential) => [credential.name, "supplied"]),
+    );
+
+    expect(preflightTracerSecrets(everything).deferred).toEqual([]);
+    expect(preflightTracerSecrets(everything).present).toContain(
+      "REAL_MING_NOTION_MASTER_TASKS_ID",
     );
   });
 
