@@ -1,9 +1,14 @@
 import { readFileSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import { upsertEnvValue } from "./google-oauth.js";
-import { createNotionProviderAdapter } from "../providers/notion-provider-adapter.js";
+import {
+  createNotionProviderAdapter,
+  SqliteNotionWriteLedger,
+} from "../providers/notion-provider-adapter.js";
 
 const envPath = new URL("../../.env", import.meta.url);
+const ledgerPath = new URL("../../.real-ming-notion-ledger.sqlite", import.meta.url);
 
 function requireEnvironment(name: string): string {
   const value = (process.env[name] ?? "").trim();
@@ -45,16 +50,17 @@ async function main(): Promise<void> {
   }
   const parentInput = process.argv[2] ?? "";
   const parentPageId = notionPageId(parentInput);
+  const ledger = new SqliteNotionWriteLedger(fileURLToPath(ledgerPath));
   const adapter = createNotionProviderAdapter({
     token: requireEnvironment("REAL_MING_NOTION_TOKEN"),
     workspaceId: "workspace:real-ming",
     accountReference: "notion:account:real-ming",
+    writeLedger: ledger,
   });
-
   const result = await adapter.provisionMasterTasks({
     parentPageId,
     idempotencyKey: "rm09:master-tasks:v1",
-  });
+  }).finally(() => ledger.close());
   if (result.kind === "failed") {
     throw new Error(
       `Master Tasks provisioning failed (${result.failure.class}): ${result.failure.message}`,

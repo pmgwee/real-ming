@@ -1,5 +1,7 @@
 # RM-09 — Share the Master Tasks parent page
 
+> **Completed 29 Aug 2026.** Ming shared and approved the parent page. Provisioning created one Master Tasks data source and the six canonical linked Work Views; replay and live reconciliation were verified. Six accidental replay duplicates were moved to recoverable Notion Trash.
+
 > **TL;DR — create one empty Notion page, share it with the existing `Real-Ming` connection, and send the page URL to the implementation agent.** Do not create Master Tasks yourself. This should take about one minute.
 
 ---
@@ -78,4 +80,3 @@ No legacy task database will be migrated or mutated in RM-09. That work remains 
 | Notion reports 403 on creation | The connection lacks **Insert content** or **Update content**. Enable those capabilities in the connection settings. |
 | The page already contains a hand-made Master Tasks database | Do not delete it. Tell the agent before proceeding so it can inspect and choose an evidence-preserving adoption or rename path. |
 | You accidentally pasted a token | Revoke the connection token immediately, issue a replacement, and update only the local `.env`. |
-

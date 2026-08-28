@@ -1,22 +1,15 @@
 import type {
-  ExecutiveRole,
-  RiskClass,
-  TrustDomain,
-  WorkItemState,
-  Workstream,
+  ExecutiveRole, RiskClass, TrustDomain, WorkItem, WorkItemPriority,
+  WorkItemState, Workstream,
 } from "../operations/contracts.js";
-import { lifecycleEventFor } from "../operations/work-item-lifecycle.js";
+import type { OperationsGateway } from "../operations/operations-gateway.js";
+import { OperationsState } from "../operations/operations-state.js";
+import { routeTrustDomain } from "../operations/executive-role-router.js";
 
-export type MasterTaskPriority = "Low" | "Medium" | "High" | "Critical";
-
+export type MasterTaskPriority = WorkItemPriority;
 export type MasterTaskPropertyType =
-  | "title"
-  | "rich_text"
-  | "select"
-  | "multi_select"
-  | "checkbox"
-  | "created_time"
-  | "last_edited_time";
+  | "title" | "rich_text" | "select" | "multi_select" | "checkbox"
+  | "created_time" | "last_edited_time";
 
 export interface MasterTaskSchemaProperty {
   readonly name: string;
@@ -48,29 +41,11 @@ export const masterTasksSchema: readonly MasterTaskSchemaProperty[] = [
   { name: "Updated At", type: "last_edited_time" },
 ] as const;
 
-export const workstreamRoutes: Readonly<
-  Record<
-    Workstream,
-    { readonly trustDomain: TrustDomain; readonly executive: ExecutiveRole }
-  >
-> = {
-  "Personal Life": { trustDomain: "Personal", executive: "COO" },
-  "Career Job": { trustDomain: "Personal", executive: "COO" },
-  Finance: { trustDomain: "Finance", executive: "Personal CFO" },
-  Academic: { trustDomain: "Academic", executive: "CAO" },
-  MicroSaaS: { trustDomain: "Ming Creatives", executive: "CTO" },
-  "Content Creation": { trustDomain: "Ming Creatives", executive: "CMO" },
-};
-
 export type MasterTasksViewName =
-  | "CEO All Work"
-  | "COO Work View"
-  | "Personal CFO Work View"
-  | "CAO Work View"
-  | "CTO Work View"
-  | "CMO Work View";
+  | "CEO All Work" | "COO Work View" | "Personal CFO Work View"
+  | "CAO Work View" | "CTO Work View" | "CMO Work View";
 
-interface WorkViewDefinition {
+export interface WorkViewDefinition {
   readonly name: MasterTasksViewName;
   readonly accountableExecutive: ExecutiveRole | null;
 }
@@ -101,27 +76,6 @@ export interface MasterTasksProvisioning {
   readonly views: readonly MasterTasksWorkView[];
 }
 
-export interface PutMasterTaskRequest {
-  readonly idempotencyKey: string;
-  readonly workItemId: string;
-  readonly workspaceId: string;
-  readonly title: string;
-  readonly intent: string;
-  readonly workstream: Workstream;
-  readonly source: string;
-  readonly sourceReference: string;
-  readonly collaboratingExecutives?: readonly ExecutiveRole[];
-  readonly priority?: MasterTaskPriority | null;
-  readonly commitmentValue?: string | null;
-  readonly commitmentProvenance?: string | null;
-  readonly riskClass?: RiskClass | null;
-  readonly approvalRequired?: boolean;
-  readonly approvalReference?: string | null;
-  readonly portfolioProject?: string | null;
-  readonly evidenceReferences?: readonly string[];
-  readonly outcomeReportReference?: string | null;
-}
-
 export interface MasterTaskRecord {
   readonly id: string;
   readonly workItemId: string;
@@ -131,11 +85,11 @@ export interface MasterTaskRecord {
   readonly source: string;
   readonly sourceReference: string;
   readonly trustDomain: TrustDomain;
-  readonly workstream: Workstream;
+  readonly workstream: Workstream | null;
   readonly accountableExecutive: ExecutiveRole;
   readonly collaboratingExecutives: readonly ExecutiveRole[];
   readonly lifecycle: WorkItemState;
-  readonly priority: MasterTaskPriority | null;
+  readonly priority: WorkItemPriority | null;
   readonly commitmentValue: string | null;
   readonly commitmentProvenance: string | null;
   readonly riskClass: RiskClass | null;
@@ -152,198 +106,124 @@ export interface EditMasterTaskThroughViewRequest {
   readonly viewName: MasterTasksViewName;
   readonly workItemId: string;
   readonly idempotencyKey: string;
-  readonly priority: MasterTaskPriority;
+  readonly priority: WorkItemPriority;
 }
 
-export interface TransitionMasterTaskRequest {
-  readonly workItemId: string;
-  readonly idempotencyKey: string;
-  readonly to: WorkItemState;
+export interface MasterTasksStore {
+  records(): Promise<readonly MasterTaskRecord[]>;
+  upsert(record: MasterTaskRecord): Promise<MasterTaskRecord>;
 }
 
-function requireNonEmpty(name: string, value: string): void {
-  if (value.trim().length === 0) {
-    throw new Error(`${name} is required.`);
+function definitionFor(name: MasterTasksViewName): WorkViewDefinition {
+  const definition = masterTasksViewDefinitions.find((view) => view.name === name);
+  if (definition === undefined) throw new Error(`Unknown Work View: ${name}`);
+  return definition;
+}
+
+function commitmentProjection(workItem: WorkItem): {
+  readonly value: string | null;
+  readonly provenance: string | null;
+} {
+  const commitment = workItem.confirmedCommitment ?? workItem.proposedCommitment;
+  return commitment === null
+    ? { value: null, provenance: null }
+    : { value: commitment.value, provenance: JSON.stringify(commitment.provenance) };
+}
+
+export class MasterTasksProjection {
+  constructor(
+    private readonly state: OperationsState,
+    private readonly store: MasterTasksStore,
+  ) {}
+
+  async sync(workItem: WorkItem): Promise<MasterTaskRecord> {
+    return this.store.upsert(this.recordFor(workItem));
   }
-}
 
-function cloneRecord(record: MasterTaskRecord): MasterTaskRecord {
-  return {
-    ...record,
-    collaboratingExecutives: [...record.collaboratingExecutives],
-    evidenceReferences: [...record.evidenceReferences],
-  };
-}
-
-export class InMemoryMasterTasksWorkspace {
-  readonly #records = new Map<string, MasterTaskRecord>();
-  readonly #idempotentResults = new Map<string, MasterTaskRecord>();
-  readonly #now: () => string;
-  #provisioning: MasterTasksProvisioning | undefined;
-  #effects = 0;
-  #recordSequence = 0;
-
-  constructor(now: () => string = () => new Date().toISOString()) {
-    this.#now = now;
+  async view(name: MasterTasksViewName): Promise<readonly MasterTaskRecord[]> {
+    const definition = definitionFor(name);
+    return (await this.store.records())
+      .filter((item) => definition.accountableExecutive === null ||
+        item.accountableExecutive === definition.accountableExecutive);
   }
 
-  provision(request: {
-    readonly parentPageId: string;
-    readonly idempotencyKey: string;
-  }): MasterTasksProvisioning {
-    requireNonEmpty("Parent page id", request.parentPageId);
-    requireNonEmpty("Idempotency key", request.idempotencyKey);
-    if (this.#provisioning !== undefined) {
-      if (this.#provisioning.parentPageId !== request.parentPageId) {
-        throw new Error("Master Tasks is already bound to another parent page.");
+  async reconcileFromStore(gateway: OperationsGateway): Promise<void> {
+    for (const record of await this.store.records()) {
+      const workItem = this.state.workItem(record.workItemId);
+      if (workItem === undefined) continue;
+      if (
+        workItem.accountableExecutive !== record.accountableExecutive ||
+        workItem.workstream !== record.workstream
+      ) {
+        await this.sync(workItem);
+        throw new Error(
+          `Master Tasks authority fields drifted for Work Item ${record.workItemId}.`,
+        );
       }
-      return this.#provisioning;
+      if (workItem.state !== record.lifecycle) {
+        await this.sync(workItem);
+        throw new Error(
+          `Lifecycle changes for Work Item ${record.workItemId} must go through the Operations Gateway.`,
+        );
+      }
+      if (record.priority !== null && record.priority !== workItem.priority) {
+        await gateway.recordWorkItemPriority({
+          workItemId: record.workItemId,
+          priority: record.priority,
+          idempotencyKey: `notion:${record.workItemId}:priority:${record.priority}:${record.updatedAt}`,
+        });
+      }
     }
+  }
 
-    const dataSourceId = "notion-data-source:master-tasks";
-    const views = masterTasksViewDefinitions.map((view, index) => ({
-      id: `notion-view:${index + 1}`,
-      name: view.name,
-      dataSourceId,
-      accountableExecutive: view.accountableExecutive,
-      filter:
-        view.accountableExecutive === null
-          ? null
-          : {
-              property: "Accountable Executive",
-              select: { equals: view.accountableExecutive },
-            },
-    }));
-    this.#provisioning = {
-      parentPageId: request.parentPageId,
-      databaseId: "notion-database:master-tasks",
-      dataSourceId,
-      dataSourceName: "Master Tasks",
-      schema: masterTasksSchema,
-      views,
+  async editThroughView(
+    request: EditMasterTaskThroughViewRequest,
+    gateway: OperationsGateway,
+  ): Promise<MasterTaskRecord> {
+    const definition = definitionFor(request.viewName);
+    const record = (await this.store.records()).find(
+      (item) => item.workItemId === request.workItemId,
+    );
+    if (record === undefined || (definition.accountableExecutive !== null &&
+      record.accountableExecutive !== definition.accountableExecutive)) {
+      throw new Error(`Work Item ${request.workItemId} is not visible in ${request.viewName}.`);
+    }
+    const workItem = await gateway.recordWorkItemPriority(request);
+    return (await this.store.records()).find((item) => item.workItemId === workItem.id) ??
+      this.sync(workItem);
+  }
+
+  recordFor(workItem: WorkItem): MasterTaskRecord {
+    const commitment = commitmentProjection(workItem);
+    const approval = this.state.approvals(workItem.id).at(-1);
+    const outcome = this.state.outcomeReport(workItem.id);
+    return {
+      id: workItem.id,
+      workItemId: workItem.id,
+      workspaceId: workItem.workspaceId,
+      title: workItem.intent,
+      intent: workItem.intent,
+      source: "Operations Gateway",
+      sourceReference: workItem.idempotencyKey,
+      trustDomain: routeTrustDomain(
+        workItem.workstream,
+        workItem.accountableExecutive,
+      ),
+      workstream: workItem.workstream,
+      accountableExecutive: workItem.accountableExecutive,
+      collaboratingExecutives: workItem.collaboratingExecutives.map(({ executive }) => executive),
+      lifecycle: workItem.state,
+      priority: workItem.priority,
+      commitmentValue: commitment.value,
+      commitmentProvenance: commitment.provenance,
+      riskClass: approval?.riskClass ?? null,
+      approvalRequired: workItem.state === "Awaiting Approval",
+      approvalReference: approval?.id ?? null,
+      portfolioProject: null,
+      evidenceReferences: outcome === undefined ? [] : [outcome.verification.evidence.reference],
+      outcomeReportReference: outcome?.id ?? null,
+      createdAt: workItem.createdAt,
+      updatedAt: workItem.updatedAt,
     };
-    this.#effects += 1 + views.length;
-    return this.#provisioning;
-  }
-
-  put(request: PutMasterTaskRequest): MasterTaskRecord {
-    this.#requireProvisioned();
-    requireNonEmpty("Idempotency key", request.idempotencyKey);
-    requireNonEmpty("Work Item id", request.workItemId);
-    requireNonEmpty("Workspace id", request.workspaceId);
-    requireNonEmpty("Title", request.title);
-    requireNonEmpty("Intent", request.intent);
-    requireNonEmpty("Source", request.source);
-    requireNonEmpty("Source reference", request.sourceReference);
-
-    const replay = this.#idempotentResults.get(request.idempotencyKey);
-    if (replay !== undefined) {
-      return cloneRecord(replay);
-    }
-    if (this.#records.has(request.workItemId)) {
-      throw new Error(`Work Item ${request.workItemId} already exists.`);
-    }
-
-    const route = workstreamRoutes[request.workstream];
-    const now = this.#now();
-    const record: MasterTaskRecord = {
-      id: `notion-page:${++this.#recordSequence}`,
-      workItemId: request.workItemId,
-      workspaceId: request.workspaceId,
-      title: request.title,
-      intent: request.intent,
-      source: request.source,
-      sourceReference: request.sourceReference,
-      trustDomain: route.trustDomain,
-      workstream: request.workstream,
-      accountableExecutive: route.executive,
-      collaboratingExecutives: request.collaboratingExecutives ?? [],
-      lifecycle: "Captured",
-      priority: request.priority ?? null,
-      commitmentValue: request.commitmentValue ?? null,
-      commitmentProvenance: request.commitmentProvenance ?? null,
-      riskClass: request.riskClass ?? null,
-      approvalRequired: request.approvalRequired ?? false,
-      approvalReference: request.approvalReference ?? null,
-      portfolioProject: request.portfolioProject ?? null,
-      evidenceReferences: request.evidenceReferences ?? [],
-      outcomeReportReference: request.outcomeReportReference ?? null,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.#records.set(record.workItemId, record);
-    this.#idempotentResults.set(request.idempotencyKey, cloneRecord(record));
-    this.#effects += 1;
-    return cloneRecord(record);
-  }
-
-  view(name: MasterTasksViewName): readonly MasterTaskRecord[] {
-    const definition = masterTasksViewDefinitions.find((view) => view.name === name);
-    if (definition === undefined) {
-      throw new Error(`Unknown Work View: ${name}`);
-    }
-    return [...this.#records.values()]
-      .filter(
-        (record) =>
-          definition.accountableExecutive === null ||
-          record.accountableExecutive === definition.accountableExecutive,
-      )
-      .map(cloneRecord);
-  }
-
-  editThroughView(request: EditMasterTaskThroughViewRequest): MasterTaskRecord {
-    const replay = this.#idempotentResults.get(request.idempotencyKey);
-    if (replay !== undefined) {
-      return cloneRecord(replay);
-    }
-    const record = this.#recordVisibleInView(request.viewName, request.workItemId);
-    const updated = { ...record, priority: request.priority, updatedAt: this.#now() };
-    this.#records.set(updated.workItemId, updated);
-    this.#idempotentResults.set(request.idempotencyKey, cloneRecord(updated));
-    this.#effects += 1;
-    return cloneRecord(updated);
-  }
-
-  transition(request: TransitionMasterTaskRequest): MasterTaskRecord {
-    const replay = this.#idempotentResults.get(request.idempotencyKey);
-    if (replay !== undefined) {
-      return cloneRecord(replay);
-    }
-    const record = this.#records.get(request.workItemId);
-    if (record === undefined) {
-      throw new Error(`Unknown Work Item: ${request.workItemId}`);
-    }
-    if (lifecycleEventFor(record.lifecycle, request.to) === undefined) {
-      throw new Error(
-        `Rejected Master Tasks lifecycle transition ${record.lifecycle} -> ${request.to}.`,
-      );
-    }
-    const updated = { ...record, lifecycle: request.to, updatedAt: this.#now() };
-    this.#records.set(updated.workItemId, updated);
-    this.#idempotentResults.set(request.idempotencyKey, cloneRecord(updated));
-    this.#effects += 1;
-    return cloneRecord(updated);
-  }
-
-  externalEffectCount(): number {
-    return this.#effects;
-  }
-
-  #recordVisibleInView(
-    viewName: MasterTasksViewName,
-    workItemId: string,
-  ): MasterTaskRecord {
-    const record = this.view(viewName).find((item) => item.workItemId === workItemId);
-    if (record === undefined) {
-      throw new Error(`Work Item ${workItemId} is not visible in ${viewName}.`);
-    }
-    return record;
-  }
-
-  #requireProvisioned(): void {
-    if (this.#provisioning === undefined) {
-      throw new Error("Master Tasks has not been provisioned.");
-    }
   }
 }
-

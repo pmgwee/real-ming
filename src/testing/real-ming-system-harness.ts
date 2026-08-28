@@ -51,29 +51,23 @@ import type {
 } from "../telegram/contracts.js";
 import type { ProviderFailure } from "../providers/adapter-contract.js";
 import {
-  InMemoryMasterTasksWorkspace,
+  MasterTasksProjection,
   type EditMasterTaskThroughViewRequest,
   type MasterTaskRecord,
-  type MasterTasksProvisioning,
+  type MasterTasksStore,
   type MasterTasksViewName,
-  type PutMasterTaskRequest,
-  type TransitionMasterTaskRequest,
 } from "../master-tasks/master-tasks.js";
 
 export interface RealMingSystemHarness {
-  provisionMasterTasks(request: {
-    readonly parentPageId: string;
-    readonly idempotencyKey: string;
-  }): Promise<MasterTasksProvisioning>;
-  putMasterTask(request: PutMasterTaskRequest): Promise<MasterTaskRecord>;
   editMasterTaskThroughView(
     request: EditMasterTaskThroughViewRequest,
   ): Promise<MasterTaskRecord>;
-  transitionMasterTask(
-    request: TransitionMasterTaskRequest,
-  ): Promise<MasterTaskRecord>;
-  masterTasksView(name: MasterTasksViewName): readonly MasterTaskRecord[];
-  masterTasksExternalEffectCount(): number;
+  masterTasksView(name: MasterTasksViewName): Promise<readonly MasterTaskRecord[]>;
+  reconcileMasterTasks(): Promise<void>;
+  simulateMasterTasksProviderEdit(
+    workItemId: string,
+    changes: Partial<Pick<MasterTaskRecord, "priority" | "lifecycle" | "updatedAt">>,
+  ): void;
   submitCeoCommand(command: CeoCommand): Promise<CeoCommandResult>;
   submitCeoAction(action: NormalizedCeoAction): Promise<OperationsResult>;
   executeWorkItem(workItemId: string): Promise<OperationsResult>;
@@ -300,7 +294,18 @@ export function createRealMingSystemHarness(options: {
   };
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
-  const masterTasks = new InMemoryMasterTasksWorkspace(options.now);
+  const masterTaskRecords = new Map<string, MasterTaskRecord>();
+  const masterTasksStore: MasterTasksStore = {
+    records: async () => [...masterTaskRecords.values()],
+    upsert: async (record) => {
+      masterTaskRecords.set(record.workItemId, record);
+      return record;
+    },
+  };
+  const masterTasks = new MasterTasksProjection(state, masterTasksStore);
+  for (const workItem of state.workItems()) {
+    masterTaskRecords.set(workItem.id, masterTasks.recordFor(workItem));
+  }
   const ledger = new ControlledEffectLedger();
   const worker = new InMemoryControlledWorker(
     ledger,
@@ -323,6 +328,7 @@ export function createRealMingSystemHarness(options: {
     verifier,
     questionResponder,
     commandClassifier,
+    workItemChanged: (workItem) => masterTasks.sync(workItem).then(() => undefined),
     ...(options.now === undefined ? {} : { now: options.now }),
   });
   const telegramTransport = new ControlledTelegramTransport(
@@ -366,13 +372,15 @@ export function createRealMingSystemHarness(options: {
   });
 
   return {
-    provisionMasterTasks: async (request) => masterTasks.provision(request),
-    putMasterTask: async (request) => masterTasks.put(request),
     editMasterTaskThroughView: async (request) =>
-      masterTasks.editThroughView(request),
-    transitionMasterTask: async (request) => masterTasks.transition(request),
+      masterTasks.editThroughView(request, gateway),
     masterTasksView: (name) => masterTasks.view(name),
-    masterTasksExternalEffectCount: () => masterTasks.externalEffectCount(),
+    reconcileMasterTasks: () => masterTasks.reconcileFromStore(gateway),
+    simulateMasterTasksProviderEdit: (workItemId, changes) => {
+      const record = masterTaskRecords.get(workItemId);
+      if (record === undefined) throw new Error("Controlled Master Tasks record not found.");
+      masterTaskRecords.set(workItemId, { ...record, ...changes });
+    },
     submitCeoCommand: (command) => gateway.submitCeoCommand(command),
     submitCeoAction: (action) => gateway.submitCeoAction(action),
     executeWorkItem: (workItemId) => gateway.executeWorkItem(workItemId),

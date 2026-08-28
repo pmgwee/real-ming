@@ -1,4 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 import {
   contractSecretFixture,
@@ -12,6 +15,11 @@ import {
   type ProviderFailureClass,
 } from "../../src/providers/adapter-contract.js";
 import { createEphemeralTelegramDeliveryLedger } from "../../src/providers/telegram-provider-adapter.js";
+import {
+  createNotionMasterTasksStore,
+  SqliteNotionWriteLedger,
+} from "../../src/providers/notion-provider-adapter.js";
+import type { MasterTaskRecord } from "../../src/master-tasks/master-tasks.js";
 import type {
   TelegramDeliveryLedger,
   TelegramDeliveryLedgerReceipt,
@@ -617,6 +625,146 @@ describe("RM-07 Telegram review controls", () => {
 });
 
 describe("RM-09 Notion Master Tasks provisioning", () => {
+  it("upserts one stable Notion page for a Work Item and reads the edited record back", async () => {
+    const harness = createNotionProvisioningContractHarness();
+    const provisioned = await harness.adapter.provisionMasterTasks({
+      parentPageId: "parent:real-ming-operations",
+      idempotencyKey: "rm09:provision:v1",
+    });
+    if (provisioned.kind !== "ok") throw new Error("Expected successful provisioning.");
+    const store = createNotionMasterTasksStore({
+      adapter: harness.adapter,
+      dataSourceId: provisioned.value.dataSourceId,
+    });
+    const record: MasterTaskRecord = {
+      id: "work-item:rm09",
+      workItemId: "work-item:rm09",
+      workspaceId: "workspace:real-ming",
+      title: "Review runway",
+      intent: "Review runway",
+      source: "Operations Gateway",
+      sourceReference: "telegram:update:1",
+      trustDomain: "Finance",
+      workstream: "Finance",
+      accountableExecutive: "Personal CFO",
+      collaboratingExecutives: ["COO"],
+      lifecycle: "Captured",
+      priority: null,
+      commitmentValue: null,
+      commitmentProvenance: null,
+      riskClass: null,
+      approvalRequired: false,
+      approvalReference: null,
+      portfolioProject: null,
+      evidenceReferences: [],
+      outcomeReportReference: null,
+      createdAt: "2026-08-29T02:00:00.000Z",
+      updatedAt: "2026-08-29T02:00:00.000Z",
+    };
+
+    await expect(store.upsert(record)).resolves.toEqual(record);
+    await expect(store.upsert(record)).resolves.toEqual(record);
+    const edited = { ...record, priority: "High" as const };
+    await expect(store.upsert(edited)).resolves.toEqual(edited);
+    expect(harness.masterTaskPageCreateCount()).toBe(1);
+    expect(harness.masterTaskPageUpdateCount()).toBe(1);
+    await expect(store.records()).resolves.toContainEqual(
+      expect.objectContaining({
+        workItemId: record.workItemId,
+        priority: "High",
+        accountableExecutive: "Personal CFO",
+      }),
+    );
+  });
+
+  it("serializes Master Tasks fields by their Notion types and blocks direct lifecycle writes", async () => {
+    const notionCase = cases.find((entry) => entry.name === "notion");
+    if (notionCase === undefined) throw new Error("Expected the Notion contract case.");
+    const adapter = notionCase.createAdapter({});
+
+    await expect(adapter.write({
+      idempotencyKey: "rm09:typed-write",
+      reference: "notion-page:1",
+      payload: {
+        Title: "Review runway",
+        Priority: "High",
+        "Approval Required": "true",
+        "Collaborating Executives": JSON.stringify(["COO", "Personal CFO"]),
+      },
+    })).resolves.toMatchObject({ kind: "ok" });
+    expect(adapter.providerRequests()).toContainEqual(expect.objectContaining({
+      method: "PATCH",
+      body: {
+        properties: {
+          Title: { title: [{ type: "text", text: { content: "Review runway" } }] },
+          Priority: { select: { name: "High" } },
+          "Approval Required": { checkbox: true },
+          "Collaborating Executives": {
+            multi_select: [{ name: "COO" }, { name: "Personal CFO" }],
+          },
+        },
+      },
+    }));
+
+    const callsBeforeRejectedWrite = adapter.providerCallCount();
+    await expect(adapter.write({
+      idempotencyKey: "rm09:direct-lifecycle",
+      reference: "notion-page:1",
+      payload: { Lifecycle: "Completed" },
+    })).resolves.toMatchObject({
+      kind: "failed",
+      failure: { class: "invalid-input" },
+    });
+    expect(adapter.providerCallCount()).toBe(callsBeforeRejectedWrite);
+  });
+
+  it("fails closed before a production write when no durable ledger is supplied", async () => {
+    const notionCase = cases.find((entry) => entry.name === "notion");
+    if (notionCase === undefined) throw new Error("Expected the Notion contract case.");
+    const adapter = notionCase.createAdapter({ notionWriteLedger: null });
+
+    await expect(adapter.write({
+      idempotencyKey: "rm09:no-ledger",
+      reference: "notion-page:1",
+      payload: { Priority: "High" },
+    })).resolves.toMatchObject({
+      kind: "failed",
+      failure: { class: "unsupported-capability", retryable: false },
+    });
+    expect(adapter.providerCallCount()).toBe(0);
+    expect(adapter.externalEffectCount()).toBe(0);
+  });
+
+  it("deduplicates a Notion write after process reconstruction with the SQLite ledger", async () => {
+    const notionCase = cases.find((entry) => entry.name === "notion");
+    if (notionCase === undefined) throw new Error("Expected the Notion contract case.");
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-notion-ledger-"));
+    const path = join(directory, "ledger.sqlite");
+    const request = {
+      idempotencyKey: "rm09:durable-write",
+      reference: "notion-page:1",
+      payload: { Priority: "High" },
+    } as const;
+    try {
+      const firstLedger = new SqliteNotionWriteLedger(path);
+      const first = notionCase.createAdapter({ notionWriteLedger: firstLedger });
+      await expect(first.write(request)).resolves.toMatchObject({
+        kind: "ok", deduplicated: false,
+      });
+      firstLedger.close();
+
+      const secondLedger = new SqliteNotionWriteLedger(path);
+      const second = notionCase.createAdapter({ notionWriteLedger: secondLedger });
+      await expect(second.write(request)).resolves.toMatchObject({
+        kind: "ok", deduplicated: true,
+      });
+      expect(second.providerCallCount()).toBe(0);
+      secondLedger.close();
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("creates the canonical schema and exactly six views over one data source", async () => {
     const harness = createNotionProvisioningContractHarness();
 
@@ -668,6 +816,21 @@ describe("RM-09 Notion Master Tasks provisioning", () => {
     expect(first).toEqual(replay);
     expect(harness.databaseCreateCount()).toBe(1);
     expect(harness.viewCreateCount()).toBe(6);
+  });
+
+  it("repairs a same-name Work View whose accountable-Executive filter drifted", async () => {
+    const harness = createNotionProvisioningContractHarness({
+      driftViewFilterOnReplay: true,
+    });
+    const request = {
+      parentPageId: "parent:real-ming-operations",
+      idempotencyKey: "rm09:provision:v1",
+    } as const;
+
+    await expect(harness.adapter.provisionMasterTasks(request)).resolves.toMatchObject({ kind: "ok" });
+    await expect(harness.adapter.provisionMasterTasks(request)).resolves.toMatchObject({ kind: "ok" });
+    expect(harness.viewCreateCount()).toBe(6);
+    expect(harness.viewUpdateCount()).toBe(1);
   });
 
   it("resumes an interrupted partial run and creates only the missing views", async () => {

@@ -1,34 +1,28 @@
-export type WorkItemState =
-  | "Captured"
-  | "Triaged"
-  | "Planned"
-  | "Awaiting Approval"
-  | "Executing"
-  | "Verifying"
-  | "Waiting/Blocked"
-  | "Ready for CEO Review"
-  | "Changes Requested"
-  | "Cancelled"
-  | "Completed";
+export const workItemStates = [
+  "Captured", "Triaged", "Planned", "Awaiting Approval", "Executing",
+  "Verifying", "Waiting/Blocked", "Ready for CEO Review",
+  "Changes Requested", "Cancelled", "Completed",
+] as const;
+export type WorkItemState = (typeof workItemStates)[number];
 
-export type ExecutiveRole = "COO" | "CTO" | "Personal CFO" | "CAO" | "CMO";
+export const executiveRoles = ["COO", "CTO", "Personal CFO", "CAO", "CMO"] as const;
+export type ExecutiveRole = (typeof executiveRoles)[number];
 
-export type Workstream =
-  | "Personal Life"
-  | "Career Job"
-  | "Finance"
-  | "Academic"
-  | "MicroSaaS"
-  | "Content Creation";
+export const workstreams = [
+  "Personal Life", "Career Job", "Finance", "Academic", "MicroSaaS",
+  "Content Creation",
+] as const;
+export type Workstream = (typeof workstreams)[number];
 
-export type TrustDomain =
-  | "Personal"
-  | "Ming Creatives"
-  | "Academic"
-  | "Entertainment"
-  | "Finance";
+export const trustDomains = [
+  "Personal", "Ming Creatives", "Academic", "Entertainment", "Finance",
+] as const;
+export type TrustDomain = (typeof trustDomains)[number];
 
-export type RiskClass = "low" | "medium" | "high";
+export const riskClasses = ["low", "medium", "high"] as const;
+export type RiskClass = (typeof riskClasses)[number];
+export const workItemPriorities = ["Low", "Medium", "High", "Critical"] as const;
+export type WorkItemPriority = (typeof workItemPriorities)[number];
 
 export type ActionOperation =
   | "read"
@@ -227,9 +221,16 @@ export interface WorkItem {
   readonly collaboratingExecutives: readonly CollaboratingExecutiveAssignment[];
   readonly confirmedCommitment: ConfirmedCommitment | null;
   readonly proposedCommitment: ProposedCommitment | null;
+  readonly priority: WorkItemPriority | null;
   readonly state: WorkItemState;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface RecordWorkItemPriorityRequest {
+  readonly workItemId: string;
+  readonly priority: WorkItemPriority;
+  readonly idempotencyKey: string;
 }
 
 export interface CeoSetCommitment {
@@ -356,6 +357,7 @@ export interface AuditEvent {
     | "work-item.transition-rejected"
     | "work-item.commitment-recorded"
     | "work-item.commitment-rejected"
+    | "work-item.priority-recorded"
     | "policy.permitted"
     | "policy.denied"
     | "approval.requested"

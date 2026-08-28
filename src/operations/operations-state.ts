@@ -15,6 +15,7 @@ import type {
   StandingAuthority,
   TrustDomain,
   WorkItem,
+  WorkItemPriority,
   WorkItemState,
   WorkerEffect,
   WorkerReceipt,
@@ -41,6 +42,7 @@ interface WorkItemRow {
   collaborating_executives_json: string;
   confirmed_commitment_json: string | null;
   proposed_commitment_json: string | null;
+  priority: WorkItemPriority | null;
   state: WorkItemState;
   created_at: string;
   updated_at: string;
@@ -196,6 +198,7 @@ function mapWorkItem(row: WorkItemRow): WorkItem {
       row.proposed_commitment_json === null
         ? null
         : parseJson<ProposedCommitment>(row.proposed_commitment_json),
+    priority: row.priority,
     state: row.state,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -285,6 +288,7 @@ export class OperationsState {
         collaborating_executives_json TEXT NOT NULL,
         confirmed_commitment_json TEXT,
         proposed_commitment_json TEXT,
+        priority TEXT,
         state TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
@@ -384,6 +388,14 @@ export class OperationsState {
         used_at TEXT,
         claimed_update_id INTEGER,
         state TEXT NOT NULL,
+        FOREIGN KEY (work_item_id) REFERENCES work_items(id)
+      );
+
+      CREATE TABLE IF NOT EXISTS work_item_priority_writes (
+        idempotency_key TEXT PRIMARY KEY,
+        work_item_id TEXT NOT NULL,
+        priority TEXT NOT NULL,
+        recorded_at TEXT NOT NULL,
         FOREIGN KEY (work_item_id) REFERENCES work_items(id)
       );
 
@@ -1145,8 +1157,8 @@ export class OperationsState {
             id, actor_id, workspace_id, idempotency_key, intent,
             expected_effect_json, accountable_executive, workstream,
             collaborating_executives_json, confirmed_commitment_json,
-            proposed_commitment_json, state, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, 'Captured', ?, ?)`,
+            proposed_commitment_json, priority, state, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, 'Captured', ?, ?)`,
         )
         .run(
           id,
@@ -1183,6 +1195,52 @@ export class OperationsState {
     }
 
     return this.#requireWorkItem(id);
+  }
+
+  recordPriority(
+    workItemId: string,
+    priority: WorkItemPriority,
+    idempotencyKey: string,
+    occurredAt: string,
+  ): WorkItem {
+    this.#requireWorkItem(workItemId);
+    const replay = this.#database
+      .prepare(
+        `SELECT work_item_id, priority FROM work_item_priority_writes
+         WHERE idempotency_key = ?`,
+      )
+      .get(idempotencyKey) as unknown as
+      | { readonly work_item_id: string; readonly priority: WorkItemPriority }
+      | undefined;
+    if (replay !== undefined) {
+      if (replay.work_item_id !== workItemId || replay.priority !== priority) {
+        throw new Error("Priority idempotency key was reused for a different edit.");
+      }
+      return this.#requireWorkItem(workItemId);
+    }
+
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database
+        .prepare("UPDATE work_items SET priority = ?, updated_at = ? WHERE id = ?")
+        .run(priority, occurredAt, workItemId);
+      this.#database
+        .prepare(
+          `INSERT INTO work_item_priority_writes
+           (idempotency_key, work_item_id, priority, recorded_at)
+           VALUES (?, ?, ?, ?)`,
+        )
+        .run(idempotencyKey, workItemId, priority, occurredAt);
+      this.#appendAudit(workItemId, "work-item.priority-recorded", occurredAt, {
+        idempotencyKey,
+        priority,
+      });
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+    return this.#requireWorkItem(workItemId);
   }
 
   transition(
@@ -1697,6 +1755,9 @@ export class OperationsState {
       this.#database.exec(
         "ALTER TABLE work_items ADD COLUMN proposed_commitment_json TEXT;",
       );
+    }
+    if (!names.has("priority")) {
+      this.#database.exec("ALTER TABLE work_items ADD COLUMN priority TEXT;");
     }
   }
 

@@ -8,15 +8,15 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## 🚦 Current status
 
-*As of 2026-08-28 · run `npm run graph:status` for live truth*
+*As of 2026-08-29 · run `npm run graph:status` for live truth*
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **10 of 44** |
-| Startable by an agent right now | **RM-09 after the action below** |
-| Waiting on you | **Share one empty Notion parent page** |
+| Phase 3 tickets closed | **11 of 44** |
+| Startable by an agent right now | **RM-10** |
+| Waiting on you | **Nothing** |
 
-**RM-07 is complete. RM-09 is selected and waiting on one Notion access action from Ming.** Follow [RM-09 — Share the Master Tasks parent page](RM-09-master-tasks-provisioning-runbook.md), then send the page link and explicit approval sentence to the implementation agent.
+**RM-09 is complete.** Master Tasks and its six linked Work Views are live and the graph can continue with RM-10's migration rehearsal.
 
 ---
 
@@ -32,7 +32,7 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## ✅ What needs you
 
-**One action for RM-09:** create an empty Notion page named `Real-Ming Operations`, connect the existing `Real-Ming` connection, and send its page link with approval to create Master Tasks. Full steps: [RM-09 provisioning runbook](RM-09-master-tasks-provisioning-runbook.md).
+**Nothing right now.** The completed [RM-09 provisioning runbook](RM-09-master-tasks-provisioning-runbook.md) records the Notion setup and live outcome.
 
 Both initial gates remain closed:
 

@@ -15,6 +15,7 @@ import type {
   OperationsResult,
   QuestionResponder,
   RecordWorkItemCommitmentRequest,
+  RecordWorkItemPriorityRequest,
   WorkItem,
   WorkItemAcknowledgement,
   WorkItemState,
@@ -45,6 +46,7 @@ export interface OperationsGateway {
   recordWorkItemCommitment(
     request: RecordWorkItemCommitmentRequest,
   ): Promise<WorkItem>;
+  recordWorkItemPriority(request: RecordWorkItemPriorityRequest): Promise<WorkItem>;
   requestAction(action: RequestedAction): Promise<PolicyDecision>;
   grantApproval(request: GrantApprovalRequest): Promise<Approval>;
   grantStandingAuthority(
@@ -63,6 +65,7 @@ export function createOperationsGateway(options: {
   readonly questionResponder: QuestionResponder;
   readonly commandClassifier: CommandClassifier;
   readonly now?: () => string;
+  readonly workItemChanged?: (workItem: WorkItem) => Promise<void>;
 }): OperationsGateway {
   const now = options.now ?? (() => new Date().toISOString());
 
@@ -71,6 +74,11 @@ export function createOperationsGateway(options: {
     if (workItem === undefined) {
       throw new Error("The Work Item does not exist.");
     }
+    return workItem;
+  };
+
+  const publish = async (workItem: WorkItem): Promise<WorkItem> => {
+    await options.workItemChanged?.(workItem);
     return workItem;
   };
 
@@ -102,13 +110,14 @@ export function createOperationsGateway(options: {
     return current;
   };
 
-  const blockAfterWorkerFailure = (
+  const blockAfterWorkerFailure = async (
     workItemId: string,
     reason: "collaborator-execution-failed" | "worker-execution-failed",
     message: string,
-  ): never => {
+  ): Promise<never> => {
     options.state.recordWorkerFailure(workItemId, now());
-    options.state.transition(workItemId, "Waiting/Blocked", now(), { reason });
+    const blocked = options.state.transition(workItemId, "Waiting/Blocked", now(), { reason });
+    await publish(blocked);
     throw new Error(message);
   };
 
@@ -122,7 +131,7 @@ export function createOperationsGateway(options: {
     try {
       return await options.worker.execute(effect);
     } catch {
-      return blockAfterWorkerFailure(
+      return await blockAfterWorkerFailure(
         effect.workItemId,
         failureReason,
         failureMessage,
@@ -139,7 +148,10 @@ export function createOperationsGateway(options: {
     );
 
     if (existing !== undefined) {
-      return { kind: "work-item-acknowledgement", workItem: existing };
+      return {
+        kind: "work-item-acknowledgement",
+        workItem: await publish(existing),
+      };
     }
 
     const routedAction: NormalizedCeoAction = {
@@ -152,7 +164,7 @@ export function createOperationsGateway(options: {
 
     return {
       kind: "work-item-acknowledgement",
-      workItem: options.state.createWorkItem(routedAction, now()),
+      workItem: await publish(options.state.createWorkItem(routedAction, now())),
     };
   };
 
@@ -213,9 +225,10 @@ export function createOperationsGateway(options: {
       );
     } catch {
       options.state.recordVerificationFailure(workItem.id, now());
-      options.state.transition(workItem.id, "Waiting/Blocked", now(), {
+      const blocked = options.state.transition(workItem.id, "Waiting/Blocked", now(), {
         reason: "effect-verification-failed",
       });
+      await publish(blocked);
       throw new Error("Controlled work could not be verified.");
     }
     const verification = {
@@ -227,12 +240,14 @@ export function createOperationsGateway(options: {
     } as const;
     options.state.recordVerification(workItem.id, verification, now());
 
-    return options.state.recordReviewReadyOutcome(
+    const result = options.state.recordReviewReadyOutcome(
       workItem,
       receipt,
       verification,
       now(),
     );
+    await publish(result.workItem);
+    return result;
   };
 
   const executeWorkItem: OperationsGateway["executeWorkItem"] = async (
@@ -246,7 +261,10 @@ export function createOperationsGateway(options: {
         storedWorkItem.state === "Ready for CEO Review" ||
         storedWorkItem.state === "Completed"
       ) {
-        return { workItem: storedWorkItem, outcomeReport: existingOutcome };
+        return {
+          workItem: await publish(storedWorkItem),
+          outcomeReport: existingOutcome,
+        };
       }
 
       options.state.recordRejectedTransition(
@@ -437,6 +455,7 @@ export function createOperationsGateway(options: {
       },
       now(),
     );
+    await publish(requireWorkItem(workItem.id));
 
     return {
       kind: "approval-required",
@@ -620,6 +639,17 @@ export function createOperationsGateway(options: {
       );
     };
 
+  const recordWorkItemPriority: OperationsGateway["recordWorkItemPriority"] =
+    async (request) => {
+      requireWorkItem(request.workItemId);
+      return publish(options.state.recordPriority(
+        request.workItemId,
+        request.priority,
+        request.idempotencyKey,
+        now(),
+      ));
+    };
+
   const submitCeoAction: OperationsGateway["submitCeoAction"] = async (
     action,
   ) => {
@@ -634,9 +664,12 @@ export function createOperationsGateway(options: {
     requestAction,
     grantApproval,
     grantStandingAuthority,
-    recordWorkItemCommitment,
-    reviewWorkItem,
-    stageWorkItemForApproval,
+    recordWorkItemCommitment: async (request) =>
+      publish(await recordWorkItemCommitment(request)),
+    recordWorkItemPriority,
+    reviewWorkItem: async (request) => publish(await reviewWorkItem(request)),
+    stageWorkItemForApproval: async (workItemId) =>
+      publish(await stageWorkItemForApproval(workItemId)),
     submitCeoAction,
 
     async submitCeoCommand(command: CeoCommand): Promise<CeoCommandResult> {

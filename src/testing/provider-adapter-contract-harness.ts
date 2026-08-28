@@ -17,13 +17,19 @@ import {
 } from "../providers/telegram-provider-adapter.js";
 import type { TelegramDeliveryLedger } from "../providers/telegram-provider-adapter.js";
 import {
+  createEphemeralNotionWriteLedger,
   createNotionProviderAdapter,
+  type NotionWriteLedger,
   type NotionProviderAdapter,
 } from "../providers/notion-provider-adapter.js";
 
 export const contractSecretFixture = "provider-secret-must-never-be-reported";
 
 const stalenessThresholdMs = 24 * 60 * 60 * 1000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 export interface ContractScenario {
   readonly asOf?: string;
@@ -34,6 +40,7 @@ export interface ContractScenario {
   readonly telegramUpdates?: readonly unknown[];
   readonly telegramThrowAfterEffect?: boolean;
   readonly telegramMalformedResponseAfterEffect?: boolean;
+  readonly notionWriteLedger?: NotionWriteLedger | null;
 }
 
 export interface ContractAdapter extends ProviderAdapter<readonly unknown[]> {
@@ -220,6 +227,12 @@ function createNotionContractAdapter(
     token: contractSecretFixture,
     workspaceId: "workspace:real-ming",
     accountReference: "notion:account:real-ming",
+    ...(scenario.notionWriteLedger === null
+      ? {}
+      : {
+          writeLedger:
+            scenario.notionWriteLedger ?? createEphemeralNotionWriteLedger(),
+        }),
     fetch: fetchImplementation,
     now: () => now,
   });
@@ -236,12 +249,16 @@ export interface NotionProvisioningContractHarness {
   readonly adapter: NotionProviderAdapter;
   databaseCreateCount(): number;
   viewCreateCount(): number;
+  viewUpdateCount(): number;
   createdSchemaNames(): readonly string[];
   viewNames(): readonly string[];
+  masterTaskPageCreateCount(): number;
+  masterTaskPageUpdateCount(): number;
 }
 
 export function createNotionProvisioningContractHarness(options: {
   readonly failViewCreateOnceAt?: number;
+  readonly driftViewFilterOnReplay?: boolean;
 } = {}): NotionProvisioningContractHarness {
   const databaseId = "notion-database:master-tasks";
   const dataSourceId = "notion-data-source:master-tasks";
@@ -249,10 +266,19 @@ export function createNotionProvisioningContractHarness(options: {
   let databasesCreated = 0;
   let viewAttempts = 0;
   let viewsCreated = 0;
+  let viewsUpdated = 0;
+  let filterDriftInjected = false;
   let failedConfiguredAttempt = false;
   let schemaNames: readonly string[] = [];
   let createdSchema: Readonly<Record<string, unknown>> = {};
-  const views: Array<{ readonly id: string; readonly name: string }> = [];
+  const views: Array<{
+    readonly id: string;
+    readonly name: string;
+    filter?: unknown;
+  }> = [];
+  const pages: Array<Record<string, unknown>> = [];
+  let pagesCreated = 0;
+  let pagesUpdated = 0;
 
   const databaseResponse = () => ({
     object: "database",
@@ -328,6 +354,48 @@ export function createNotionProvisioningContractHarness(options: {
       });
     }
 
+    if (decodeURIComponent(url.pathname) === `/v1/data_sources/${dataSourceId}/query` && method === "POST") {
+      const body = typeof init?.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+      const filter = body["filter"];
+      const expected = isRecord(filter) && isRecord(filter["rich_text"])
+        ? filter["rich_text"]["equals"]
+        : undefined;
+      const matching = expected === undefined
+        ? pages
+        : pages.filter((page) => JSON.stringify(page["properties"] ?? {}).includes(String(expected)));
+      return Response.json({ object: "list", results: matching, has_more: false, next_cursor: null });
+    }
+
+    if (url.pathname === "/v1/pages" && method === "POST") {
+      const body = typeof init?.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+      const page = {
+        object: "page",
+        id: `notion-page:${pages.length + 1}`,
+        created_time: "2026-08-29T02:00:00.000Z",
+        last_edited_time: "2026-08-29T02:00:00.000Z",
+        properties: body["properties"] ?? {},
+      };
+      pages.push(page);
+      pagesCreated += 1;
+      return Response.json(page);
+    }
+
+    if (url.pathname.startsWith("/v1/pages/") && method === "PATCH") {
+      const id = decodeURIComponent(url.pathname.slice("/v1/pages/".length));
+      const page = pages.find((candidate) => candidate["id"] === id);
+      const body = typeof init?.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+      if (page === undefined) return Response.json({ message: "Unknown page" }, { status: 404 });
+      page["properties"] = body["properties"] ?? {};
+      pagesUpdated += 1;
+      return Response.json(page);
+    }
+
     if (url.pathname === "/v1/views" && method === "GET") {
       return Response.json({
         object: "list",
@@ -340,12 +408,35 @@ export function createNotionProvisioningContractHarness(options: {
     if (url.pathname.startsWith("/v1/views/") && method === "GET") {
       const id = url.pathname.slice("/v1/views/".length);
       const view = views.find((candidate) => candidate.id === id);
+      if (
+        view !== undefined &&
+        options.driftViewFilterOnReplay === true &&
+        !filterDriftInjected &&
+        view.name === "CTO Work View"
+      ) {
+        view.filter = { property: "Accountable Executive", select: { equals: "CMO" } };
+        filterDriftInjected = true;
+      }
       return view === undefined
         ? Response.json(
             { object: "error", message: "Unknown controlled view." },
             { status: 404 },
           )
         : Response.json(view);
+    }
+
+    if (url.pathname.startsWith("/v1/views/") && method === "PATCH") {
+      const id = url.pathname.slice("/v1/views/".length);
+      const view = views.find((candidate) => candidate.id === id);
+      const body = typeof init?.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+      if (view === undefined) {
+        return Response.json({ object: "error", message: "Unknown controlled view." }, { status: 404 });
+      }
+      view.filter = body["filter"];
+      viewsUpdated += 1;
+      return Response.json(view);
     }
 
     if (url.pathname === "/v1/views" && method === "POST") {
@@ -371,7 +462,11 @@ export function createNotionProvisioningContractHarness(options: {
           { status: 422 },
         );
       }
-      const view = { id: `notion-view:${views.length + 1}`, name };
+      const view = {
+        id: `notion-view:${views.length + 1}`,
+        name,
+        ...(body["filter"] === undefined ? {} : { filter: body["filter"] }),
+      };
       views.push(view);
       viewsCreated += 1;
       return Response.json(view);
@@ -388,13 +483,17 @@ export function createNotionProvisioningContractHarness(options: {
       token: contractSecretFixture,
       workspaceId: "workspace:real-ming",
       accountReference: "notion:account:real-ming",
+      writeLedger: createEphemeralNotionWriteLedger(),
       fetch: fetchImplementation,
       now: () => "2026-08-27T09:00:00.000Z",
     }),
     databaseCreateCount: () => databasesCreated,
     viewCreateCount: () => viewsCreated,
+    viewUpdateCount: () => viewsUpdated,
     createdSchemaNames: () => schemaNames,
     viewNames: () => views.map((view) => view.name),
+    masterTaskPageCreateCount: () => pagesCreated,
+    masterTaskPageUpdateCount: () => pagesUpdated,
   };
 }
 

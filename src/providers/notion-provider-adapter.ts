@@ -1,11 +1,22 @@
 import { createHash } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 
 import { detectSensitiveFields } from "../operations/sensitive-secret.js";
+import {
+  executiveRoles,
+  riskClasses,
+  trustDomains,
+  workItemPriorities,
+  workItemStates,
+  workstreams,
+} from "../operations/contracts.js";
 import {
   masterTasksSchema,
   masterTasksViewDefinitions,
   type MasterTaskPropertyType,
+  type MasterTaskRecord,
   type MasterTasksProvisioning,
+  type MasterTasksStore,
   type MasterTasksWorkView,
 } from "../master-tasks/master-tasks.js";
 import {
@@ -28,6 +39,12 @@ interface NotionWriteReceipt {
   readonly effectReference: string;
 }
 
+interface NotionWriteReceiptRow {
+  readonly reference: string;
+  readonly payload_digest: string;
+  readonly effect_reference: string;
+}
+
 export interface NotionWriteLedger {
   receipt(idempotencyKey: string): NotionWriteReceipt | undefined;
   record(idempotencyKey: string, receipt: NotionWriteReceipt): void;
@@ -43,6 +60,58 @@ export function createEphemeralNotionWriteLedger(): NotionWriteLedger {
   };
 }
 
+export class SqliteNotionWriteLedger implements NotionWriteLedger {
+  readonly #database: DatabaseSync;
+
+  constructor(path: string) {
+    this.#database = new DatabaseSync(path);
+    this.#database.exec(`
+      PRAGMA journal_mode = WAL;
+      CREATE TABLE IF NOT EXISTS notion_write_receipts (
+        idempotency_key TEXT PRIMARY KEY,
+        reference TEXT NOT NULL,
+        payload_digest TEXT NOT NULL,
+        effect_reference TEXT NOT NULL
+      );
+    `);
+  }
+
+  receipt(idempotencyKey: string): NotionWriteReceipt | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT reference, payload_digest, effect_reference
+         FROM notion_write_receipts WHERE idempotency_key = ?`,
+      )
+      .get(idempotencyKey) as unknown as NotionWriteReceiptRow | undefined;
+    return row === undefined
+      ? undefined
+      : {
+          reference: row.reference,
+          payloadDigest: row.payload_digest,
+          effectReference: row.effect_reference,
+        };
+  }
+
+  record(idempotencyKey: string, receipt: NotionWriteReceipt): void {
+    this.#database
+      .prepare(
+        `INSERT INTO notion_write_receipts
+         (idempotency_key, reference, payload_digest, effect_reference)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(
+        idempotencyKey,
+        receipt.reference,
+        receipt.payloadDigest,
+        receipt.effectReference,
+      );
+  }
+
+  close(): void {
+    this.#database.close();
+  }
+}
+
 export type NotionProvisionResult =
   | { readonly kind: "ok"; readonly value: MasterTasksProvisioning }
   | { readonly kind: "failed"; readonly failure: ProviderFailure };
@@ -52,6 +121,10 @@ export interface NotionProviderAdapter extends ProviderAdapter<readonly unknown[
     readonly parentPageId: string;
     readonly idempotencyKey: string;
   }): Promise<NotionProvisionResult>;
+  upsertMasterTask(request: {
+    readonly dataSourceId: string;
+    readonly record: MasterTaskRecord;
+  }): Promise<ProviderWriteResult>;
 }
 
 interface NotionProviderAdapterOptions {
@@ -115,39 +188,14 @@ function asOfFromRows(rows: readonly unknown[], fallback: string): string {
 }
 
 function schemaOptions(name: string): readonly string[] | undefined {
-  if (name === "Trust Domain") {
-    return ["Personal", "Ming Creatives", "Academic", "Entertainment", "Finance"];
-  }
-  if (name === "Workstream") {
-    return [
-      "Personal Life",
-      "Career Job",
-      "Finance",
-      "Academic",
-      "MicroSaaS",
-      "Content Creation",
-    ];
-  }
+  if (name === "Trust Domain") return trustDomains;
+  if (name === "Workstream") return workstreams;
   if (name === "Accountable Executive" || name === "Collaborating Executives") {
-    return ["COO", "CTO", "Personal CFO", "CAO", "CMO"];
+    return executiveRoles;
   }
-  if (name === "Lifecycle") {
-    return [
-      "Captured",
-      "Triaged",
-      "Planned",
-      "Awaiting Approval",
-      "Executing",
-      "Waiting/Blocked",
-      "Verifying",
-      "Ready for CEO Review",
-      "Completed",
-      "Changes Requested",
-      "Cancelled",
-    ];
-  }
-  if (name === "Priority") return ["Low", "Medium", "High", "Critical"];
-  if (name === "Risk Class") return ["low", "medium", "high"];
+  if (name === "Lifecycle") return workItemStates;
+  if (name === "Priority") return workItemPriorities;
+  if (name === "Risk Class") return riskClasses;
   return undefined;
 }
 
@@ -176,13 +224,163 @@ export function notionMasterTasksSchema(): Readonly<Record<string, unknown>> {
   );
 }
 
-function pageProperties(payload: Readonly<Record<string, string>>): object {
-  return Object.fromEntries(
-    Object.entries(payload).map(([name, value]) => [
-      name,
-      { rich_text: [{ type: "text", text: { content: value } }] },
-    ]),
-  );
+function viewFilterMatches(
+  actual: unknown,
+  executive: string | null,
+  propertyId: string | undefined,
+): boolean {
+  if (executive === null) return actual === null || actual === undefined;
+  if (!isRecord(actual) || !isRecord(actual["select"])) return false;
+  const property = actual["property"];
+  return (property === "Accountable Executive" || property === propertyId) &&
+    actual["select"]["equals"] === executive;
+}
+
+function textValue(type: "title" | "rich_text", value: string): object {
+  return { [type]: value === "" ? [] : [{ type: "text", text: { content: value } }] };
+}
+
+export function notionPageProperties(
+  payload: Readonly<Record<string, string>>,
+  options: { readonly allowLifecycle?: boolean } = {},
+): Readonly<Record<string, unknown>> {
+  const schema = new Map(masterTasksSchema.map((property) => [property.name, property.type]));
+  return Object.fromEntries(Object.entries(payload).map(([name, value]) => {
+    const type = schema.get(name);
+    if (name === "Lifecycle" && options.allowLifecycle !== true) {
+      throw new Error("Lifecycle changes must go through the Operations Gateway.");
+    }
+    if (type === "created_time" || type === "last_edited_time") {
+      throw new Error(`${name} is computed by Notion and cannot be written.`);
+    }
+    if (type === "title" || type === "rich_text" || type === undefined) {
+      return [name, textValue(type ?? "rich_text", value)];
+    }
+    if (type === "select") {
+      return [name, { select: value === "" ? null : { name: value } }];
+    }
+    if (type === "checkbox") {
+      if (value !== "true" && value !== "false") {
+        throw new Error(`${name} must be true or false.`);
+      }
+      return [name, { checkbox: value === "true" }];
+    }
+    let values: unknown;
+    try { values = JSON.parse(value); } catch { values = value.split(",").map((item) => item.trim()); }
+    if (!Array.isArray(values) || values.some((item) => typeof item !== "string")) {
+      throw new Error(`${name} must be a string array.`);
+    }
+    return [name, { multi_select: values.map((item) => ({ name: item })) }];
+  }));
+}
+
+function masterTaskPayload(record: MasterTaskRecord): Readonly<Record<string, string>> {
+  return {
+    Title: record.title,
+    "Work Item ID": record.workItemId,
+    Workspace: record.workspaceId,
+    Source: record.source,
+    "Source Reference": record.sourceReference,
+    Intent: record.intent,
+    "Trust Domain": record.trustDomain,
+    ...(record.workstream === null ? {} : { Workstream: record.workstream }),
+    "Accountable Executive": record.accountableExecutive,
+    "Collaborating Executives": JSON.stringify(record.collaboratingExecutives),
+    Lifecycle: record.lifecycle,
+    ...(record.priority === null ? {} : { Priority: record.priority }),
+    ...(record.commitmentValue === null ? {} : { "Commitment Value": record.commitmentValue }),
+    ...(record.commitmentProvenance === null ? {} : { "Commitment Provenance": record.commitmentProvenance }),
+    ...(record.riskClass === null ? {} : { "Risk Class": record.riskClass }),
+    "Approval Required": String(record.approvalRequired),
+    ...(record.approvalReference === null ? {} : { "Approval Reference": record.approvalReference }),
+    ...(record.portfolioProject === null ? {} : { "Portfolio Project": record.portfolioProject }),
+    "Evidence References": JSON.stringify(record.evidenceReferences),
+    ...(record.outcomeReportReference === null ? {} : {
+      "Outcome Report Reference": record.outcomeReportReference,
+    }),
+  };
+}
+
+function propertyOf(page: Record<string, unknown>, name: string): Record<string, unknown> | undefined {
+  const properties = page["properties"];
+  const property = isRecord(properties) ? properties[name] : undefined;
+  return isRecord(property) ? property : undefined;
+}
+
+function notionText(page: Record<string, unknown>, name: string): string {
+  const property = propertyOf(page, name);
+  const values = property?.["title"] ?? property?.["rich_text"];
+  if (!Array.isArray(values)) return "";
+  return values.map((value) => {
+    if (!isRecord(value)) return "";
+    if (typeof value["plain_text"] === "string") return value["plain_text"];
+    const text = value["text"];
+    return isRecord(text) && typeof text["content"] === "string" ? text["content"] : "";
+  }).join("");
+}
+
+function notionSelect(page: Record<string, unknown>, name: string): string | null {
+  const selected = propertyOf(page, name)?.["select"];
+  return isRecord(selected) && typeof selected["name"] === "string" ? selected["name"] : null;
+}
+
+function notionMultiSelect(page: Record<string, unknown>, name: string): readonly string[] {
+  const selected = propertyOf(page, name)?.["multi_select"];
+  return Array.isArray(selected)
+    ? selected.flatMap((value) => isRecord(value) && typeof value["name"] === "string" ? [value["name"]] : [])
+    : [];
+}
+
+function parseMasterTaskPage(value: unknown): MasterTaskRecord {
+  if (!isRecord(value)) throw new Error("Notion returned an unreadable Master Tasks page.");
+  const workItemId = notionText(value, "Work Item ID");
+  const accountableExecutive = notionSelect(value, "Accountable Executive");
+  const trustDomain = notionSelect(value, "Trust Domain");
+  const lifecycle = notionSelect(value, "Lifecycle");
+  const workstream = notionSelect(value, "Workstream");
+  const priority = notionSelect(value, "Priority");
+  const riskClass = notionSelect(value, "Risk Class");
+  if (workItemId === "" || !executiveRoles.includes(accountableExecutive as never) ||
+    !trustDomains.includes(trustDomain as never) || !workItemStates.includes(lifecycle as never) ||
+    (workstream !== null && !workstreams.includes(workstream as never)) ||
+    (priority !== null && !workItemPriorities.includes(priority as never)) ||
+    (riskClass !== null && !riskClasses.includes(riskClass as never))) {
+    throw new Error("Notion Master Tasks contains an invalid canonical Work Item.");
+  }
+  const evidenceText = notionText(value, "Evidence References");
+  let evidenceReferences: readonly string[] = [];
+  if (evidenceText !== "") {
+    const parsed: unknown = JSON.parse(evidenceText);
+    if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
+      throw new Error("Evidence References must be a string array.");
+    }
+    evidenceReferences = parsed;
+  }
+  return {
+    id: workItemId,
+    workItemId,
+    workspaceId: notionText(value, "Workspace"),
+    title: notionText(value, "Title"),
+    intent: notionText(value, "Intent"),
+    source: notionText(value, "Source"),
+    sourceReference: notionText(value, "Source Reference"),
+    trustDomain: trustDomain as MasterTaskRecord["trustDomain"],
+    workstream: workstream as MasterTaskRecord["workstream"],
+    accountableExecutive: accountableExecutive as MasterTaskRecord["accountableExecutive"],
+    collaboratingExecutives: notionMultiSelect(value, "Collaborating Executives") as MasterTaskRecord["collaboratingExecutives"],
+    lifecycle: lifecycle as MasterTaskRecord["lifecycle"],
+    priority: priority as MasterTaskRecord["priority"],
+    commitmentValue: notionText(value, "Commitment Value") || null,
+    commitmentProvenance: notionText(value, "Commitment Provenance") || null,
+    riskClass: riskClass as MasterTaskRecord["riskClass"],
+    approvalRequired: propertyOf(value, "Approval Required")?.["checkbox"] === true,
+    approvalReference: notionText(value, "Approval Reference") || null,
+    portfolioProject: notionText(value, "Portfolio Project") || null,
+    evidenceReferences,
+    outcomeReportReference: notionText(value, "Outcome Report Reference") || null,
+    createdAt: typeof value["created_time"] === "string" ? value["created_time"] : "",
+    updatedAt: typeof value["last_edited_time"] === "string" ? value["last_edited_time"] : "",
+  };
 }
 
 export function createNotionProviderAdapter(
@@ -190,7 +388,7 @@ export function createNotionProviderAdapter(
 ): NotionProviderAdapter {
   const request = options.fetch ?? fetch;
   const now = options.now ?? (() => new Date().toISOString());
-  const ledger = options.writeLedger ?? createEphemeralNotionWriteLedger();
+  const ledger = options.writeLedger;
   const identity: ProviderIdentity = {
     provider: "notion",
     workspaceId: options.workspaceId,
@@ -375,6 +573,12 @@ export function createNotionProviderAdapter(
           ),
         };
       }
+      const accountableExecutiveProperty = actualProperties?.["Accountable Executive"];
+      const accountableExecutivePropertyId =
+        isRecord(accountableExecutiveProperty) &&
+        typeof accountableExecutiveProperty["id"] === "string"
+          ? accountableExecutiveProperty["id"]
+          : undefined;
       const listedViews = await listAll(
         `/views?data_source_id=${encodeURIComponent(dataSourceId)}&page_size=100`,
       );
@@ -463,6 +667,30 @@ export function createNotionProviderAdapter(
             return { kind: "failed", failure: await normalizedFailure(created.response) };
           }
           viewObject = created.body;
+        } else if (
+          isRecord(viewObject) &&
+          typeof viewObject["id"] === "string" &&
+          !viewFilterMatches(
+            viewObject["filter"],
+            definition.accountableExecutive,
+            accountableExecutivePropertyId,
+          )
+        ) {
+          const desiredFilter = definition.accountableExecutive === null
+            ? null
+            : {
+                property: accountableExecutivePropertyId ?? "Accountable Executive",
+                select: { equals: definition.accountableExecutive },
+              };
+          const updated = await api(`/views/${viewObject["id"]}`, {
+            method: "PATCH",
+            headers: headers(true),
+            body: JSON.stringify({ filter: desiredFilter }),
+          });
+          if (!updated.response.ok) {
+            return { kind: "failed", failure: await normalizedFailure(updated.response) };
+          }
+          viewObject = updated.body;
         }
         if (!isRecord(viewObject) || typeof viewObject["id"] !== "string") {
           throw new Error(`Notion returned no identity for ${definition.name}.`);
@@ -502,6 +730,122 @@ export function createNotionProviderAdapter(
         failure: providerFailure(
           "provider-error",
           error instanceof Error ? error.message : "Notion provisioning failed.",
+          [options.token],
+        ),
+      };
+    }
+  };
+
+  const upsertMasterTask: NotionProviderAdapter["upsertMasterTask"] = async ({
+    dataSourceId,
+    record,
+  }) => {
+    if (ledger === undefined) {
+      return {
+        kind: "failed",
+        failure: providerFailure(
+          "unsupported-capability",
+          "A durable Notion write ledger is required before Master Tasks writes are enabled.",
+        ),
+      };
+    }
+    const payload = masterTaskPayload(record);
+    const digest = payloadDigest(payload);
+    const idempotencyKey = `master-task:${record.workItemId}:${digest}`;
+    const prior = ledger.receipt(idempotencyKey);
+    if (prior !== undefined) {
+      const timestamp = now();
+      return {
+        kind: "ok",
+        identity,
+        provenance: provenance(prior.reference, timestamp, timestamp),
+        effectReference: prior.effectReference,
+        deduplicated: true,
+      };
+    }
+
+    try {
+      const query = await api(
+        `/data_sources/${encodeURIComponent(dataSourceId)}/query`,
+        {
+          method: "POST",
+          headers: headers(true),
+          body: JSON.stringify({
+            filter: {
+              property: "Work Item ID",
+              rich_text: { equals: record.workItemId },
+            },
+            page_size: 2,
+          }),
+        },
+      );
+      if (!query.response.ok) {
+        return { kind: "failed", failure: await normalizedFailure(query.response) };
+      }
+      const results = isRecord(query.body) && Array.isArray(query.body["results"])
+        ? query.body["results"]
+        : undefined;
+      if (results === undefined || results.length > 1) {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            "provider-error",
+            results === undefined
+              ? "Notion returned an unreadable Master Tasks query."
+              : `Master Tasks contains duplicate Work Item ID ${record.workItemId}.`,
+          ),
+        };
+      }
+      const properties = notionPageProperties(payload, { allowLifecycle: true });
+      const existing = results[0];
+      const existingId = isRecord(existing) && typeof existing["id"] === "string"
+        ? existing["id"]
+        : undefined;
+      const write = existingId === undefined
+        ? await api("/pages", {
+            method: "POST",
+            headers: headers(true),
+            body: JSON.stringify({
+              parent: { type: "data_source_id", data_source_id: dataSourceId },
+              properties,
+            }),
+          })
+        : await api(`/pages/${encodeURIComponent(existingId)}`, {
+            method: "PATCH",
+            headers: headers(true),
+            body: JSON.stringify({ properties }),
+          });
+      if (!write.response.ok) {
+        return { kind: "failed", failure: await normalizedFailure(write.response) };
+      }
+      const pageId = isRecord(write.body) && typeof write.body["id"] === "string"
+        ? write.body["id"]
+        : existingId;
+      if (pageId === undefined) {
+        return {
+          kind: "failed",
+          failure: providerFailure("provider-error", "Notion returned no Master Tasks page identity."),
+        };
+      }
+      ledger.record(idempotencyKey, {
+        reference: pageId,
+        payloadDigest: digest,
+        effectReference: pageId,
+      });
+      const timestamp = now();
+      return {
+        kind: "ok",
+        identity,
+        provenance: provenance(pageId, timestamp, timestamp),
+        effectReference: pageId,
+        deduplicated: false,
+      };
+    } catch (error) {
+      return {
+        kind: "failed",
+        failure: providerFailure(
+          "unavailable",
+          error instanceof Error ? error.message : "Master Tasks write failed.",
           [options.token],
         ),
       };
@@ -584,6 +928,15 @@ export function createNotionProviderAdapter(
           ),
         };
       }
+      if (ledger === undefined) {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            "unsupported-capability",
+            "A durable Notion write ledger is required before production writes are enabled.",
+          ),
+        };
+      }
       const digest = payloadDigest(writeRequest.payload);
       const prior = ledger.receipt(writeRequest.idempotencyKey);
       if (prior !== undefined) {
@@ -606,11 +959,24 @@ export function createNotionProviderAdapter(
         };
       }
 
+      let properties: Readonly<Record<string, unknown>>;
+      try {
+        properties = notionPageProperties(writeRequest.payload);
+      } catch (error) {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            "invalid-input",
+            error instanceof Error ? error.message : "Notion properties are invalid.",
+          ),
+        };
+      }
+
       try {
         const result = await api(`/pages/${encodeURIComponent(writeRequest.reference)}`, {
           method: "PATCH",
           headers: headers(true),
-          body: JSON.stringify({ properties: pageProperties(writeRequest.payload) }),
+          body: JSON.stringify({ properties }),
         });
         if (!result.response.ok) {
           return { kind: "failed", failure: await normalizedFailure(result.response) };
@@ -641,5 +1007,31 @@ export function createNotionProviderAdapter(
     },
 
     provisionMasterTasks,
+    upsertMasterTask,
+  };
+}
+
+export function createNotionMasterTasksStore(options: {
+  readonly adapter: NotionProviderAdapter;
+  readonly dataSourceId: string;
+}): MasterTasksStore {
+  return {
+    records: async () => {
+      const result = await options.adapter.read({ reference: options.dataSourceId });
+      if (result.kind === "failed") {
+        throw new Error(`Master Tasks read failed (${result.failure.class}): ${result.failure.message}`);
+      }
+      return result.value.map(parseMasterTaskPage);
+    },
+    upsert: async (record) => {
+      const result = await options.adapter.upsertMasterTask({
+        dataSourceId: options.dataSourceId,
+        record,
+      });
+      if (result.kind === "failed") {
+        throw new Error(`Master Tasks write failed (${result.failure.class}): ${result.failure.message}`);
+      }
+      return record;
+    },
   };
 }
