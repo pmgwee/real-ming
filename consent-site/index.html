@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Real-Ming</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #16181d;
+    --muted: #5b616e;
+    --line: #e3e6ea;
+    --accent: #2f6df6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1013;
+      --fg: #e9ecf1;
+      --muted: #98a0ae;
+      --line: #262a31;
+      --accent: #6f9bff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 42rem; margin: 0 auto; padding: 4rem 1.5rem 5rem; }
+  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 .5rem; letter-spacing: -0.02em; }
+  .tagline { color: var(--muted); margin: 0 0 2.5rem; font-size: 1.05rem; }
+  h2 { font-size: 1.05rem; margin: 2.5rem 0 .75rem; letter-spacing: -0.01em; }
+  p { margin: 0 0 1rem; }
+  ul { margin: 0 0 1rem; padding-left: 1.25rem; }
+  li { margin-bottom: .4rem; }
+  a { color: var(--accent); }
+  .note {
+    border: 1px solid var(--line);
+    border-radius: .6rem;
+    padding: 1rem 1.15rem;
+    color: var(--muted);
+    font-size: .95rem;
+    margin: 2rem 0 0;
+  }
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: .9rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Real-Ming</h1>
+  <p class="tagline">A private personal operations assistant, used by one person.</p>
+
+  <p>
+    Real-Ming coordinates its operator's own commitments across personal, business,
+    academic and content responsibilities. It reads the operator's calendar and task
+    records, reconciles them, and produces a daily brief and end-of-day summary.
+  </p>
+
+  <h2>Who can use it</h2>
+  <p>
+    Nobody else. Real-Ming is a single-operator system with one authorised identity.
+    It is not a product, has no sign-up, and accepts no other users.
+  </p>
+
+  <h2>What it connects to</h2>
+  <ul>
+    <li><strong>Google Calendar</strong> — reads events to reconcile scheduled commitments, and creates or updates events the operator asks it to.</li>
+    <li><strong>Notion</strong> — reads and updates the operator's own task records.</li>
+    <li><strong>Telegram</strong> — a private bot that only accepts commands from the operator.</li>
+  </ul>
+
+  <h2>What it will not do</h2>
+  <ul>
+    <li>Send an external message without explicit, per-action approval.</li>
+    <li>Move money, make a payment, or place a trade. There is no such capability.</li>
+    <li>Delete a calendar. It is not granted that permission.</li>
+    <li>Share, sell, or transfer data to any third party.</li>
+  </ul>
+
+  <div class="note">
+    Consequential actions stop and wait for a human decision bound to one exact
+    target. An approval that is granted becomes invalid the moment its target changes.
+  </div>
+
+  <footer>
+    <a href="/privacy.html">Privacy policy</a>
+  </footer>
+</main>
+</body>
+</html>

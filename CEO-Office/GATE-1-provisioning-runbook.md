@@ -101,11 +101,21 @@ While the app's publishing status is **Testing**, Google expires refresh tokens 
 
 If the incomplete-configuration message persists after the first two are filled, it is the Developer contact address that is still empty.
 
-❌ **Do not upload an App logo.** The page states that uploading one forces verification unless the app is Internal or still in Testing — and you are about to leave Testing. A logo would push a personal app into Google's verification queue for no benefit.
+**Production additionally requires two public URLs.** Hovering the disabled **Publish app** button states it outright: *"Valid app name, support email, homepage URL and privacy policy URL are required for switching the app to external production mode."* Those two fields carry no asterisk on the Branding page, because they are optional for Testing and mandatory only for production.
 
-❌ **Leave Application home page, privacy policy, Terms of Service, and Authorised domains blank.** A Desktop app authenticates over loopback and has no domain, so filling these only pulls Authorised domains into scope.
+| Also required to publish | Action |
+| --- | --- |
+| **Application home page** | Public URL serving `consent-site/index.html` |
+| **Application privacy policy link** | Public URL serving `consent-site/privacy.html` |
+| **Authorised domains** | The domain both URLs live on |
 
-⚠️ **Do not click "+ Add domain".** Empty means *no rows at all*, not *a blank row*. Adding a row makes it required, and the blank row then fails with *"Invalid domain: must not be empty"*, which blocks the whole page from saving. If you already added one, delete the row with the trash icon at the right of the field — hover over the row if it is not visible — rather than filling it in.
+Both pages are in [`consent-site/`](../consent-site/) with deployment instructions in its README. `npx vercel deploy consent-site --prod` publishes them. **Application Terms of Service link stays empty** - it is not required.
+
+⚠️ **The domain must be one Google accepts.** Every domain shown on the consent screen must be pre-registered under Authorised domains, and production generally expects a domain verifiable in Google Search Console. A domain you own is the reliable choice; a `*.vercel.app` subdomain may be rejected because `vercel.app` is a public suffix you cannot verify. See `consent-site/README.md`.
+
+⚠️ **Do not click "+ Add domain" until you have a domain to enter.** An added row is required, and a blank one fails with *"Invalid domain: must not be empty"*, blocking the page from saving. Delete an accidental blank row with the trash icon at the right of the field rather than leaving it.
+
+❌ **Do not upload an App logo.** The page states that uploading one forces verification unless the app is Internal or still in Testing - and you are about to leave Testing. A logo would push a personal app into Google's verification queue for no benefit.
 
 Then:
 
@@ -206,7 +216,8 @@ Then restart the loop with [RESUME-PROMPT.md](RESUME-PROMPT.md).
 | Google returns 403 on every Calendar call | The Calendar API is not enabled on the project, or the scope is missing under Data access. |
 | Google returns 403 only on writing an event | You granted `calendar.readonly` instead of `calendar.events`. Fix the scope, then re-consent to mint a new refresh token. |
 | Consent shows an "unverified app" warning | Expected for a sensitive scope on an unverified app. Choose **Advanced -> Go to Real-Ming (unsafe)**. |
-| "Your app's OAuth configuration is incomplete" when publishing | Branding is unfinished. Fill User support email and Developer contact email, then save. Those are the only required fields left once App name is set. |
+| "Your app's OAuth configuration is incomplete" when publishing | Branding is unfinished. Beyond the three asterisked fields, production also needs a homepage URL and a privacy policy URL. Hover the disabled **Publish app** button to see what Google is still waiting for. |
+| **Publish app** stays greyed out although Branding saved | Saving Branding is not the same as satisfying production mode. The homepage and privacy policy URLs are almost certainly still empty. |
 | "Invalid domain: must not be empty" under Authorised domains | You clicked **+ Add domain**, which created a required blank row. Delete the row with its trash icon. Do not fill it; a Desktop app has no domain. |
 | Google asks you to submit the app for verification | You uploaded an App logo, or filled a domain field. Remove them; neither is needed for a Desktop app used only by its owner. |
 | "Advanced settings are available for apps in production" | Informational. It disappears once the app is published on the Audience page. |

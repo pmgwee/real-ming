@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Real-Ming — Privacy Policy</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #16181d;
+    --muted: #5b616e;
+    --line: #e3e6ea;
+    --accent: #2f6df6;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1013;
+      --fg: #e9ecf1;
+      --muted: #98a0ae;
+      --line: #262a31;
+      --accent: #6f9bff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  main { max-width: 42rem; margin: 0 auto; padding: 4rem 1.5rem 5rem; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .35rem; letter-spacing: -0.02em; }
+  .updated { color: var(--muted); margin: 0 0 2.5rem; font-size: .95rem; }
+  h2 { font-size: 1.05rem; margin: 2.25rem 0 .7rem; letter-spacing: -0.01em; }
+  p { margin: 0 0 1rem; }
+  ul { margin: 0 0 1rem; padding-left: 1.25rem; }
+  li { margin-bottom: .4rem; }
+  a { color: var(--accent); }
+  code { font-size: .9em; background: rgba(127,127,127,.13); padding: .1rem .35rem; border-radius: .25rem; }
+  .callout {
+    border: 1px solid var(--line);
+    border-radius: .6rem;
+    padding: 1rem 1.15rem;
+    margin: 0 0 1.25rem;
+    font-size: .97rem;
+  }
+  footer {
+    margin-top: 3.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--muted);
+    font-size: .9rem;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy Policy</h1>
+  <p class="updated">Real-Ming · last updated 28 August 2026</p>
+
+  <p>
+    Real-Ming is a private personal operations assistant operated by one individual
+    for their own use. It has a single authorised user, no sign-up, and no other
+    users. This policy describes how that operator's own data is handled.
+  </p>
+
+  <h2>Data accessed</h2>
+  <ul>
+    <li>
+      <strong>Google Calendar</strong> — event details on calendars the operator has
+      access to, using the <code>calendar.events</code> and
+      <code>calendar.calendarlist.readonly</code> scopes. Events are read to reconcile
+      commitments, and created or updated when the operator requests it.
+    </li>
+    <li>
+      <strong>Notion</strong> — the operator's own task records.
+    </li>
+    <li>
+      <strong>Telegram</strong> — commands sent by the operator to a private bot.
+    </li>
+  </ul>
+
+  <h2>How it is used</h2>
+  <p>
+    Solely to produce the operator's own daily brief and end-of-day summary, to
+    reconcile scheduled commitments against task records, and to carry out work the
+    operator explicitly requests. Data is not used for advertising, profiling,
+    analytics, or model training.
+  </p>
+
+  <h2>Google user data</h2>
+  <div class="callout">
+    Real-Ming's use and transfer of information received from Google APIs adheres to
+    the
+    <a href="https://developers.google.com/terms/api-services-user-data-policy" rel="noopener">Google API Services User Data Policy</a>,
+    including the Limited Use requirements.
+  </div>
+  <p>
+    Google Calendar data is used only to provide the operator-facing features
+    described above. It is not transferred to any third party, is not used for
+    advertising, is not sold, and is not used to train any generalised model. No
+    human other than the operator reads it.
+  </p>
+
+  <h2>Storage and retention</h2>
+  <p>
+    Data is held in infrastructure controlled by the operator. Derived knowledge is
+    stored encrypted at rest. Raw ingested material is deleted on a defined retention
+    schedule once it has been verified; audit records of what happened are kept
+    without retaining the underlying sensitive payload.
+  </p>
+
+  <h2>Sharing</h2>
+  <p>
+    None. Data is not shared, sold, rented, or transferred to any third party. There
+    are no advertising, analytics, or data-broker integrations.
+  </p>
+
+  <h2>Credentials</h2>
+  <p>
+    Authentication material is stored outside source control and is never placed into
+    logs, task records, review output, or model prompts. It can be revoked or rotated
+    at any time without changing the application.
+  </p>
+
+  <h2>Revoking access</h2>
+  <p>
+    Google access can be withdrawn at any time from
+    <a href="https://myaccount.google.com/permissions" rel="noopener">Google Account permissions</a>.
+    Revocation immediately and permanently ends Real-Ming's access to Google Calendar
+    data.
+  </p>
+
+  <h2>Contact</h2>
+  <p>
+    Questions about this policy: <a href="mailto:ngxiaohao123@gmail.com">ngxiaohao123@gmail.com</a>
+  </p>
+
+  <footer>
+    <a href="/">Back to Real-Ming</a>
+  </footer>
+</main>
+</body>
+</html>
