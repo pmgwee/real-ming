@@ -14,7 +14,7 @@ Generated from `src/config/tracer-secrets.ts`. A test fails the build if this ta
 | `REAL_MING_NOTION_MASTER_TASKS_ID` | CEO | Identify the canonical Master Tasks data source. | control-plane | Unshare the data source from the integration. |
 | `REAL_MING_GOOGLE_CLIENT_ID` | CEO | Identify the Google authorization client for Calendar. | control-plane | Delete the OAuth client in the Google Cloud console. |
 | `REAL_MING_GOOGLE_CLIENT_SECRET` | CEO | Authorize the Google Calendar client. | control-plane | Rotate the client secret in the Google Cloud console. |
-| `REAL_MING_GOOGLE_REFRESH_TOKEN` | CEO | Maintain delegated Calendar access without re-consent. | control-plane | Revoke access from the Google Account permissions page. |
+| `REAL_MING_GOOGLE_REFRESH_TOKEN` | CEO | Maintain delegated Calendar access without re-consent, scoped to calendar.events and calendar.calendarlist.readonly only. | control-plane | Revoke access from the Google Account permissions page. |
 | `REAL_MING_DASHBOARD_TOKEN` | CEO | Authenticate the CEO to the operations dashboard. | control-plane | Replace the stored token; sessions fail closed immediately. |
 | `REAL_MING_VAULT_KEY` | CEO | Derive the Knowledge Vault encryption key. | control-plane | Re-key the vault and republish each root generation. |
 | `REAL_MING_WORKER_SHARED_SECRET` | CEO | Authenticate the Lenovo private worker to the control plane. | private-worker | Rotate the shared secret on both the worker and control plane. |

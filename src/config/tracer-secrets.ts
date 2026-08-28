@@ -54,7 +54,8 @@ export const tracerCredentials: readonly TracerCredential[] = [
   {
     name: "REAL_MING_GOOGLE_REFRESH_TOKEN",
     owner: "CEO",
-    purpose: "Maintain delegated Calendar access without re-consent.",
+    purpose:
+      "Maintain delegated Calendar access without re-consent, scoped to calendar.events and calendar.calendarlist.readonly only.",
     environment: "control-plane",
     revocation: "Revoke access from the Google Account permissions page.",
   },

@@ -67,7 +67,18 @@
 1. **console.cloud.google.com** → create or select a project.
 2. **APIs & Services → Library** → enable **Google Calendar API**. Do this first; without it the client is created fine but every call returns 403.
 3. **Google Auth Platform → Audience** → user type **External** → add your own Google account under **Test users**.
-4. **Google Auth Platform → Data access** → add the Calendar scope your account needs (`.../auth/calendar` for read/write, or `.../auth/calendar.readonly` to start read-only).
+4. **Google Auth Platform → Data access** → add exactly these two Calendar scopes:
+
+   | Check | Scope | Why |
+   | --- | --- | --- |
+   | ✅ | `.../auth/calendar.events` | Read events for the morning brief and create or update one for RM-12 |
+   | ✅ | `.../auth/calendar.calendarlist.readonly` | Know which calendars exist, so it reads the right ones |
+
+   ❌ **Do not grant `.../auth/calendar`.** Its own description is *"See, edit, share and permanently delete all the calendars"*. ADR-0004 requires Approval for destructive actions, and no Approval gate can take back a scope the token already holds. Real-Ming must not be able to delete a calendar at all.
+
+   ❌ **Do not add `.../auth/calendar.readonly`.** It is redundant beside the two above and cannot write, which RM-12 needs.
+
+   Grant `calendar.events` now rather than starting read-only — adding a scope later forces re-consent and a new refresh token.
 5. **Google Auth Platform → Clients → Create client** → Application type **Desktop app** → name it `Real-Ming` rather than leaving `Desktop client 1`, so it is identifiable when you revoke it.
 6. Copy → `REAL_MING_GOOGLE_CLIENT_ID` and `REAL_MING_GOOGLE_CLIENT_SECRET`
 7. You also need a **refresh token** (`REAL_MING_GOOGLE_REFRESH_TOKEN`) so the system keeps access without re-consenting.
@@ -171,6 +182,7 @@ Then restart the loop with [RESUME-PROMPT.md](RESUME-PROMPT.md).
 | Cannot find "Credentials" or "OAuth consent screen" in Google | Renamed. Credentials is now **Clients**, OAuth consent screen is now **Audience**, Scopes is now **Data access**, all under Google Auth Platform. |
 | Calendar worked for about a week then stopped authenticating | The app is still in **Testing**, so the refresh token expired after 7 days. Publish the app, then mint a new refresh token. |
 | Google returns 403 on every Calendar call | The Calendar API is not enabled on the project, or the scope is missing under Data access. |
+| Google returns 403 only on writing an event | You granted `calendar.readonly` instead of `calendar.events`. Fix the scope, then re-consent to mint a new refresh token. |
 | Consent shows an "unverified app" warning | Expected for a sensitive scope on an unverified app. Choose **Advanced -> Go to Real-Ming (unsafe)**. |
 
 ---
