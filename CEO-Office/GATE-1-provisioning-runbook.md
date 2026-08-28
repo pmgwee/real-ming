@@ -79,6 +79,10 @@
    ❌ **Do not add `.../auth/calendar.readonly`.** It is redundant beside the two above and cannot write, which RM-12 needs.
 
    Grant `calendar.events` now rather than starting read-only — adding a scope later forces re-consent and a new refresh token.
+
+   **Nothing else from the 17 Calendar scopes is needed.** The filter list runs to two pages; ignore the rest. For the record: `*.freebusy` exposes availability rather than events, `*.public.readonly` is for public calendars, `*.readonly` variants cannot write, and `calendar.settings.readonly` is unnecessary because the 07:30 Asia/Kuala_Lumpur schedule is configured in Real-Ming rather than read from Google.
+
+   🤔 **One judgement call.** `calendar.events.owned` is narrower than `calendar.events` — *calendars that you own* rather than *all of your calendars*. If every calendar you care about is one you created, prefer `.owned`. If any are subscribed or shared with you, such as a university academic calendar, `.owned` cannot see them and the morning brief would silently miss those commitments. Default to `calendar.events` unless you are certain.
 5. **Google Auth Platform → Clients → Create client** → Application type **Desktop app** → name it `Real-Ming` rather than leaving `Desktop client 1`, so it is identifiable when you revoke it.
 6. Copy → `REAL_MING_GOOGLE_CLIENT_ID` and `REAL_MING_GOOGLE_CLIENT_SECRET`
 7. You also need a **refresh token** (`REAL_MING_GOOGLE_REFRESH_TOKEN`) so the system keeps access without re-consenting.
