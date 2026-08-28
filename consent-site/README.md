@@ -15,13 +15,17 @@ Both are self-contained: no build step, no dependencies, no external requests. T
 
 ## Deploy
 
-From the repository root:
+> ⚠️ **Deploy this folder, not the repository.** `real-me` is private and holds the specification, ADRs, architecture diagrams, the CEO Office, and the credential inventory. None of that belongs on a public URL, and Google needs only the two pages here. Do not link the Vercel project to the GitHub repository either — deploying the folder directly avoids it.
 
 ```bash
-npx vercel deploy consent-site --prod
+cd consent-site
+npx vercel login
+npx vercel deploy --prod
 ```
 
-Vercel serves the directory as a static site. Note the URL it prints — you need it in two places on the consent screen, plus its domain under **Authorised domains**.
+Running from inside this directory uploads only these files. Vercel serves them as a static site with no build step.
+
+Note the URL it prints. You need it in three places: **Application home page**, **Application privacy policy link** (append `/privacy.html`), and the domain under **Authorised domains**.
 
 Any static host works. GitHub Pages needs a public repository; this one is private.
 
