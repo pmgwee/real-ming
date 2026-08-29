@@ -1,5 +1,6 @@
 import {
   providerFailure,
+  providerStalenessThresholdMs,
   type ProviderAdapter,
   type ProviderCapability,
   type ProviderFailureClass,
@@ -24,12 +25,14 @@ import {
 } from "../providers/notion-provider-adapter.js";
 import { readLegacyNotionTaskSources } from "../providers/notion-legacy-task-reader.js";
 import { createNotionCutoverWorkspace } from "../providers/notion-cutover-workspace.js";
+import {
+  createGoogleCalendarAdapter,
+  type GoogleCalendarAdapter,
+} from "../providers/google-calendar-adapter.js";
 import type { CutoverWorkspace } from "../migration/master-tasks-cutover.js";
 import { legacyTaskSourceDefinitions, type LegacyTaskSource } from "../migration/task-migration-rehearsal.js";
 
 export const contractSecretFixture = "provider-secret-must-never-be-reported";
-
-const stalenessThresholdMs = 24 * 60 * 60 * 1000;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -535,7 +538,7 @@ function createContractAdapter(options: {
     asOf,
     retrievedAt: now,
     freshness:
-      Date.parse(now) - Date.parse(asOf) > stalenessThresholdMs
+      Date.parse(now) - Date.parse(asOf) > providerStalenessThresholdMs
         ? "stale"
         : "current",
   });
@@ -694,6 +697,102 @@ export function providerAdapterContractCases(): readonly ProviderAdapterContract
       createAdapter: createNotionContractAdapter,
     },
   ];
+}
+
+export interface CalendarContractHarness {
+  readonly adapter: GoogleCalendarAdapter;
+  providerCallCount(): number;
+  externalEffectCount(): number;
+}
+
+export function createCalendarContractHarness(
+  scenario: {
+    readonly failure?: ProviderFailureClass;
+    readonly emptyValue?: boolean;
+    readonly asOf?: string;
+    readonly now?: string;
+    readonly omitAsOf?: boolean;
+    readonly malformedBody?: boolean;
+    readonly unreadableEvent?: boolean;
+  } = {},
+): CalendarContractHarness {
+  const now = scenario.now ?? "2026-08-27T09:00:00.000Z";
+  const asOf = scenario.asOf ?? now;
+  let providerCalls = 0;
+  let externalEffects = 0;
+  const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
+    "authentication-failed": 401,
+    "invalid-input": 404,
+    "permission-denied": 403,
+    "rate-limited": 429,
+    "unsupported-capability": 400,
+    unavailable: 503,
+    "provider-error": 422,
+  };
+
+  const fetchImplementation = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    providerCalls += 1;
+    if (scenario.failure !== undefined) {
+      return Response.json(
+        { error: { message: rawProviderError(scenario.failure) } },
+        {
+          status: statusByClass[scenario.failure],
+          ...(scenario.failure === "rate-limited"
+            ? { headers: { "retry-after": "1" } }
+            : {}),
+        },
+      );
+    }
+    if ((init?.method ?? "GET") === "PATCH") {
+      externalEffects += 1;
+      return scenario.malformedBody === true
+        ? new Response("{", {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          })
+        : Response.json({ etag: '"contract-etag"', updated: now });
+    }
+    const url = new URL(String(input));
+    if (scenario.malformedBody === true) {
+      return new Response("{", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (!url.pathname.endsWith("/events")) {
+      return Response.json({ error: { message: "Unsupported" } }, { status: 404 });
+    }
+    return Response.json({
+      ...(scenario.omitAsOf === true ? {} : { updated: asOf }),
+      items: scenario.emptyValue === true
+        ? []
+        : [
+            {
+              ...(scenario.unreadableEvent === true ? {} : { id: "contract-event" }),
+              summary: "Contract event",
+              status: "confirmed",
+              updated: asOf,
+              start: { dateTime: "2026-09-02T02:00:00.000Z" },
+              end: { dateTime: "2026-09-02T03:00:00.000Z" },
+            },
+          ],
+    });
+  };
+
+  return {
+    adapter: createGoogleCalendarAdapter({
+      accessToken: contractSecretFixture,
+      workspaceId: "workspace:real-ming",
+      accountReference: "google-calendar:account:real-ming",
+      fetch: fetchImplementation,
+      now: () => now,
+    }),
+    providerCallCount: () => providerCalls,
+    externalEffectCount: () => externalEffects,
+  };
 }
 
 export interface CutoverWorkspaceContractHarness {

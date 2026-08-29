@@ -20,6 +20,7 @@ import type {
   WorkItem,
   WorkerEffect,
   WorkerReceipt,
+  WorkItemAcknowledgement,
   VerifierResult,
 } from "../operations/contracts.js";
 import { createOperationsGateway } from "../operations/operations-gateway.js";
@@ -49,7 +50,10 @@ import type {
   TelegramTransport,
   TelegramUpdate,
 } from "../telegram/contracts.js";
-import type { ProviderFailure } from "../providers/adapter-contract.js";
+import type {
+  ProviderFailure,
+  ProviderReadResult,
+} from "../providers/adapter-contract.js";
 import type { Workstream } from "../operations/contracts.js";
 import {
   MasterTasksProjection,
@@ -86,7 +90,74 @@ import {
 } from "../migration/cutover-plan-builder.js";
 import type { CutoverBindings } from "../migration/master-tasks-cutover.js";
 
+import {
+  createGoogleCalendarAdapter,
+  type CalendarEvent,
+} from "../providers/google-calendar-adapter.js";
+import {
+  createCalendarReconciler,
+  type CalendarChange,
+  type CalendarReconciliation,
+  type ChangeCalendarCommitmentRequest,
+  type ReconcileCalendarCommitmentRequest,
+} from "../calendar/calendar-reconciliation.js";
+
 export type ControlledCutoverSource = CutoverSourceSnapshot;
+
+export interface ControlledCalendarOptions {
+  readonly events: readonly CalendarEvent[];
+  readonly failure?: "unavailable" | "authentication-failed";
+  readonly asOf?: string;
+}
+
+/**
+ * Serves the controlled events in Google's own wire shape, so the adapter's
+ * normalization is exercised rather than bypassed.
+ */
+function controlledCalendarFetch(
+  options: ControlledCalendarOptions,
+  onWrite: () => void,
+  retrievedAt: string,
+): typeof fetch {
+  return async (input, init) => {
+    if (options.failure !== undefined) {
+      return Response.json(
+        { error: { message: "Controlled calendar failure." } },
+        { status: options.failure === "unavailable" ? 503 : 401 },
+      );
+    }
+    const url = new URL(String(input));
+    if ((init?.method ?? "GET") === "PATCH") {
+      onWrite();
+      return Response.json({
+        etag: `"controlled-calendar-etag"`,
+        updated: "2026-08-29T09:00:00.000Z",
+      });
+    }
+    if (!url.pathname.endsWith("/events")) {
+      return Response.json({ error: { message: "Unsupported" } }, { status: 404 });
+    }
+    // A real events list always carries the calendar's own last-modified time.
+    // Omitting it would exercise a response Google does not send.
+    const newestEvent = options.events.reduce(
+      (latest, event) => (event.updatedAt > latest ? event.updatedAt : latest),
+      "",
+    );
+    return Response.json({
+      updated: options.asOf ?? (newestEvent === "" ? retrievedAt : newestEvent),
+      items: options.events.map((event) => ({
+        id: event.id,
+        summary: event.title,
+        status: event.status,
+        updated: event.updatedAt,
+        start: event.allDay
+          ? { date: event.start }
+          : { dateTime: event.start },
+        end: event.allDay ? { date: event.end } : { dateTime: event.end },
+      })),
+    });
+  };
+}
 
 export interface ControlledCutoverOptions {
   readonly plan: CutoverPlan;
@@ -184,6 +255,19 @@ export interface RealMingSystemHarness {
   cutoverSourceReadCount(): number;
   cutoverRetiredSources(): readonly string[];
   cutoverRecovery(): CutoverRecovery;
+  acknowledgeCeoAction(
+    action: NormalizedCeoAction,
+  ): Promise<WorkItemAcknowledgement>;
+  listCalendarEvents(request: {
+    readonly calendarId: string;
+  }): Promise<ProviderReadResult<readonly CalendarEvent[]>>;
+  reconcileCalendarCommitment(
+    request: ReconcileCalendarCommitmentRequest,
+  ): Promise<CalendarReconciliation>;
+  changeCalendarEvent(
+    request: ChangeCalendarCommitmentRequest,
+  ): Promise<CalendarChange>;
+  calendarWriteCount(): number;
   buildCutoverPlanFromEvidence(evidence: {
     readonly digest: string;
     readonly sources: readonly CutoverEvidenceSource[];
@@ -425,6 +509,7 @@ export function createRealMingSystemHarness(options: {
   };
   readonly legacyTaskSources?: readonly LegacyTaskSource[];
   readonly cutover?: ControlledCutoverOptions;
+  readonly calendar?: ControlledCalendarOptions;
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
   const masterTaskRecords = new Map<string, MasterTaskRecord>();
@@ -522,6 +607,26 @@ export function createRealMingSystemHarness(options: {
     return cutover;
   };
 
+  let calendarWrites = 0;
+  const calendarAdapter = createGoogleCalendarAdapter({
+    accessToken: "controlled-calendar-access-token",
+    workspaceId: "workspace:real-ming",
+    accountReference: "google-calendar:account:real-ming",
+    fetch: controlledCalendarFetch(
+      options.calendar ?? { events: [] },
+      () => {
+        calendarWrites += 1;
+      },
+      options.now?.() ?? "2026-08-29T09:00:00.000Z",
+    ),
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
+  const calendarReconciler = createCalendarReconciler({
+    adapter: calendarAdapter,
+    state,
+    gateway,
+  });
+
   const telegramTransport = new ControlledTelegramTransport(
     options.telegram?.deliveryFailure,
     options.telegram?.crashAfterDelivery,
@@ -577,6 +682,13 @@ export function createRealMingSystemHarness(options: {
     cutoverRetiredSources: () => cutoverWorkspace?.retiredSources() ?? [],
     cutoverRecovery: () => requireCutover().recovery(),
     buildCutoverPlanFromEvidence: (evidence) => buildCutoverPlan(evidence),
+    acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
+    listCalendarEvents: ({ calendarId }) =>
+      calendarAdapter.listEvents(calendarId),
+    reconcileCalendarCommitment: (request) =>
+      calendarReconciler.reconcile(request),
+    changeCalendarEvent: (request) => calendarReconciler.change(request),
+    calendarWriteCount: () => calendarWrites,
     editMasterTaskThroughView: async (request) =>
       masterTasks.editThroughView(request, gateway),
     masterTasksView: (name) => masterTasks.view(name),
