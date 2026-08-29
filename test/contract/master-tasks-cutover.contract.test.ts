@@ -124,6 +124,31 @@ describe("RM-11 cutover workspace provider contract", () => {
     ]);
   });
 
+  it("surfaces the reason Notion rejected a call, not only its status", async () => {
+    // A bare "HTTP 400" tells the operator nothing about what to correct, and
+    // a one-way cutover is the worst place to be guessing.
+    const harness = createCutoverWorkspaceContractHarness({
+      rejectViewCreateWith: {
+        code: "validation_error",
+        message: "body failed validation: body.type should be defined.",
+      },
+    });
+
+    const failure = await harness.workspace
+      .ensureLinkedView({
+        name: "(Finance) Task To Do List",
+        dataSourceId: harness.masterTasksDataSourceId,
+        workstreams: ["Finance"],
+      })
+      .catch((error: unknown) =>
+        error instanceof Error ? error.message : String(error),
+      );
+
+    expect(String(failure)).toContain("validation_error");
+    expect(String(failure)).toContain("body.type should be defined");
+    expect(String(failure)).not.toContain(contractSecretFixture);
+  });
+
   it("never reports the Notion credential in a cutover failure", async () => {
     const harness = createCutoverWorkspaceContractHarness();
 

@@ -78,6 +78,12 @@ function pageStatus(page: Record<string, unknown>): string {
 export interface NotionCutoverWorkspaceOptions {
   readonly token: string;
   readonly databaseId: string;
+  /**
+   * Page the linked views are created on. Creating a view means creating a
+   * database block that points at an existing data source, so Notion needs a
+   * page to put it on.
+   */
+  readonly linkedViewParentPageId: string;
   readonly sourceDataSourceIds: readonly string[];
   readonly fetch?: typeof fetch;
 }
@@ -102,8 +108,18 @@ export function createNotionCutoverWorkspace(
     });
     const body: unknown = await response.json();
     if (!response.ok || !isRecord(body)) {
+      // Notion names the field it rejected. Reporting only the status would
+      // leave the operator guessing in the middle of a one-way cutover.
+      const code =
+        isRecord(body) && typeof body["code"] === "string"
+          ? ` ${body["code"]}:`
+          : "";
+      const detail =
+        isRecord(body) && typeof body["message"] === "string"
+          ? ` ${body["message"]}`
+          : "";
       throw new Error(
-        `Notion cutover call failed with HTTP ${response.status} for ${path}.`,
+        `Notion cutover call failed with HTTP ${response.status} for ${path}.${code}${detail}`,
       );
     }
     return body;
@@ -203,38 +219,66 @@ export function createNotionCutoverWorkspace(
       readonly dataSourceId: string;
       readonly workstreams: readonly Workstream[];
     }): Promise<CutoverLinkedView> {
-      const filter = {
-        or: view.workstreams.map((workstream) => ({
-          property: "Workstream",
-          select: { equals: workstream },
-        })),
-      };
+      const clauses = view.workstreams.map((workstream) => ({
+        property: "Workstream",
+        select: { equals: workstream },
+      }));
+      const filter = clauses.length === 1 ? clauses[0] : { or: clauses };
+
+      // The listing returns identity only, so each view has to be retrieved to
+      // learn its name. Matching against the listing alone would find nothing
+      // and create a duplicate view on every run.
       const listed = await call(
         `/v1/views?data_source_id=${encodeURIComponent(view.dataSourceId)}`,
       );
       const results = listed["results"];
-      const existing = Array.isArray(results)
-        ? results.find(
-            (candidate) => isRecord(candidate) && candidate["name"] === view.name,
+      const ids = Array.isArray(results)
+        ? results.flatMap((candidate) =>
+            isRecord(candidate) && typeof candidate["id"] === "string"
+              ? [candidate["id"]]
+              : [],
           )
-        : undefined;
-      if (isRecord(existing) && typeof existing["id"] === "string") {
-        await call(`/v1/views/${encodeURIComponent(existing["id"])}`, {
+        : [];
+      for (const id of ids) {
+        const candidate = await call(`/v1/views/${encodeURIComponent(id)}`);
+        if (candidate["name"] !== view.name) continue;
+        // A view whose database is in the trash is not a live view; reusing one
+        // would point daily use at something Notion has already discarded.
+        const parent = candidate["parent"];
+        const parentDatabaseId =
+          isRecord(parent) && typeof parent["database_id"] === "string"
+            ? parent["database_id"]
+            : undefined;
+        if (parentDatabaseId !== undefined) {
+          const parentDatabase = await call(
+            `/v1/databases/${encodeURIComponent(parentDatabaseId)}`,
+          );
+          if (parentDatabase["in_trash"] === true) continue;
+        }
+        await call(`/v1/views/${encodeURIComponent(id)}`, {
           method: "PATCH",
           body: JSON.stringify({ filter }),
         });
         return {
-          id: existing["id"],
+          id,
           name: view.name,
           dataSourceId: view.dataSourceId,
           workstreams: view.workstreams,
         };
       }
+
       const created = await call("/v1/views", {
         method: "POST",
         body: JSON.stringify({
-          name: view.name,
+          create_database: {
+            parent: {
+              type: "page_id",
+              page_id: options.linkedViewParentPageId,
+            },
+          },
           data_source_id: view.dataSourceId,
+          name: view.name,
+          type: "table",
           filter,
         }),
       });

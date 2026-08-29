@@ -814,6 +814,10 @@ export interface CutoverWorkspaceContractHarness {
  */
 export function createCutoverWorkspaceContractHarness(options: {
   readonly lockedBeforeCutover?: string;
+  readonly rejectViewCreateWith?: {
+    readonly code: string;
+    readonly message: string;
+  };
 } = {}): CutoverWorkspaceContractHarness {
   const masterTasksDatabaseId = "notion-database:master-tasks";
   const masterTasksDataSourceId = "notion-data-source:master-tasks";
@@ -848,7 +852,12 @@ export function createCutoverWorkspaceContractHarness(options: {
       ],
     ]),
   );
-  const views: Array<{ id: string; name: string; filter?: unknown }> = [];
+  const views: Array<{
+    id: string;
+    name: string;
+    parentDatabaseId?: string;
+    filter?: unknown;
+  }> = [];
   let viewsCreated = 0;
   let viewsUpdated = 0;
   let renames = 0;
@@ -919,23 +928,82 @@ export function createCutoverWorkspaceContractHarness(options: {
     }
 
     if (path === "/v1/views" && method === "GET") {
+      if (!url.searchParams.has("data_source_id")) {
+        return Response.json(
+          {
+            object: "error",
+            status: 400,
+            code: "validation_error",
+            message: "At least one of database_id or data_source_id must be provided.",
+          },
+          { status: 400 },
+        );
+      }
+      // Notion returns identity only here. A caller that expects names in the
+      // listing silently matches nothing and creates a duplicate every run.
       return Response.json({
         object: "list",
-        results: views,
+        results: views.map((view) => ({ object: "view", id: view.id })),
         has_more: false,
         next_cursor: null,
       });
     }
 
+    if (path.startsWith("/v1/views/") && method === "GET") {
+      const id = path.slice("/v1/views/".length);
+      const view = views.find((candidate) => candidate.id === id);
+      return view === undefined
+        ? Response.json({ object: "error", message: "Unknown view." }, { status: 404 })
+        : Response.json({
+            object: "view",
+            id: view.id,
+            name: view.name,
+            type: "table",
+            data_source_id: masterTasksDataSourceId,
+            parent: { type: "database_id", database_id: view.parentDatabaseId },
+            filter: view.filter,
+          });
+    }
+
     if (path === "/v1/views" && method === "POST") {
-      const name = body["name"];
-      if (typeof name !== "string") {
-        return Response.json({ message: "View name is required." }, { status: 422 });
+      if (options.rejectViewCreateWith !== undefined) {
+        return Response.json(
+          {
+            object: "error",
+            status: 400,
+            code: options.rejectViewCreateWith.code,
+            message: options.rejectViewCreateWith.message,
+          },
+          { status: 400 },
+        );
       }
-      const view = { id: `notion-view:${views.length + 1}`, name, filter: body["filter"] };
+      const name = body["name"];
+      const createDatabase = body["create_database"];
+      const parentPageId =
+        isRecord(createDatabase) && isRecord(createDatabase["parent"])
+          ? createDatabase["parent"]["page_id"]
+          : undefined;
+      if (typeof name !== "string" || body["type"] !== "table" || typeof parentPageId !== "string") {
+        return Response.json(
+          {
+            object: "error",
+            status: 400,
+            code: "validation_error",
+            message:
+              "body failed validation: body.type and body.create_database.parent.page_id are required.",
+          },
+          { status: 400 },
+        );
+      }
+      const view = {
+        id: `notion-view:${views.length + 1}`,
+        name,
+        parentDatabaseId: `notion-database:view-${views.length + 1}`,
+        filter: body["filter"],
+      };
       views.push(view);
       viewsCreated += 1;
-      return Response.json(view);
+      return Response.json({ object: "view", id: view.id, name: view.name });
     }
 
     if (path.startsWith("/v1/views/") && method === "PATCH") {
@@ -959,6 +1027,7 @@ export function createCutoverWorkspaceContractHarness(options: {
     workspace: createNotionCutoverWorkspace({
       token: contractSecretFixture,
       databaseId: masterTasksDatabaseId,
+      linkedViewParentPageId: "notion-page:master-tasks-parent",
       sourceDataSourceIds,
       fetch: fetchImplementation,
     }),

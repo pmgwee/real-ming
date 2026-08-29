@@ -9,6 +9,7 @@ import { MasterTasksProjection } from "../master-tasks/master-tasks.js";
 import {
   createNotionMasterTasksStore,
   createNotionProviderAdapter,
+  notionApiVersion,
   SqliteNotionWriteLedger,
 } from "../providers/notion-provider-adapter.js";
 import {
@@ -107,6 +108,37 @@ const refusingResponder: QuestionResponder = {
   },
 };
 
+async function masterTasksParentPageId(
+  token: string,
+  databaseId: string,
+): Promise<string> {
+  const response = await fetch(
+    `https://api.notion.com/v1/databases/${encodeURIComponent(databaseId)}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Notion-Version": notionApiVersion,
+        "Content-Type": "application/json",
+      },
+    },
+  );
+  const body: unknown = await response.json();
+  const parent =
+    typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>)["parent"]
+      : undefined;
+  const pageId =
+    typeof parent === "object" && parent !== null
+      ? (parent as Record<string, unknown>)["page_id"]
+      : undefined;
+  if (!response.ok || typeof pageId !== "string") {
+    throw new Error(
+      "Master Tasks does not sit on a page, so there is nowhere to create the linked views.",
+    );
+  }
+  return pageId;
+}
+
 async function main(): Promise<void> {
   if (!process.argv.includes("--live")) {
     throw new Error(
@@ -185,9 +217,17 @@ async function main(): Promise<void> {
   });
 
   const token = requireEnvironment("REAL_MING_NOTION_TOKEN");
+  // Linked views are created as database blocks, so Notion needs a page to put
+  // them on. The five belong where Master Tasks already lives, which is where
+  // Ming looks for them.
+  const linkedViewParentPageId = await masterTasksParentPageId(
+    token,
+    bindings.databaseId,
+  );
   const workspace = createNotionCutoverWorkspace({
     token,
     databaseId: bindings.databaseId,
+    linkedViewParentPageId,
     sourceDataSourceIds: bindings.sources.map((source) => source.dataSourceId),
   });
 
