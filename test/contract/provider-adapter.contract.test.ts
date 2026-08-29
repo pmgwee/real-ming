@@ -5,6 +5,7 @@ import { join } from "node:path";
 
 import {
   contractSecretFixture,
+  createLegacyTaskReaderContractHarness,
   createNotionProvisioningContractHarness,
   providerAdapterContractCases,
   type ProviderAdapterContractCase,
@@ -860,6 +861,42 @@ describe("RM-09 Notion Master Tasks provisioning", () => {
       "CTO Work View",
       "CMO Work View",
     ]);
+  });
+});
+
+describe("RM-10 legacy Notion task reader", () => {
+  it("discovers and preserves all five sources without a provider mutation", async () => {
+    const harness = createLegacyTaskReaderContractHarness();
+    const sources = await harness.readSources();
+
+    expect(sources).toHaveLength(5);
+    expect(sources.map(({ name }) => name)).toEqual([
+      "(IP Content Creation) Task To Do List",
+      "(MicroSaaS) Task To Do List",
+      "(Academic) Task To Do List",
+      "(Job x Life) Task To Do List",
+      "(Finance) Task To Do List",
+    ]);
+    expect(sources.map(({ workstream }) => workstream)).toEqual([
+      "Content Creation",
+      "MicroSaaS",
+      "Academic",
+      null,
+      "Finance",
+    ]);
+    expect(sources.every(({ records }) => records.length === 3)).toBe(true);
+    expect(sources[0]?.records[0]?.sourcePayload).toMatchObject({
+      object: "page",
+      properties: { Legacy: expect.any(Object) },
+    });
+    expect(sources[0]?.records.every(({ commitment }) => commitment === "2026-09-01")).toBe(true);
+    expect(sources[0]?.records).toContainEqual(expect.objectContaining({
+      sourcePayload: expect.objectContaining({ archived: true }),
+    }));
+    expect(
+      sources[0]?.records.filter(({ id }) => id.endsWith("task-overlap")),
+    ).toHaveLength(1);
+    expect(harness.mutationCount()).toBe(0);
   });
 });
 

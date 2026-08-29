@@ -12,11 +12,11 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **11 of 44** |
-| Startable by an agent right now | **RM-10** |
-| Waiting on you | **Nothing** |
+| Phase 3 tickets closed | **12 of 44** |
+| Startable by an agent right now | **Run the graph scheduler after RM-10** |
+| Waiting on you | **Nothing from RM-10** |
 
-**RM-09 is complete.** Master Tasks and its six linked Work Views are live and the graph can continue with RM-10's migration rehearsal.
+**RM-10 is complete.** Its live read-only rehearsal covered five sources and 34 records, proved idempotent isolated replay, made no source mutations, and rolled the isolated target back to zero.
 
 ---
 
@@ -32,7 +32,7 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## ✅ What needs you
 
-**Nothing right now.** The completed [RM-09 provisioning runbook](RM-09-master-tasks-provisioning-runbook.md) records the Notion setup and live outcome.
+**No action is currently required for RM-10.** The completed source-sharing and rehearsal evidence remains in the [RM-10 source-sharing runbook](RM-10-share-legacy-task-sources.md).
 
 Both initial gates remain closed:
 
@@ -85,6 +85,7 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [GATE-1-provisioning-runbook.md](GATE-1-provisioning-runbook.md) | Step-by-step: create identities, store secrets, verify |
 | [GATE-2-pilot-selection-runbook.md](GATE-2-pilot-selection-runbook.md) | Step-by-step: choose and capture the DuitSini pilot |
 | [RM-09-master-tasks-provisioning-runbook.md](RM-09-master-tasks-provisioning-runbook.md) | One-minute Notion parent-page share required to create Master Tasks |
+| [RM-10-share-legacy-task-sources.md](RM-10-share-legacy-task-sources.md) | Share the five legacy task databases for the read-only migration rehearsal |
 | [CREDENTIAL-INVENTORY.md](CREDENTIAL-INVENTORY.md) | All ten credentials: owner, purpose, environment, revocation — **no values** |
 
 ---

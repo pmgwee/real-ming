@@ -57,8 +57,20 @@ import {
   type MasterTasksStore,
   type MasterTasksViewName,
 } from "../master-tasks/master-tasks.js";
+import {
+  TaskMigrationRehearsal,
+  type LegacyTaskSource,
+  type MigrationBackup,
+  type TaskMigrationRehearsalResult,
+} from "../migration/task-migration-rehearsal.js";
 
 export interface RealMingSystemHarness {
+  captureTaskMigrationBackups(): Promise<readonly MigrationBackup[]>;
+  importTaskMigrationBackups(
+    backups: readonly MigrationBackup[],
+  ): Promise<TaskMigrationRehearsalResult>;
+  migrationRehearsalTargetCount(): number;
+  rollbackTaskMigrationRehearsal(): void;
   editMasterTaskThroughView(
     request: EditMasterTaskThroughViewRequest,
   ): Promise<MasterTaskRecord>;
@@ -292,6 +304,7 @@ export function createRealMingSystemHarness(options: {
     readonly afterReplyDeliveredError?: string;
     readonly auditPseudonymKey?: string;
   };
+  readonly legacyTaskSources?: readonly LegacyTaskSource[];
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
   const masterTaskRecords = new Map<string, MasterTaskRecord>();
@@ -303,6 +316,10 @@ export function createRealMingSystemHarness(options: {
     },
   };
   const masterTasks = new MasterTasksProjection(state, masterTasksStore);
+  const migrationRehearsal = new TaskMigrationRehearsal(
+    options.legacyTaskSources ?? [],
+    options.now,
+  );
   for (const workItem of state.workItems()) {
     masterTaskRecords.set(workItem.id, masterTasks.recordFor(workItem));
   }
@@ -372,6 +389,11 @@ export function createRealMingSystemHarness(options: {
   });
 
   return {
+    captureTaskMigrationBackups: async () => migrationRehearsal.captureBackups(),
+    importTaskMigrationBackups: async (backups) =>
+      migrationRehearsal.importVerifiedBackups(backups),
+    migrationRehearsalTargetCount: () => migrationRehearsal.targetCount(),
+    rollbackTaskMigrationRehearsal: () => migrationRehearsal.rollback(),
     editMasterTaskThroughView: async (request) =>
       masterTasks.editThroughView(request, gateway),
     masterTasksView: (name) => masterTasks.view(name),

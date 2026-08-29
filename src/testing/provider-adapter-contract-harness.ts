@@ -22,6 +22,8 @@ import {
   type NotionWriteLedger,
   type NotionProviderAdapter,
 } from "../providers/notion-provider-adapter.js";
+import { readLegacyNotionTaskSources } from "../providers/notion-legacy-task-reader.js";
+import { legacyTaskSourceDefinitions, type LegacyTaskSource } from "../migration/task-migration-rehearsal.js";
 
 export const contractSecretFixture = "provider-secret-must-never-be-reported";
 
@@ -695,6 +697,86 @@ export function providerAdapterContractCases(): readonly ProviderAdapterContract
 export interface LiveSmokeGate {
   readonly enabled: boolean;
   readonly reason: string;
+}
+
+export interface LegacyTaskReaderContractHarness {
+  readSources(): Promise<readonly LegacyTaskSource[]>;
+  mutationCount(): number;
+}
+
+export function createLegacyTaskReaderContractHarness(): LegacyTaskReaderContractHarness {
+  let mutations = 0;
+  const providerTitles = new Map<string, string>([
+    ["(IP Content Creation) Task To Do List", "(IP Content Creation) Task To Do List "],
+    ["(MicroSaaS) Task To Do List", "(MicroSaas) Task To Do List "],
+    ["(Academic) Task To Do List", "(Academic) Task To Do List "],
+    ["(Job x Life) Task To Do List", "(Job xLife) Task To Do List "],
+    ["(Finance) Task To Do List", "(Finance) Task To Do List "],
+  ]);
+  const ids = new Map<string, string>(
+    legacyTaskSourceDefinitions.map((definition, index) => [
+      definition.name,
+      `legacy-source-${index + 1}`,
+    ]),
+  );
+  const fetchImplementation = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    if (url.pathname === "/v1/search" && method === "POST") {
+      const body = typeof init?.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+      const query = String(body["query"] ?? "");
+      const id = ids.get(query);
+      return Response.json({
+        results: id === undefined ? [] : [{
+          object: "data_source",
+          id,
+          title: [{ plain_text: providerTitles.get(query) ?? query }],
+        }],
+      });
+    }
+    if (url.pathname.includes("/data_sources/") && url.pathname.endsWith("/query") && method === "POST") {
+      const id = decodeURIComponent(url.pathname.split("/").at(-2) ?? "");
+      const body = typeof init?.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+      const archived = body["is_archived"] === true;
+      const page = (suffix: string, pageArchived: boolean) => ({
+        object: "page",
+        id: `${id}-task-${suffix}`,
+        archived: pageArchived,
+        last_edited_time: "2026-08-29T03:00:00.000Z",
+        properties: {
+          Name: { type: "title", title: [{ plain_text: `Task for ${id}` }] },
+          Status: { type: "status", status: { name: "Done" } },
+          "Date Created": { type: "created_time", created_time: "2026-08-29T03:00:00.000Z" },
+          Date: { type: "date", date: { start: "2026-09-01" } },
+          Legacy: { type: "rich_text", rich_text: [{ plain_text: "preserve me" }] },
+        },
+      });
+      return Response.json({
+        results: [
+          page("overlap", archived),
+          page(archived ? "archived-only" : "active-only", archived),
+        ],
+        has_more: false,
+        next_cursor: null,
+      });
+    }
+    mutations += 1;
+    return Response.json({ message: "Unexpected request" }, { status: 422 });
+  };
+  return {
+    readSources: () => readLegacyNotionTaskSources({
+      token: contractSecretFixture,
+      fetch: fetchImplementation,
+    }),
+    mutationCount: () => mutations,
+  };
 }
 
 export function liveSmokeGate(
