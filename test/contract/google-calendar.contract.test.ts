@@ -248,6 +248,43 @@ describe("RM-12 Google Calendar adapter contract", () => {
     expect(harness.externalEffectCount()).toBe(1);
   });
 
+  it("scopes the read to a requested window instead of the whole calendar", async () => {
+    // Google returns at most 250 events, ordered from the beginning of time.
+    // An unscoped read of a calendar with recurring history returns the OLDEST
+    // events and omits today entirely, while still looking healthy.
+    const harness = createCalendarContractHarness();
+
+    await harness.adapter.listEvents(calendarId, {
+      timeMin: "2026-08-28T16:00:00.000Z",
+      timeMax: "2026-08-29T16:00:00.000Z",
+    });
+
+    const request = harness.listRequests()[0];
+    expect(request?.searchParams.get("timeMin")).toBe(
+      "2026-08-28T16:00:00.000Z",
+    );
+    expect(request?.searchParams.get("timeMax")).toBe(
+      "2026-08-29T16:00:00.000Z",
+    );
+    expect(request?.searchParams.get("maxResults")).not.toBeNull();
+  });
+
+  it("follows every page rather than reporting the first one as the whole calendar", async () => {
+    const harness = createCalendarContractHarness({ paged: true });
+
+    const result = await harness.adapter.listEvents(calendarId);
+
+    if (result.kind === "failed") throw new Error("expected a successful read");
+    expect(result.value.map((event) => event.id)).toEqual([
+      "contract-event",
+      "contract-event-2",
+    ]);
+    expect(harness.listRequests()).toHaveLength(2);
+    expect(harness.listRequests()[1]?.searchParams.get("pageToken")).toBe(
+      "page-2",
+    );
+  });
+
   it("never reports the access token in a failure", async () => {
     const result = await createCalendarContractHarness({
       failure: "authentication-failed",

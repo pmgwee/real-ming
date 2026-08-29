@@ -85,7 +85,11 @@ const blockedStates: readonly WorkItemState[] = [
   "Changes Requested",
 ];
 
-function blockersFor(
+/**
+ * Shared with the Morning Brief so the dashboard and the 07:30 message never
+ * give two different answers to "is this waiting on me, and why".
+ */
+export function blockersFor(
   workItem: WorkItem,
   approvals: readonly Approval[],
   auditEvents: readonly AuditEvent[],

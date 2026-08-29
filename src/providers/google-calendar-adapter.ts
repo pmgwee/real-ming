@@ -17,6 +17,21 @@ export const googleCalendarProvider = "google-calendar";
 
 export type CalendarEventStatus = "confirmed" | "tentative" | "cancelled";
 
+/**
+ * A read scoped to the days the caller actually cares about. Without it Google
+ * returns its default 250 events ordered from the beginning of time, so a
+ * calendar with recurring history answers with its OLDEST events and omits
+ * today while still looking healthy.
+ */
+export interface CalendarWindow {
+  readonly timeMin?: string;
+  readonly timeMax?: string;
+}
+
+/** Google caps a page at 2500; ask explicitly rather than inherit its default of 250. */
+const calendarPageSize = 2500;
+const calendarPageLimit = 20;
+
 export interface CalendarEvent {
   readonly id: string;
   readonly calendarId: string;
@@ -69,6 +84,7 @@ export interface GoogleCalendarAdapter
   extends ProviderAdapter<readonly CalendarEvent[]> {
   listEvents(
     calendarId: string,
+    window?: CalendarWindow,
   ): Promise<ProviderReadResult<readonly CalendarEvent[]>>;
   changeEventTime(
     request: ChangeCalendarEventRequest,
@@ -167,15 +183,33 @@ export function createGoogleCalendarAdapter(
 
   const listEvents: GoogleCalendarAdapter["listEvents"] = async (
     calendarId,
+    window,
   ) => {
     const retrievedAt = now();
-    try {
-      const response = await request(
+    const pageOf = (pageToken?: string): string => {
+      const url = new URL(
         `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
           calendarId,
-        )}/events?singleEvents=true&orderBy=startTime`,
-        { headers },
+        )}/events`,
       );
+      url.searchParams.set("singleEvents", "true");
+      url.searchParams.set("orderBy", "startTime");
+      url.searchParams.set("maxResults", String(calendarPageSize));
+      if (window?.timeMin !== undefined) {
+        url.searchParams.set("timeMin", window.timeMin);
+      }
+      if (window?.timeMax !== undefined) {
+        url.searchParams.set("timeMax", window.timeMax);
+      }
+      if (pageToken !== undefined) url.searchParams.set("pageToken", pageToken);
+      return url.toString();
+    };
+    try {
+      const collected: CalendarEvent[] = [];
+      let latestUpdated: string | undefined;
+      let pageToken: string | undefined;
+      let pages = 0;
+      let response = await request(pageOf(), { headers });
       if (!response.ok) {
         const retryAfter = Number(response.headers.get("retry-after") ?? "");
         return {
@@ -190,26 +224,58 @@ export function createGoogleCalendarAdapter(
           ),
         };
       }
-      const body: unknown = await response.json();
-      if (!isRecord(body) || !Array.isArray(body["items"])) {
-        return {
-          kind: "failed",
-          failure: providerFailure(
-            "provider-error",
-            "Google Calendar returned an unreadable event list.",
-            [options.accessToken],
-          ),
-        };
+      let body: unknown = await response.json();
+      for (;;) {
+        if (!isRecord(body) || !Array.isArray(body["items"])) {
+          return {
+            kind: "failed",
+            failure: providerFailure(
+              "provider-error",
+              "Google Calendar returned an unreadable event list.",
+              [options.accessToken],
+            ),
+          };
+        }
+        for (const item of body["items"]) {
+          collected.push(normalizeCalendarEvent(calendarId, item));
+        }
+        if (typeof body["updated"] === "string") latestUpdated = body["updated"];
+        const next = body["nextPageToken"];
+        pageToken = typeof next === "string" && next !== "" ? next : undefined;
+        pages += 1;
+        // A page cap that silently truncated would be the same defect as the
+        // unpaged read: a partial calendar reported as the whole one.
+        if (pageToken === undefined) break;
+        if (pages >= calendarPageLimit) {
+          return {
+            kind: "failed",
+            failure: providerFailure(
+              "provider-error",
+              `Google Calendar returned more than ${calendarPageLimit} pages; the window is too wide to read honestly.`,
+              [options.accessToken],
+            ),
+          };
+        }
+        response = await request(pageOf(pageToken), { headers });
+        if (!response.ok) {
+          return {
+            kind: "failed",
+            failure: providerFailure(
+              failureClassForStatus(response.status),
+              `Google Calendar read failed with HTTP ${response.status}.`,
+              [options.accessToken],
+            ),
+          };
+        }
+        body = await response.json();
       }
-      const value = body["items"].map((item) =>
-        normalizeCalendarEvent(calendarId, item),
-      );
+      const value: readonly CalendarEvent[] = collected;
       // A read has to be datable. Dating it by the retrieval time instead
       // would let a stale or unknown calendar be reported as a healthy empty
       // one, which is the one thing calendar reads must never do.
       const asOf =
-        typeof body["updated"] === "string"
-          ? body["updated"]
+        latestUpdated !== undefined
+          ? latestUpdated
           : value.reduce(
               (latest, event) =>
                 event.updatedAt > latest ? event.updatedAt : latest,

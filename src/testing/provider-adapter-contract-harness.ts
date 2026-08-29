@@ -63,6 +63,7 @@ function createTelegramContractAdapter(
   const asOf = scenario.asOf ?? now;
   let providerCalls = 0;
   let externalEffects = 0;
+  const listRequests: URL[] = [];
   const providerRequests: unknown[] = [];
 
   const failureResponse = (
@@ -703,6 +704,7 @@ export interface CalendarContractHarness {
   readonly adapter: GoogleCalendarAdapter;
   providerCallCount(): number;
   externalEffectCount(): number;
+  listRequests(): readonly URL[];
 }
 
 export function createCalendarContractHarness(
@@ -714,12 +716,15 @@ export function createCalendarContractHarness(
     readonly omitAsOf?: boolean;
     readonly malformedBody?: boolean;
     readonly unreadableEvent?: boolean;
+    /** Serve the event list across two pages, as a busy calendar does. */
+    readonly paged?: boolean;
   } = {},
 ): CalendarContractHarness {
   const now = scenario.now ?? "2026-08-27T09:00:00.000Z";
   const asOf = scenario.asOf ?? now;
   let providerCalls = 0;
   let externalEffects = 0;
+  const listRequests: URL[] = [];
   const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
     "authentication-failed": 401,
     "invalid-input": 404,
@@ -765,20 +770,33 @@ export function createCalendarContractHarness(
     if (!url.pathname.endsWith("/events")) {
       return Response.json({ error: { message: "Unsupported" } }, { status: 404 });
     }
+    listRequests.push(url);
+    const event = (suffix: string) => ({
+      ...(scenario.unreadableEvent === true
+        ? {}
+        : { id: `contract-event${suffix}` }),
+      summary: "Contract event",
+      status: "confirmed",
+      updated: asOf,
+      start: { dateTime: "2026-09-02T02:00:00.000Z" },
+      end: { dateTime: "2026-09-02T03:00:00.000Z" },
+    });
+    if (scenario.emptyValue === true) {
+      return Response.json({
+        ...(scenario.omitAsOf === true ? {} : { updated: asOf }),
+        items: [],
+      });
+    }
+    if (scenario.paged === true && url.searchParams.get("pageToken") === null) {
+      return Response.json({
+        ...(scenario.omitAsOf === true ? {} : { updated: asOf }),
+        items: [event("")],
+        nextPageToken: "page-2",
+      });
+    }
     return Response.json({
       ...(scenario.omitAsOf === true ? {} : { updated: asOf }),
-      items: scenario.emptyValue === true
-        ? []
-        : [
-            {
-              ...(scenario.unreadableEvent === true ? {} : { id: "contract-event" }),
-              summary: "Contract event",
-              status: "confirmed",
-              updated: asOf,
-              start: { dateTime: "2026-09-02T02:00:00.000Z" },
-              end: { dateTime: "2026-09-02T03:00:00.000Z" },
-            },
-          ],
+      items: [event(scenario.paged === true ? "-2" : "")],
     });
   };
 
@@ -792,6 +810,7 @@ export function createCalendarContractHarness(
     }),
     providerCallCount: () => providerCalls,
     externalEffectCount: () => externalEffects,
+    listRequests: () => listRequests,
   };
 }
 

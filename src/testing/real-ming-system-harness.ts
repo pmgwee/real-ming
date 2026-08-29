@@ -102,6 +102,16 @@ import {
   type ReconcileCalendarCommitmentRequest,
 } from "../calendar/calendar-reconciliation.js";
 
+import {
+  createMorningBriefRunner,
+  type MorningBriefResult,
+  type MorningBriefRunner,
+} from "../operations/morning-brief.js";
+
+export interface ControlledMorningBriefOptions {
+  readonly calendarId: string;
+}
+
 export type ControlledCutoverSource = CutoverSourceSnapshot;
 
 export interface ControlledCalendarOptions {
@@ -264,6 +274,7 @@ export interface RealMingSystemHarness {
   cutoverSourceReadCount(): number;
   cutoverRetiredSources(): readonly string[];
   cutoverRecovery(): CutoverRecovery;
+  runMorningBrief(): Promise<MorningBriefResult>;
   acknowledgeCeoAction(
     action: NormalizedCeoAction,
   ): Promise<WorkItemAcknowledgement>;
@@ -519,6 +530,7 @@ export function createRealMingSystemHarness(options: {
   readonly legacyTaskSources?: readonly LegacyTaskSource[];
   readonly cutover?: ControlledCutoverOptions;
   readonly calendar?: ControlledCalendarOptions;
+  readonly morningBrief?: ControlledMorningBriefOptions;
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
   const masterTaskRecords = new Map<string, MasterTaskRecord>();
@@ -702,6 +714,17 @@ export function createRealMingSystemHarness(options: {
         }),
     ...(options.now === undefined ? {} : { now: options.now }),
   });
+  const calendarId = options.morningBrief?.calendarId ?? "";
+  const morningBrief: MorningBriefRunner | undefined =
+    options.morningBrief === undefined
+      ? undefined
+      : createMorningBriefRunner({
+          state,
+          listEvents: (window) =>
+            calendarAdapter.listEvents(calendarId, window),
+          notify: (notification) => telegramFrontDoor.notify(notification),
+          ...(options.now === undefined ? {} : { now: options.now }),
+        });
 
   return {
     captureTaskMigrationBackups: async () => migrationRehearsal.captureBackups(),
@@ -739,6 +762,12 @@ export function createRealMingSystemHarness(options: {
     cutoverSourceReadCount: () => cutoverWorkspace?.sourceReadCount() ?? 0,
     cutoverRetiredSources: () => cutoverWorkspace?.retiredSources() ?? [],
     cutoverRecovery: () => requireCutover().recovery(),
+    runMorningBrief: () => {
+      if (morningBrief === undefined) {
+        throw new Error("This harness was not configured with a Morning Brief.");
+      }
+      return morningBrief.run();
+    },
     buildCutoverPlanFromEvidence: (evidence) => buildCutoverPlan(evidence),
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
     listCalendarEvents: ({ calendarId }) =>
