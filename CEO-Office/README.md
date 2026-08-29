@@ -14,9 +14,13 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 | --- | --- |
 | Phase 3 tickets closed | **13 of 44** |
 | Startable by an agent right now | **Nothing. RM-11 is the only unblocked ticket and it needs you.** |
-| Waiting on you | **One sentence: approve `RM11-CUTOVER-2`** |
+| Waiting on you | **One word to start Phase B — the commit point** |
 
-**`RM11-CUTOVER-2` is prepared and waiting for one sentence from you. Nothing in Notion has been changed.**
+**Phase A is done. 30 Work Items are in Master Tasks. Your five databases are still the daily system and are untouched.**
+
+Verified against live Notion, not just the command's exit code: 30 pages, 30 unique source references, lifecycles 15 Captured / 10 Planned / 2 Waiting-Blocked / 3 Ready for CEO Review, and all six Workstream totals exact. The 4 archive-only records were correctly not imported.
+
+**Phase B has not run.** That is the commit point: it turns your five familiar pages into linked views over Master Tasks, then renames and locks the originals as `ARCHIVED EVIDENCE`. Until then you can still stop — the legacy databases remain writable and the imports can be quarantined by their `notion-migration:` prefix.
 
 `RM11-CUTOVER-1` went stale before it ran: four records were renamed from `To Do (Event/Work)` to `To Do` after you approved. Under the status semantics you confirmed, a domain suffix keeps the `To Do` meaning — so **not one of the 34 decisions changed**. I re-read the five sources read-only, re-bound the identical reconciliation to a fresh snapshot, and proved the decisions are byte-identical to the ones you approved. Your original RM-10 backup is untouched and remains your recovery evidence.
 
@@ -30,7 +34,7 @@ The approval sentence is at the end of [the packet](RM-11-cutover-approval-packe
 
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
-| Approve `RM11-CUTOVER-2` | The same 34 decisions you already reviewed, re-bound to a fresh snapshot after a cosmetic Notion status rename. 30 imports, 4 archive-only, unchanged. | **Approve** — nothing about the result changed, only the hashes it is bound to. | Awaiting your sentence |
+| Run Phase B | Create five linked views over Master Tasks keeping the familiar page names, prove an edit through each reaches the canonical Work Item, then rename and lock the five originals read-only. | **Go** — Phase A verified clean and Phase B is already covered by your `RM11-CUTOVER-2` Approval. | Awaiting your word |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
@@ -42,7 +46,7 @@ The approval sentence is at the end of [the packet](RM-11-cutover-approval-packe
 
 ## ✅ What needs you
 
-**One action:** paste the approval sentence from [the packet](RM-11-cutover-approval-packet.md). It is the same reconciliation you already approved, re-bound after a cosmetic Notion status rename.
+**One action:** say go, and Phase B runs. It is already inside the Approval you gave; I am pausing only because locking your five databases is the point of no easy return, and I said I would report first.
 
 Also worth knowing before any future Phase B, because it changes what you can do with three records: the 3 `Pending to Review` items arrive carrying a **migration Outcome Report** that states the effect Real-Ming performed was the migration itself, not the original work. That is what makes them completable at all — without it they could only ever be cancelled or rejected. The [runbook](RM-11-reconciliation-and-cutover-runbook.md) explains what you are confirming when you complete one.
 
