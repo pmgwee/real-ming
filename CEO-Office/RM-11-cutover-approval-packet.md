@@ -1,6 +1,12 @@
 # RM-11 — Exact Master Tasks cutover approval packet
 
-> **Decision required — approve or reject `RM11-CUTOVER-1`.** This packet binds
+> **Version 2.** `RM11-CUTOVER-1` went stale before it ran: four records were
+> renamed from `To Do (Event/Work)` to `To Do` after you approved. Under the
+> status semantics you confirmed, a domain suffix keeps the `To Do` meaning, so
+> **not one of the 34 decisions changed**. This version re-binds the identical
+> reconciliation to a fresh snapshot. No Notion mutation has occurred.
+
+> **Decision required — approve or reject `RM11-CUTOVER-2`.** This packet binds
 > the reviewed 34-item digest to one source snapshot, one Master Tasks target,
 > exact expected counts, a two-phase mutation sequence, verification, and
 > recovery. No Notion mutation has occurred.
@@ -9,10 +15,10 @@
 
 | Field | Bound value |
 | --- | --- |
-| Cutover plan | `RM11-CUTOVER-1` |
-| Reconciliation digest | `RM11-DIGEST-1` |
-| Private digest SHA-256 | `0f094a43809c4309f09f48be9733982893a2cd608dc0378779162741fbb42039` |
-| RM-10 backup SHA-256 | `b7dee7b3ab1fb0265a1a3a8abea1eab92db4c4e597e4ed43d0c80272ba86e091` |
+| Cutover plan | `RM11-CUTOVER-2` |
+| Reconciliation digest | `RM11-DIGEST-2` |
+| Private digest SHA-256 | `f6d31c8d318cdefb7f488df68f50be64829f99dc6b38369f1450f7bd721a17b6` |
+| Source snapshot SHA-256 | `c66d697d04a7da1f0be61e2827e250a84cca47f1c10329f985757dda05546325` |
 | Master Tasks database | `9f337269-ae6b-431a-916d-cf69675d1a57` |
 | Master Tasks data source | `fd13a605-5781-4b55-abc0-adfefc8aa19b` |
 | Reviewed source records | 34 |
@@ -33,9 +39,11 @@ invalidates this Approval and requires a new version.
 | Job x Life | `85da1881-c49d-444e-a53e-5fe90ffaf3e0` | 15 |
 | Finance | `8c089b83-bac5-83be-8a4e-87745ce84c65` | 0 |
 
-The private digest remains gitignored at
-`tmp/rm11-ceo-review-digest.md`. It contains normalized decision fields, not raw
-Notion payloads. The raw RM-10 backup remains gitignored.
+The private digest remains gitignored at `tmp/rm11-cutover-2/digest.md`, with
+its snapshot beside it. Both contain normalized decision fields or raw payloads
+that never enter Git. The original RM-10 backup is untouched and remains your
+immutable recovery evidence at its own SHA-256
+`b7dee7b3ab1fb0265a1a3a8abea1eab92db4c4e597e4ed43d0c80272ba86e091`.
 
 ## Approved-result shape
 
@@ -121,14 +129,14 @@ leaves them unchanged.
 
 ## Decision
 
-Recommendation: **approve `RM11-CUTOVER-1` only if the 30/4 disposition, mappings,
+Recommendation: **approve `RM11-CUTOVER-2` only if the 30/4 disposition, mappings,
 two-phase sequence, and recovery boundary above match your intent.** Approval lets
 the implementation agent build, verify, and execute this exact plan. Any drift
 stops execution and returns for a new CEO decision.
 
 Use this exact sentence:
 
-> I approve RM11-CUTOVER-1 bound to RM11-DIGEST-1, digest SHA-256 0f094a43809c4309f09f48be9733982893a2cd608dc0378779162741fbb42039 and RM-10 backup SHA-256 b7dee7b3ab1fb0265a1a3a8abea1eab92db4c4e597e4ed43d0c80272ba86e091. Execute only the documented two-phase plan and stop on any drift.
+> I approve RM11-CUTOVER-2 bound to RM11-DIGEST-2, digest SHA-256 f6d31c8d318cdefb7f488df68f50be64829f99dc6b38369f1450f7bd721a17b6 and source snapshot SHA-256 c66d697d04a7da1f0be61e2827e250a84cca47f1c10329f985757dda05546325. Execute only the documented two-phase plan and stop on any drift.
 
 ## Test cases
 

@@ -85,19 +85,23 @@ said to stop on any drift.
 
 Nothing was written. This is the documented behaviour, not a failure.
 
-### What happens next
+### Resolved — the change was cosmetic
 
-1. Say the word and I will snapshot the existing RM-10 evidence under a new name
-   (it stays immutable — it is your recovery evidence), re-read the five sources
-   read-only, and rebuild the reconciliation digest.
-2. I will bring you **only the 4 changed rows** to re-confirm. The other 30
-   decisions carry over untouched, so this is a short working session, not a
-   repeat of the 34-item review.
-3. You approve `RM11-CUTOVER-2` with a fresh bound sentence, and the cutover runs
-   against evidence that matches reality.
+All four records changed the same way: `To Do (Event/Work)` became `To Do`. That
+is a Notion status-option rename, not a change of meaning. The status semantics
+you confirmed say a domain suffix such as `To Do (Life)` retains the `To Do`
+meaning, so all four keep the `Planned` lifecycle, the same Workstream, the same
+Executive and the same disposition.
 
-If instead you changed those statuses deliberately and want the new values to be
-authoritative, that is the normal case — step 2 is where you say so.
+**Not one of the 34 decisions changed.** That was proved, not assumed: the plan
+was rebuilt from the fresh snapshot and its decisions compared field by field
+against the ones you approved. Only the four payload hashes moved.
+
+`RM11-CUTOVER-2` therefore asks nothing new of you. It is the same reconciliation
+re-bound to a snapshot that matches Notion as it stands now. Your RM-10 backup is
+untouched and remains the immutable recovery evidence.
+
+Paste the approval sentence at the end of the packet and the cutover will run.
 
 ---
 

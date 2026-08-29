@@ -2,18 +2,23 @@ import type { CutoverBindings } from "./master-tasks-cutover.js";
 import type { CutoverTitleMatchCounts } from "./cutover-plan-builder.js";
 
 /**
+ * RM11-CUTOVER-2 re-binds the same 34 reviewed decisions to a fresh source
+ * snapshot. RM11-CUTOVER-1 went stale when four records were renamed from
+ * `To Do (Event/Work)` to `To Do`; the CEO-confirmed semantics keep a domain
+ * suffix meaning `To Do`, so not one disposition changed.
+ *
  * Every value here is published in CEO-Office/RM-11-cutover-approval-packet.md,
  * which is what the CEO approved. The per-record decisions are deliberately NOT
  * here: they carry Ming's own task titles and stay in the gitignored evidence
  * directory, joined onto these bindings at run time.
  */
 export const rm11CutoverBindings: CutoverBindings = {
-  planVersion: "RM11-CUTOVER-1",
-  digestVersion: "RM11-DIGEST-1",
+  planVersion: "RM11-CUTOVER-2",
+  digestVersion: "RM11-DIGEST-2",
   digestSha256:
-    "0f094a43809c4309f09f48be9733982893a2cd608dc0378779162741fbb42039",
+    "f6d31c8d318cdefb7f488df68f50be64829f99dc6b38369f1450f7bd721a17b6",
   backupSha256:
-    "b7dee7b3ab1fb0265a1a3a8abea1eab92db4c4e597e4ed43d0c80272ba86e091",
+    "c66d697d04a7da1f0be61e2827e250a84cca47f1c10329f985757dda05546325",
   databaseId: "9f337269-ae6b-431a-916d-cf69675d1a57",
   dataSourceId: "fd13a605-5781-4b55-abc0-adfefc8aa19b",
   archivePrefix: "ARCHIVED EVIDENCE",

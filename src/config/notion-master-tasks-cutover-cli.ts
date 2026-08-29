@@ -33,10 +33,10 @@ const evidenceDirectory = fileURLToPath(
   new URL("../../tmp/rm11-cutover/", import.meta.url),
 );
 const digestPath = fileURLToPath(
-  new URL("../../tmp/rm11-ceo-review-digest.md", import.meta.url),
+  new URL("../../tmp/rm11-cutover-2/digest.md", import.meta.url),
 );
 const backupPath = fileURLToPath(
-  new URL("../../tmp/rm10-migration-rehearsal/source-backups.json", import.meta.url),
+  new URL("../../tmp/rm11-cutover-2/source-backups.json", import.meta.url),
 );
 const statePath = fileURLToPath(
   new URL("../../.real-ming-operations.sqlite", import.meta.url),
