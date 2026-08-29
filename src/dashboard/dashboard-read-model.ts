@@ -86,6 +86,17 @@ const blockedStates: readonly WorkItemState[] = [
 ];
 
 /**
+ * The one definition of "this Approval is waiting on the CEO", shared by the
+ * dashboard, the Morning Brief and the Executive Roll-Up so the three can never
+ * disagree about what he still owes a decision on.
+ */
+export function pendingApprovalsFor(
+  approvals: readonly Approval[],
+): readonly Approval[] {
+  return approvals.filter((approval) => approval.state === "requested");
+}
+
+/**
  * Shared with the Morning Brief so the dashboard and the 07:30 message never
  * give two different answers to "is this waiting on me, and why".
  */
@@ -156,9 +167,7 @@ export function buildDashboardOverview(
   });
 
   const pendingApprovals = workItems.flatMap((workItem) =>
-    state
-      .approvals(workItem.id)
-      .filter((approval) => approval.state === "requested")
+    pendingApprovalsFor(state.approvals(workItem.id))
       .map(
         (approval) =>
           ({

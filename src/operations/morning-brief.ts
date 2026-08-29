@@ -1,6 +1,16 @@
 import type { Approval, AuditEvent, WorkItem } from "./contracts.js";
 import type { OperationsState } from "./operations-state.js";
-import { blockersFor } from "../dashboard/dashboard-read-model.js";
+import {
+  blockersFor,
+  pendingApprovalsFor,
+} from "../dashboard/dashboard-read-model.js";
+import {
+  dailyOccurrence,
+  operatingDayOf,
+  operatingDayWindow,
+  operatingTimeZone,
+  type DailyOccurrence,
+} from "./daily-schedule.js";
 import type {
   TelegramNotification,
   TelegramNotificationResult,
@@ -18,65 +28,32 @@ import type { ProviderReadResult } from "../providers/adapter-contract.js";
  * The occurrence is named by the Kuala Lumpur calendar day so a retry, a late
  * run, or a run from a differently-configured host all resolve to one brief.
  */
-export const morningBriefTimeZone = "Asia/Kuala_Lumpur";
+export const morningBriefJob = "morning-brief";
 const morningBriefHour = 7;
 const morningBriefMinute = 30;
 
-/** The Kuala Lumpur calendar day of an instant, read from the named zone. */
-function briefDayOf(instant: number): string {
-  return new Date(instant).toLocaleDateString("en-CA", {
-    timeZone: morningBriefTimeZone,
-  });
-}
+/** Kept as the name RM-13 published; the schedule itself is shared. */
+export const morningBriefTimeZone = operatingTimeZone;
 
-/** Minutes the named zone is ahead of UTC at that instant. */
-function zoneOffsetMinutes(instant: number): number {
-  const local = new Date(instant).toLocaleString("sv-SE", {
-    timeZone: morningBriefTimeZone,
-  });
-  return (Date.parse(`${local.replace(" ", "T")}Z`) - instant) / 60_000;
-}
-
-export interface MorningBriefOccurrence {
-  readonly occurrenceDate: string;
-  readonly scheduledAt: string;
-  readonly idempotencyKey: string;
-}
+export type MorningBriefOccurrence = DailyOccurrence;
 
 export function morningBriefOccurrence(now: string): MorningBriefOccurrence {
-  const instant = Date.parse(now);
-  if (Number.isNaN(instant)) {
-    throw new Error("The Morning Brief requires a canonical clock.");
-  }
-  const occurrenceDate = briefDayOf(instant);
-  const naive = Date.parse(
-    `${occurrenceDate}T${String(morningBriefHour).padStart(2, "0")}:${String(
-      morningBriefMinute,
-    ).padStart(2, "0")}:00.000Z`,
-  );
-  const scheduledAt = new Date(
-    naive - zoneOffsetMinutes(naive) * 60_000,
-  ).toISOString();
-  return {
-    occurrenceDate,
-    scheduledAt,
-    idempotencyKey: `morning-brief:${occurrenceDate}`,
-  };
+  return dailyOccurrence({
+    now,
+    hour: morningBriefHour,
+    minute: morningBriefMinute,
+    job: morningBriefJob,
+  });
 }
 
 /** The Kuala Lumpur day, as an instant range the calendar can be asked for. */
 export function morningBriefWindow(occurrenceDate: string): CalendarWindow {
-  const startOfDay = Date.parse(`${occurrenceDate}T00:00:00.000Z`);
-  const offset = zoneOffsetMinutes(startOfDay) * 60_000;
-  return {
-    timeMin: new Date(startOfDay - offset).toISOString(),
-    timeMax: new Date(startOfDay + 86_400_000 - offset).toISOString(),
-  };
+  return operatingDayWindow(occurrenceDate);
 }
 
 function occurrenceDateOf(value: string): string | undefined {
   const instant = Date.parse(value);
-  return Number.isNaN(instant) ? undefined : briefDayOf(instant);
+  return Number.isNaN(instant) ? undefined : operatingDayOf(instant);
 }
 
 export type BriefSourceName = "google-calendar" | "work-items";
@@ -285,16 +262,14 @@ export function buildMorningBrief(input: {
       );
     }
 
-    for (const approval of approvals) {
-      if (approval.state === "requested") {
-        pendingApprovals.push(
-          entry(
-            workItem,
-            `Awaiting your ${approval.scope} Approval — ${workItem.intent}`,
-            approval.id,
-          ),
-        );
-      }
+    for (const approval of pendingApprovalsFor(approvals)) {
+      pendingApprovals.push(
+        entry(
+          workItem,
+          `Awaiting your ${approval.scope} Approval — ${workItem.intent}`,
+          approval.id,
+        ),
+      );
     }
 
     for (const auditEvent of trail) {

@@ -108,6 +108,19 @@ import {
   type MorningBriefRunner,
 } from "../operations/morning-brief.js";
 
+import {
+  createExecutiveRollUpRunner,
+  type ExecutiveRollUpResult,
+  type ExecutiveRollUpRunner,
+} from "../operations/executive-roll-up.js";
+import {
+  createExceptionNoticeRhythm,
+  type ExceptionNotice,
+  type ExceptionNoticeAdmission,
+  type ExceptionNoticeRhythm,
+  type HeldRelease,
+} from "../operations/exception-notice-rhythm.js";
+
 export interface ControlledMorningBriefOptions {
   readonly calendarId: string;
 }
@@ -275,6 +288,12 @@ export interface RealMingSystemHarness {
   cutoverRetiredSources(): readonly string[];
   cutoverRecovery(): CutoverRecovery;
   runMorningBrief(): Promise<MorningBriefResult>;
+  runExecutiveRollUp(): Promise<ExecutiveRollUpResult>;
+  admitExceptionNotice(
+    notification: ExceptionNotice,
+  ): Promise<ExceptionNoticeAdmission>;
+  recordExceptionNoticeRecovery(signature: string): Promise<ExceptionNoticeAdmission>;
+  releaseHeldExceptionNotices(): Promise<HeldRelease>;
   acknowledgeCeoAction(
     action: NormalizedCeoAction,
   ): Promise<WorkItemAcknowledgement>;
@@ -715,6 +734,17 @@ export function createRealMingSystemHarness(options: {
     ...(options.now === undefined ? {} : { now: options.now }),
   });
   const calendarId = options.morningBrief?.calendarId ?? "";
+  const clock = options.now ?? (() => new Date().toISOString());
+  const exceptionNoticeRhythm: ExceptionNoticeRhythm = createExceptionNoticeRhythm({
+    state,
+    notify: (notification) => telegramFrontDoor.notify(notification),
+    now: clock,
+  });
+  const executiveRollUp: ExecutiveRollUpRunner = createExecutiveRollUpRunner({
+    state,
+    admit: (notification) => exceptionNoticeRhythm.admit(notification),
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
   const morningBrief: MorningBriefRunner | undefined =
     options.morningBrief === undefined
       ? undefined
@@ -768,6 +798,11 @@ export function createRealMingSystemHarness(options: {
       }
       return morningBrief.run();
     },
+    runExecutiveRollUp: () => executiveRollUp.run(),
+    admitExceptionNotice: (notification) => exceptionNoticeRhythm.admit(notification),
+    recordExceptionNoticeRecovery: (signature) =>
+      exceptionNoticeRhythm.recordRecovery(signature),
+    releaseHeldExceptionNotices: () => exceptionNoticeRhythm.releaseHeld(),
     buildCutoverPlanFromEvidence: (evidence) => buildCutoverPlan(evidence),
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
     listCalendarEvents: ({ calendarId }) =>

@@ -495,6 +495,23 @@ export class OperationsState {
         SELECT RAISE(ABORT, 'telegram_delivery_receipts are append-only');
       END;
 
+      CREATE TABLE IF NOT EXISTS held_exception_notices (
+        idempotency_key TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        text TEXT NOT NULL,
+        held_at TEXT NOT NULL,
+        release_at TEXT NOT NULL,
+        released_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS exception_notice_groups (
+        signature TEXT PRIMARY KEY,
+        first_seen TEXT NOT NULL,
+        last_seen TEXT NOT NULL,
+        occurrences INTEGER NOT NULL,
+        recovered_at TEXT
+      );
+
       CREATE TRIGGER IF NOT EXISTS work_items_require_outcome_on_insert
       BEFORE INSERT ON work_items
       WHEN NEW.state IN ('Ready for CEO Review', 'Completed')
@@ -1377,6 +1394,124 @@ export class OperationsState {
       basis: "ceo-approved-migration",
       sourceReference: request.sourceReference,
     });
+  }
+
+  /**
+   * Repeated identical errors are one notice, not one per occurrence. A group
+   * reopens only after it has recovered, so a fresh failure is a new incident
+   * rather than a replay of the old one.
+   */
+  claimExceptionNoticeGroup(
+    signature: string,
+    occurredAt: string,
+  ): { readonly kind: "first" | "grouped"; readonly occurrences: number } {
+    const row = this.#database
+      .prepare("SELECT occurrences, recovered_at FROM exception_notice_groups WHERE signature = ?")
+      .get(signature) as unknown as
+      | { readonly occurrences: number; readonly recovered_at: string | null }
+      | undefined;
+
+    if (row === undefined || row.recovered_at !== null) {
+      this.#database
+        .prepare(
+          `INSERT INTO exception_notice_groups
+             (signature, first_seen, last_seen, occurrences, recovered_at)
+           VALUES (?, ?, ?, 1, NULL)
+           ON CONFLICT(signature) DO UPDATE SET
+             first_seen = excluded.first_seen,
+             last_seen = excluded.last_seen,
+             occurrences = 1,
+             recovered_at = NULL`,
+        )
+        .run(signature, occurredAt, occurredAt);
+      return { kind: "first", occurrences: 1 };
+    }
+
+    const occurrences = row.occurrences + 1;
+    this.#database
+      .prepare(
+        "UPDATE exception_notice_groups SET occurrences = ?, last_seen = ? WHERE signature = ?",
+      )
+      .run(occurrences, occurredAt, signature);
+    return { kind: "grouped", occurrences };
+  }
+
+  /**
+   * An Exception Notice deferred by do-not-disturb is stored, not dropped.
+   * Holding it in memory would make "held" a silent drop that survives only
+   * until the next restart.
+   */
+  holdExceptionNotice(notification: {
+    readonly idempotencyKey: string;
+    readonly kind: string;
+    readonly text: string;
+    readonly heldAt: string;
+    readonly releaseAt: string;
+  }): void {
+    this.#database
+      .prepare(
+        `INSERT INTO held_exception_notices
+           (idempotency_key, kind, text, held_at, release_at, released_at)
+         VALUES (?, ?, ?, ?, ?, NULL)
+         ON CONFLICT(idempotency_key) DO NOTHING`,
+      )
+      .run(
+        notification.idempotencyKey,
+        notification.kind,
+        notification.text,
+        notification.heldAt,
+        notification.releaseAt,
+      );
+  }
+
+  dueHeldExceptionNotices(now: string): readonly {
+    readonly idempotencyKey: string;
+    readonly kind: string;
+    readonly text: string;
+  }[] {
+    return (
+      this.#database
+        .prepare(
+          `SELECT idempotency_key, kind, text FROM held_exception_notices
+           WHERE released_at IS NULL AND release_at <= ?
+           ORDER BY release_at ASC, rowid ASC`,
+        )
+        .all(now) as unknown as readonly {
+        readonly idempotency_key: string;
+        readonly kind: string;
+        readonly text: string;
+      }[]
+    ).map((row) => ({
+      idempotencyKey: row.idempotency_key,
+      kind: row.kind,
+      text: row.text,
+    }));
+  }
+
+  markHeldExceptionNoticeReleased(idempotencyKey: string, releasedAt: string): void {
+    this.#database
+      .prepare(
+        "UPDATE held_exception_notices SET released_at = ? WHERE idempotency_key = ? AND released_at IS NULL",
+      )
+      .run(releasedAt, idempotencyKey);
+  }
+
+  recordExceptionNoticeRecovery(
+    signature: string,
+    occurredAt: string,
+  ): { readonly kind: "recovered" | "already-recovered"; readonly occurrences: number } {
+    const row = this.#database
+      .prepare("SELECT occurrences, recovered_at FROM exception_notice_groups WHERE signature = ?")
+      .get(signature) as unknown as
+      | { readonly occurrences: number; readonly recovered_at: string | null }
+      | undefined;
+    if (row === undefined || row.recovered_at !== null) {
+      return { kind: "already-recovered", occurrences: row?.occurrences ?? 0 };
+    }
+    this.#database
+      .prepare("UPDATE exception_notice_groups SET recovered_at = ? WHERE signature = ?")
+      .run(occurredAt, signature);
+    return { kind: "recovered", occurrences: row.occurrences };
   }
 
   recordPriority(
