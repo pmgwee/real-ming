@@ -2,23 +2,26 @@ import type { CutoverBindings } from "./master-tasks-cutover.js";
 import type { CutoverTitleMatchCounts } from "./cutover-plan-builder.js";
 
 /**
- * RM11-CUTOVER-2 re-binds the same 34 reviewed decisions to a fresh source
- * snapshot. RM11-CUTOVER-1 went stale when four records were renamed from
- * `To Do (Event/Work)` to `To Do`; the CEO-confirmed semantics keep a domain
- * suffix meaning `To Do`, so not one disposition changed.
+ * RM11-CUTOVER-3 is the exact Phase B continuation. RM11-CUTOVER-2 completed
+ * Phase A, but its published Step 4 carried a stale DIGEST-1 label while its
+ * bound values and executable behavior used DIGEST-2. Version 3 binds the
+ * unchanged decisions and source snapshot plus the completed Phase A report.
  *
- * Every value here is published in CEO-Office/RM-11-cutover-approval-packet.md,
- * which is what the CEO approved. The per-record decisions are deliberately NOT
- * here: they carry Ming's own task titles and stay in the gitignored evidence
- * directory, joined onto these bindings at run time.
+ * Every value here is published in the pending
+ * CEO-Office/RM-11-phase-b-approval-packet.md Approval. The per-record decisions
+ * are deliberately NOT here: they carry Ming's own task titles and stay in the
+ * gitignored evidence directory, joined onto these bindings at run time.
  */
 export const rm11CutoverBindings: CutoverBindings = {
-  planVersion: "RM11-CUTOVER-2",
+  planVersion: "RM11-CUTOVER-3",
   digestVersion: "RM11-DIGEST-2",
   digestSha256:
     "f6d31c8d318cdefb7f488df68f50be64829f99dc6b38369f1450f7bd721a17b6",
   backupSha256:
     "c66d697d04a7da1f0be61e2827e250a84cca47f1c10329f985757dda05546325",
+  phaseAReportSha256:
+    "a148737ae4d6e61761570d5726130898d9c580a361bb070cf3dffaad725f2f7f",
+  executionPhase: "B",
   databaseId: "9f337269-ae6b-431a-916d-cf69675d1a57",
   dataSourceId: "fd13a605-5781-4b55-abc0-adfefc8aa19b",
   archivePrefix: "ARCHIVED EVIDENCE",

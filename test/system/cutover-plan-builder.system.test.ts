@@ -20,6 +20,8 @@ const bindings: CutoverBindings = {
   digestVersion: "TEST-DIGEST-1",
   digestSha256: "a".repeat(64),
   backupSha256: "b".repeat(64),
+  phaseAReportSha256: "d".repeat(64),
+  executionPhase: "B",
   databaseId: "database:master-tasks",
   dataSourceId: "data-source:master-tasks",
   archivePrefix: "ARCHIVED EVIDENCE",

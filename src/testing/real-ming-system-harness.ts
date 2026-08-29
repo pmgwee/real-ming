@@ -252,6 +252,15 @@ export interface RealMingSystemHarness {
   rollbackTaskMigrationRehearsal(): void;
   executeCutoverPhaseA(approval?: CutoverApproval): Promise<CutoverPhaseAReport>;
   executeCutoverPhaseB(): Promise<CutoverPhaseBReport>;
+  executeApprovedCutoverPhase(
+    phase: "A" | "B",
+  ): Promise<CutoverPhaseAReport | CutoverPhaseBReport>;
+  seedPriorCutoverPhaseA(): Promise<CutoverPhaseAReport>;
+  removeMasterTaskProjection(workItemId: string): void;
+  duplicateMasterTaskProjection(
+    workItemId: string,
+    duplicateWorkItemId: string,
+  ): void;
   cutoverSourceReadCount(): number;
   cutoverRetiredSources(): readonly string[];
   cutoverRecovery(): CutoverRecovery;
@@ -600,6 +609,33 @@ export function createRealMingSystemHarness(options: {
           workspaceId: "workspace:real-ming",
           ...(options.now === undefined ? {} : { now: options.now }),
         });
+  const phaseASeedCutover =
+    options.cutover === undefined || cutoverWorkspace === undefined
+      ? undefined
+      : new MasterTasksCutover({
+          plan: {
+            ...options.cutover.plan,
+            bindings: {
+              ...options.cutover.plan.bindings,
+              planVersion: `${options.cutover.plan.bindings.planVersion}-PRIOR-A`,
+              executionPhase: "A",
+            },
+          },
+          approval: {
+            ...options.cutover.approval,
+            approvalId: `${options.cutover.approval.approvalId}:prior-a`,
+            planVersion: `${options.cutover.plan.bindings.planVersion}-PRIOR-A`,
+            executionPhase: "A",
+          },
+          workspace: cutoverWorkspace,
+          state,
+          gateway,
+          projection: masterTasks,
+          store: masterTasksStore,
+          actorId: "ceo:ming",
+          workspaceId: "workspace:real-ming",
+          ...(options.now === undefined ? {} : { now: options.now }),
+        });
   const requireCutover = (): MasterTasksCutover => {
     if (cutover === undefined) {
       throw new Error("This harness was not configured with a cutover plan.");
@@ -675,9 +711,31 @@ export function createRealMingSystemHarness(options: {
     rollbackTaskMigrationRehearsal: () => migrationRehearsal.rollback(),
     executeCutoverPhaseA: (approval) =>
       approval === undefined
-        ? requireCutover().executePhaseA()
-        : requireCutover().executePhaseA(approval),
-    executeCutoverPhaseB: () => requireCutover().executePhaseB(),
+        ? requireCutover().executeApprovedPhase("A")
+        : requireCutover().executeApprovedPhase("A", approval),
+    executeCutoverPhaseB: () => requireCutover().executeApprovedPhase("B"),
+    executeApprovedCutoverPhase: (phase) =>
+      requireCutover().executeApprovedPhase(phase),
+    seedPriorCutoverPhaseA: () => {
+      if (phaseASeedCutover === undefined) {
+        throw new Error("This harness was not configured with a cutover plan.");
+      }
+      return phaseASeedCutover.executeApprovedPhase("A");
+    },
+    removeMasterTaskProjection: (workItemId) => {
+      masterTaskRecords.delete(workItemId);
+    },
+    duplicateMasterTaskProjection: (workItemId, duplicateWorkItemId) => {
+      const record = masterTaskRecords.get(workItemId);
+      if (record === undefined) {
+        throw new Error("Controlled Master Tasks record not found.");
+      }
+      masterTaskRecords.set(duplicateWorkItemId, {
+        ...record,
+        id: duplicateWorkItemId,
+        workItemId: duplicateWorkItemId,
+      });
+    },
     cutoverSourceReadCount: () => cutoverWorkspace?.sourceReadCount() ?? 0,
     cutoverRetiredSources: () => cutoverWorkspace?.retiredSources() ?? [],
     cutoverRecovery: () => requireCutover().recovery(),

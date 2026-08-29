@@ -11,6 +11,7 @@ import { workstreamRoutes } from "../operations/executive-role-router.js";
 import type { OperationsGateway } from "../operations/operations-gateway.js";
 import type { OperationsState } from "../operations/operations-state.js";
 import type {
+  MasterTaskRecord,
   MasterTasksProjection,
   MasterTasksStore,
 } from "../master-tasks/master-tasks.js";
@@ -24,6 +25,7 @@ export type MigrationLifecycle = MigratedWorkItemState;
 
 export type CutoverDisposition = "migrate" | "archive-only";
 export type CutoverCommitmentProvenance = MigratedCommitmentProvenance;
+export type CutoverExecutionPhase = "A" | "B";
 
 export const cutoverSourceReferencePrefix = "notion-migration:";
 
@@ -55,6 +57,8 @@ export interface CutoverBindings {
   readonly digestVersion: string;
   readonly digestSha256: string;
   readonly backupSha256: string;
+  readonly phaseAReportSha256: string;
+  readonly executionPhase: CutoverExecutionPhase;
   readonly databaseId: string;
   readonly dataSourceId: string;
   readonly archivePrefix: string;
@@ -89,6 +93,8 @@ export interface CutoverApproval {
   readonly digestVersion: string;
   readonly digestSha256: string;
   readonly backupSha256: string;
+  readonly phaseAReportSha256: string;
+  readonly executionPhase: CutoverExecutionPhase;
 }
 
 export interface CutoverSourceRecord {
@@ -375,6 +381,12 @@ export function assertCutoverApproval(
       ["digest version", approval.digestVersion, bindings.digestVersion],
       ["digest SHA-256", approval.digestSha256, bindings.digestSha256],
       ["backup SHA-256", approval.backupSha256, bindings.backupSha256],
+      [
+        "Phase A report SHA-256",
+        approval.phaseAReportSha256,
+        bindings.phaseAReportSha256,
+      ],
+      ["execution phase", approval.executionPhase, bindings.executionPhase],
     ] as const
   ).filter(([, actual, expected]) => actual !== expected);
 
@@ -413,8 +425,36 @@ export class MasterTasksCutover {
 
   constructor(private readonly options: MasterTasksCutoverOptions) {}
 
-  async executePhaseA(
+  executeApprovedPhase(
+    phase: "A",
+    approval?: CutoverApproval,
+  ): Promise<CutoverPhaseAReport>;
+  executeApprovedPhase(
+    phase: "B",
+    approval?: CutoverApproval,
+  ): Promise<CutoverPhaseBReport>;
+  executeApprovedPhase(
+    phase: CutoverExecutionPhase,
+    approval?: CutoverApproval,
+  ): Promise<CutoverPhaseAReport | CutoverPhaseBReport>;
+  async executeApprovedPhase(
+    phase: CutoverExecutionPhase,
     approval: CutoverApproval = this.options.approval,
+  ): Promise<CutoverPhaseAReport | CutoverPhaseBReport> {
+    const { plan } = this.options;
+    assertCutoverApproval(approval, plan.bindings);
+    if (phase !== plan.bindings.executionPhase) {
+      throw new Error(
+        `Cutover phase ${phase} is not approved; the exact Approval authorizes Phase ${plan.bindings.executionPhase}.`,
+      );
+    }
+    if (phase === "A") return this.#executePhaseA(approval);
+    await this.#executePhaseA(approval);
+    return this.#executePhaseB();
+  }
+
+  async #executePhaseA(
+    approval: CutoverApproval,
   ): Promise<CutoverPhaseAReport> {
     const { plan, workspace } = this.options;
     const { bindings } = plan;
@@ -447,7 +487,28 @@ export class MasterTasksCutover {
           cutoverSourceReference(decision.dataSourceId, decision.pageId),
         ),
     );
-    for (const record of await this.options.store.records()) {
+    const existingRecords = await this.options.store.records();
+    const migrationRecords = existingRecords.filter((record) =>
+      record.sourceReference.startsWith(cutoverSourceReferencePrefix),
+    );
+    if (bindings.executionPhase === "B") {
+      const projectedCounts = counted(
+        migrationRecords,
+        (record) => record.sourceReference,
+      );
+      const missing = [...planned].find(
+        (reference) => (projectedCounts.get(reference) ?? 0) !== 1,
+      );
+      if (
+        missing !== undefined ||
+        migrationRecords.length !== planned.size
+      ) {
+        throw new Error(
+          `Phase B continuation requires exactly the approved Phase A projections; ${missing ?? "the projection count"} is missing or duplicated.`,
+        );
+      }
+    }
+    for (const record of existingRecords) {
       if (!record.sourceReference.startsWith(cutoverSourceReferencePrefix)) {
         continue;
       }
@@ -469,6 +530,7 @@ export class MasterTasksCutover {
           `Master Tasks already imported ${record.sourceReference} under another Work Item. Reconcile it before replaying the cutover.`,
         );
       }
+      this.#verifyProjectedRecord(record, local);
     }
 
     const titles = new Map<string, CutoverSourceRecord>();
@@ -495,6 +557,18 @@ export class MasterTasksCutover {
           `Source drift: ${sourceReference} is no longer present in its legacy source.`,
         );
       }
+      const existing = this.options.state.findWorkItemByCommand(
+        this.options.workspaceId,
+        sourceReference,
+      );
+      if (bindings.executionPhase === "B" && existing === undefined) {
+        throw new Error(
+          `Phase B continuation requires the approved Phase A Work Item ${sourceReference}, but it is missing.`,
+        );
+      }
+      if (existing !== undefined) {
+        this.#verifyWorkItemDecision(existing, decision, source, sourceReference);
+      }
       const workItem = await this.options.gateway.importMigratedWorkItem({
         actorId: this.options.actorId,
         workspaceId: this.options.workspaceId,
@@ -507,6 +581,7 @@ export class MasterTasksCutover {
         commitmentProvenance: decision.commitmentProvenance,
         approvalReference: approval.approvalId,
       });
+      this.#verifyWorkItemDecision(workItem, decision, source, sourceReference);
       imported.push(sourceReference);
       workItemsByReference.set(sourceReference, workItem);
     }
@@ -530,12 +605,12 @@ export class MasterTasksCutover {
     };
 
     this.#verifyImport(imported, workItemsByReference);
-    await this.#verifyProjection(planned);
+    await this.#verifyProjection(planned, workItemsByReference);
     this.#phaseAVerified = true;
     return report;
   }
 
-  async executePhaseB(): Promise<CutoverPhaseBReport> {
+  async #executePhaseB(): Promise<CutoverPhaseBReport> {
     if (!this.#phaseAVerified) {
       throw new Error(
         "Phase A must import and verify the approved records before Phase B switches daily use.",
@@ -775,16 +850,97 @@ export class MasterTasksCutover {
     }
   }
 
-  async #verifyProjection(planned: ReadonlySet<string>): Promise<void> {
-    const projected = new Set(
-      (await this.options.store.records()).map(
-        (record) => record.sourceReference,
-      ),
+  #verifyWorkItemDecision(
+    workItem: WorkItem,
+    decision: CutoverDecision,
+    source: CutoverSourceRecord,
+    sourceReference: string,
+  ): void {
+    const captured = this.options.state
+      .auditTrail(workItem.id)
+      .find((event) => event.type === "work-item.captured");
+    const details = captured?.details;
+    const matches =
+      workItem.workspaceId === this.options.workspaceId &&
+      workItem.idempotencyKey === sourceReference &&
+      workItem.intent === source.title &&
+      workItem.state === decision.lifecycle &&
+      workItem.workstream === decision.workstream &&
+      workItem.accountableExecutive === decision.accountableExecutive &&
+      workItem.expectedEffect.kind === "migrated-legacy-task" &&
+      workItem.expectedEffect.value === sourceReference &&
+      details?.["basis"] === "ceo-approved-migration" &&
+      details?.["sourceReference"] === sourceReference &&
+      details?.["legacyStatus"] === source.legacyStatus &&
+      details?.["commitmentProvenance"] === decision.commitmentProvenance &&
+      details?.["workstream"] === decision.workstream &&
+      details?.["accountableExecutive"] === decision.accountableExecutive;
+    if (!matches) {
+      throw new Error(
+        `Imported Work Item ${sourceReference} does not match its exact CEO-approved decision.`,
+      );
+    }
+  }
+
+  #verifyProjectedRecord(record: MasterTaskRecord, workItem: WorkItem): void {
+    const expected = this.options.projection.recordFor(workItem);
+    const matches =
+      record.workItemId === expected.workItemId &&
+      record.workspaceId === expected.workspaceId &&
+      record.title === expected.title &&
+      record.intent === expected.intent &&
+      record.source === expected.source &&
+      record.sourceReference === expected.sourceReference &&
+      record.trustDomain === expected.trustDomain &&
+      record.workstream === expected.workstream &&
+      record.accountableExecutive === expected.accountableExecutive &&
+      JSON.stringify(record.collaboratingExecutives) ===
+        JSON.stringify(expected.collaboratingExecutives) &&
+      record.lifecycle === expected.lifecycle &&
+      record.priority === expected.priority &&
+      record.commitmentValue === expected.commitmentValue &&
+      record.commitmentProvenance === expected.commitmentProvenance &&
+      record.riskClass === expected.riskClass &&
+      record.approvalRequired === expected.approvalRequired &&
+      record.approvalReference === expected.approvalReference &&
+      record.portfolioProject === expected.portfolioProject &&
+      JSON.stringify(record.evidenceReferences) ===
+        JSON.stringify(expected.evidenceReferences) &&
+      record.outcomeReportReference === expected.outcomeReportReference;
+    if (!matches) {
+      throw new Error(
+        `Master Tasks projection ${record.sourceReference} does not match its exact canonical Work Item.`,
+      );
+    }
+  }
+
+  async #verifyProjection(
+    planned: ReadonlySet<string>,
+    workItemsByReference: ReadonlyMap<string, WorkItem>,
+  ): Promise<void> {
+    const projected = new Map(
+      (await this.options.store.records()).map((record) => [
+        record.sourceReference,
+        record,
+      ]),
     );
     for (const reference of planned) {
-      if (!projected.has(reference)) {
+      const record = projected.get(reference);
+      const workItem = workItemsByReference.get(reference);
+      if (record === undefined || workItem === undefined) {
         throw new Error(
           `Post-cutover verification failed: ${reference} is missing from Master Tasks.`,
+        );
+      }
+      if (
+        record.workItemId !== workItem.id ||
+        record.intent !== workItem.intent ||
+        record.lifecycle !== workItem.state ||
+        record.workstream !== workItem.workstream ||
+        record.accountableExecutive !== workItem.accountableExecutive
+      ) {
+        throw new Error(
+          `Post-cutover verification failed: ${reference} does not match its exact canonical Work Item.`,
         );
       }
     }

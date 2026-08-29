@@ -14,7 +14,7 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 | --- | --- |
 | Phase 3 tickets closed | **13 of 44** |
 | Startable by an agent right now | **Nothing. RM-11 is the only unblocked ticket and it needs you.** |
-| Waiting on you | **One word to start Phase B — the commit point** |
+| Waiting on you | **Approve `RM11-CUTOVER-3` and start Phase B — the commit point** |
 
 **Phase A is done. 30 Work Items are in Master Tasks. Your five databases are still the daily system and are untouched.**
 
@@ -24,7 +24,8 @@ Verified against live Notion, not just the command's exit code: 30 pages, 30 uni
 
 `RM11-CUTOVER-1` went stale before it ran: four records were renamed from `To Do (Event/Work)` to `To Do` after you approved. Under the status semantics you confirmed, a domain suffix keeps the `To Do` meaning — so **not one of the 34 decisions changed**. I re-read the five sources read-only, re-bound the identical reconciliation to a fresh snapshot, and proved the decisions are byte-identical to the ones you approved. Your original RM-10 backup is untouched and remains your recovery evidence.
 
-The approval sentence is at the end of [the packet](RM-11-cutover-approval-packet.md).
+The one current approval sentence is in the
+[Phase B packet](RM-11-phase-b-approval-packet.md).
 
 **RM-12 is complete** ([#13](https://github.com/pmgwee/real-ming/issues/13)) — Google Calendar is now the calendar Source of Record, and one commitment reconciles onto a Work Item. It was independent of RM-11, and RM-13 needed both, so it is done and waiting. **Every remaining ticket is now behind RM-11.**
 
@@ -34,7 +35,7 @@ The approval sentence is at the end of [the packet](RM-11-cutover-approval-packe
 
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
-| Run Phase B | Create five linked views over Master Tasks keeping the familiar page names, prove an edit through each reaches the canonical Work Item, then rename and lock the five originals read-only. | **Go** — Phase A verified clean and Phase B is already covered by your `RM11-CUTOVER-2` Approval. | Awaiting your word |
+| Run Phase B | Approve `RM11-CUTOVER-3`, which binds the unchanged Digest 2 and source snapshot plus the completed Phase A report; then create five linked views, prove edit round-trips, and rename and lock the five originals read-only. | **Approve and execute** — Version 3 restores an unambiguous exact-Approval boundary without changing any reviewed decision. | Awaiting the exact sentence below |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
@@ -46,7 +47,13 @@ The approval sentence is at the end of [the packet](RM-11-cutover-approval-packe
 
 ## ✅ What needs you
 
-**One action:** say go, and Phase B runs. It is already inside the Approval you gave; I am pausing only because locking your five databases is the point of no easy return, and I said I would report first.
+**One action:** paste this exact sentence. It approves the immutable Phase B
+continuation and authorizes the irreversible commit point:
+
+> I approve RM11-CUTOVER-3 bound to RM11-DIGEST-2, digest SHA-256 f6d31c8d318cdefb7f488df68f50be64829f99dc6b38369f1450f7bd721a17b6, source snapshot SHA-256 c66d697d04a7da1f0be61e2827e250a84cca47f1c10329f985757dda05546325, and completed Phase A report SHA-256 a148737ae4d6e61761570d5726130898d9c580a361bb070cf3dffaad725f2f7f. Execute only the documented Phase B continuation and stop on any drift.
+
+Phase B will lock and retire the five legacy databases. No Phase B mutation
+runs until that sentence is received.
 
 Also worth knowing before any future Phase B, because it changes what you can do with three records: the 3 `Pending to Review` items arrive carrying a **migration Outcome Report** that states the effect Real-Ming performed was the migration itself, not the original work. That is what makes them completable at all — without it they could only ever be cancelled or rejected. The [runbook](RM-11-reconciliation-and-cutover-runbook.md) explains what you are confirming when you complete one.
 
@@ -57,9 +64,9 @@ Both initial gates remain closed:
 | RM-06 · identities and secrets · [#7](https://github.com/pmgwee/real-ming/issues/7) | ✅ 28 Aug 2026 | 9/9 provisioned, TC-01 to TC-05 all pass. Control plane runs locally; always-on host deferred to RM-15. |
 | RM-24 · DuitSini pilot update · [#25](https://github.com/pmgwee/real-ming/issues/25) | ✅ 28 Aug 2026 | Add OpenCode and CommandCode provider presets. Code change plus a Supabase migration, so two separate Approvals. |
 
-One further working session will come back to you mid-flight, by design:
-
-- **RM-11** needs a CEO-accepted status for every active item across your five legacy Notion task databases, plus Approval of the cutover plan before anything is mutated. That is a working session, not a rubber stamp.
+The RM-11 reconciliation working session is complete: all 34 dispositions were
+accepted and Phase A was verified. Only the separate Phase B commit-point
+Approval above remains.
 
 The runbooks stay as the record of what was done: [Gate 1](GATE-1-provisioning-runbook.md) · [Gate 2](GATE-2-pilot-selection-runbook.md).
 
@@ -88,7 +95,9 @@ Master Tasks     rehearsal        again         brief     roll-up   env        P
 
 After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM-16 is the milestone worth aiming for.**
 
-⚠️ **RM-11 will need you mid-flight.** It requires a CEO-accepted status for every active item across your five real Notion task databases, plus Approval of the cutover plan *before* anything is mutated. That is a working session, not a rubber stamp.
+⚠️ **RM-11 is currently at its Phase B commit point.** The reconciliation and
+Phase A import are complete; `RM11-CUTOVER-3` awaits your exact Approval before
+the five legacy writers are retired.
 
 ---
 
@@ -103,7 +112,8 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [RM-09-master-tasks-provisioning-runbook.md](RM-09-master-tasks-provisioning-runbook.md) | One-minute Notion parent-page share required to create Master Tasks |
 | [RM-10-share-legacy-task-sources.md](RM-10-share-legacy-task-sources.md) | Share the five legacy task databases for the read-only migration rehearsal |
 | [RM-11-reconciliation-and-cutover-runbook.md](RM-11-reconciliation-and-cutover-runbook.md) | Review all 34 migration dispositions and approve the exact cutover separately |
-| [RM-11-cutover-approval-packet.md](RM-11-cutover-approval-packet.md) | Exact digest hashes, source/target bindings, cutover steps, verification, recovery, and approval sentence |
+| [RM-11-cutover-approval-packet.md](RM-11-cutover-approval-packet.md) | Historical Version 2 Phase A packet and approval evidence; do not reuse |
+| [RM-11-phase-b-approval-packet.md](RM-11-phase-b-approval-packet.md) | Current exact Phase B continuation, evidence bindings, commit point, and approval sentence |
 | [CREDENTIAL-INVENTORY.md](CREDENTIAL-INVENTORY.md) | All ten credentials: owner, purpose, environment, revocation — **no values** |
 
 ---

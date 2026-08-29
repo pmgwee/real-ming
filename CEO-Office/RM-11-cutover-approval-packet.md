@@ -1,15 +1,22 @@
 # RM-11 — Exact Master Tasks cutover approval packet
 
+> **Historical Phase A packet.** `RM11-CUTOVER-2` was approved and Phase A ran
+> successfully. This file is preserved as the artifact that was approved,
+> including its stale Step 4 label. Do not approve or execute it again. The
+> pending Phase B decision is `RM11-CUTOVER-3` in
+> [RM-11-phase-b-approval-packet.md](RM-11-phase-b-approval-packet.md).
+
 > **Version 2.** `RM11-CUTOVER-1` went stale before it ran: four records were
 > renamed from `To Do (Event/Work)` to `To Do` after you approved. Under the
 > status semantics you confirmed, a domain suffix keeps the `To Do` meaning, so
 > **not one of the 34 decisions changed**. This version re-binds the identical
-> reconciliation to a fresh snapshot. No Notion mutation has occurred.
+> reconciliation to a fresh snapshot. At the time this historical packet was
+> approved, no Notion mutation had occurred.
 
-> **Decision required — approve or reject `RM11-CUTOVER-2`.** This packet binds
+> **Historical decision — `RM11-CUTOVER-2` was approved and Phase A executed.** This packet bound
 > the reviewed 34-item digest to one source snapshot, one Master Tasks target,
 > exact expected counts, a two-phase mutation sequence, verification, and
-> recovery. No Notion mutation has occurred.
+> recovery. At approval time, no Notion mutation had occurred.
 
 ## Exact version
 
@@ -127,14 +134,13 @@ leaves them unchanged.
 - The live command requires an explicit flag, the exact plan version, digest hash,
   backup hash, and CEO Approval identifier.
 
-## Decision
+## Historical decision — do not reuse
 
-Recommendation: **approve `RM11-CUTOVER-2` only if the 30/4 disposition, mappings,
-two-phase sequence, and recovery boundary above match your intent.** Approval lets
-the implementation agent build, verify, and execute this exact plan. Any drift
-stops execution and returns for a new CEO decision.
+This was the sentence used to approve Phase A. It is retained for audit history
+and must not be used to authorize Phase B. The current decision is
+`RM11-CUTOVER-3` in `RM-11-phase-b-approval-packet.md`.
 
-Use this exact sentence:
+Historical sentence:
 
 > I approve RM11-CUTOVER-2 bound to RM11-DIGEST-2, digest SHA-256 f6d31c8d318cdefb7f488df68f50be64829f99dc6b38369f1450f7bd721a17b6 and source snapshot SHA-256 c66d697d04a7da1f0be61e2827e250a84cca47f1c10329f985757dda05546325. Execute only the documented two-phase plan and stop on any drift.
 

@@ -38,6 +38,9 @@ const digestPath = fileURLToPath(
 const backupPath = fileURLToPath(
   new URL("../../tmp/rm11-cutover-2/source-backups.json", import.meta.url),
 );
+const phaseAReportPath = fileURLToPath(
+  new URL("../../tmp/rm11-cutover/phase-a-report.json", import.meta.url),
+);
 const statePath = fileURLToPath(
   new URL("../../.real-ming-operations.sqlite", import.meta.url),
 );
@@ -117,10 +120,16 @@ async function main(): Promise<void> {
   }
 
   const bindings = rm11CutoverBindings;
+  if (phase !== bindings.executionPhase) {
+    throw new Error(
+      `Cutover phase ${phase} is not approved; ${bindings.planVersion} authorizes Phase ${bindings.executionPhase} only.`,
+    );
+  }
   const approvalId = requireFlag("approval");
   const planVersion = requireFlag("plan-version");
   const digestSha256 = requireFlag("digest-sha256");
   const backupSha256 = requireFlag("backup-sha256");
+  const phaseAReportSha256 = requireFlag("phase-a-report-sha256");
 
   if (planVersion !== bindings.planVersion) {
     throw new Error(
@@ -129,7 +138,8 @@ async function main(): Promise<void> {
   }
   if (
     digestSha256 !== bindings.digestSha256 ||
-    backupSha256 !== bindings.backupSha256
+    backupSha256 !== bindings.backupSha256 ||
+    phaseAReportSha256 !== bindings.phaseAReportSha256
   ) {
     throw new Error(
       "The Approval is stale: a supplied hash does not match the bound plan.",
@@ -146,6 +156,12 @@ async function main(): Promise<void> {
   if (observedBackup !== bindings.backupSha256) {
     throw new Error(
       "The local RM-10 backup no longer hashes to the approved value.",
+    );
+  }
+  const observedPhaseAReport = fileSha256(phaseAReportPath);
+  if (observedPhaseAReport !== bindings.phaseAReportSha256) {
+    throw new Error(
+      "The completed RM-11 Phase A report no longer hashes to the approved value.",
     );
   }
 
@@ -205,6 +221,8 @@ async function main(): Promise<void> {
       digestVersion: bindings.digestVersion,
       digestSha256,
       backupSha256,
+      phaseAReportSha256,
+      executionPhase: phase,
     },
     workspace,
     state,
@@ -218,7 +236,7 @@ async function main(): Promise<void> {
   try {
     mkdirSync(evidenceDirectory, { recursive: true });
     if (phase === "A") {
-      const report = await cutover.executePhaseA();
+      const report = await cutover.executeApprovedPhase("A");
       writeFileSync(
         `${evidenceDirectory}phase-a-report.json`,
         `${JSON.stringify({ ...report, titleMatches, descriptiveLabelRefs }, null, 2)}\n`,
@@ -241,8 +259,7 @@ async function main(): Promise<void> {
 
     // Phase B may only follow a verified Phase A in the same process, so the
     // import is replayed first. It is idempotent: no second record is created.
-    await cutover.executePhaseA();
-    const report = await cutover.executePhaseB().catch((error: unknown) => {
+    const report = await cutover.executeApprovedPhase("B").catch((error: unknown) => {
       // Retirement is the commit point. A failure part-way through it must
       // leave the operator a durable record of what was already retired.
       const recovery = cutover.recovery();

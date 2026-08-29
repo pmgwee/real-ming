@@ -119,6 +119,8 @@ const bindings: CutoverBindings = {
   digestVersion: "TEST-DIGEST-1",
   digestSha256: "a".repeat(64),
   backupSha256: "b".repeat(64),
+  phaseAReportSha256: "d".repeat(64),
+  executionPhase: "A",
   databaseId: "database:master-tasks",
   dataSourceId: "data-source:master-tasks",
   archivePrefix: "ARCHIVED EVIDENCE",
@@ -154,12 +156,19 @@ const plan: CutoverPlan = {
   decisions: fixtures.map((fixture) => fixture.decision),
 };
 
+const phaseBPlan: CutoverPlan = {
+  bindings: { ...bindings, executionPhase: "B" },
+  decisions: plan.decisions,
+};
+
 const approval: CutoverApproval = {
   approvalId,
   planVersion: bindings.planVersion,
   digestVersion: bindings.digestVersion,
   digestSha256: bindings.digestSha256,
   backupSha256: bindings.backupSha256,
+  phaseAReportSha256: bindings.phaseAReportSha256,
+  executionPhase: bindings.executionPhase,
 };
 
 function controlledSources(): ControlledCutoverSource[] {
@@ -197,12 +206,21 @@ describe("RM-11 Master Tasks cutover", () => {
   ): RealMingSystemHarness {
     const directory = mkdtempSync(join(tmpdir(), "real-ming-rm11-"));
     directories.push(directory);
+    const selectedPlan = overrides.plan ?? plan;
     const harness = createRealMingSystemHarness({
       statePath: join(directory, "state.sqlite"),
       now: () => "2026-08-29T09:00:00.000Z",
       cutover: {
-        plan: overrides.plan ?? plan,
-        approval,
+        plan: selectedPlan,
+        approval: {
+          ...approval,
+          planVersion: selectedPlan.bindings.planVersion,
+          digestVersion: selectedPlan.bindings.digestVersion,
+          digestSha256: selectedPlan.bindings.digestSha256,
+          backupSha256: selectedPlan.bindings.backupSha256,
+          phaseAReportSha256: selectedPlan.bindings.phaseAReportSha256,
+          executionPhase: selectedPlan.bindings.executionPhase,
+        },
         sources: overrides.sources ?? controlledSources(),
         target: overrides.target ?? {
           databaseId: bindings.databaseId,
@@ -347,6 +365,66 @@ describe("RM-11 Master Tasks cutover", () => {
     );
   });
 
+  it("rejects execution outside the exact Approval phase before any read or write", async () => {
+    const harness = startHarness();
+
+    await expect(harness.executeApprovedCutoverPhase("B")).rejects.toThrow(
+      /phase.*not approved|approved.*phase/i,
+    );
+    expect(harness.cutoverSourceReadCount()).toBe(0);
+    expect(harness.workItems()).toHaveLength(0);
+  });
+
+  it("rejects compensating per-item decision drift even when aggregate totals still match", async () => {
+    const mutableDecisions = plan.decisions.map((decision) => ({ ...decision }));
+    const mutablePlan: CutoverPlan = { bindings, decisions: mutableDecisions };
+    const harness = startHarness({ plan: mutablePlan });
+    await harness.executeCutoverPhaseA();
+
+    const content = mutableDecisions.findIndex(
+      (decision) => decision.pageId === "page:cc-01",
+    );
+    const microSaas = mutableDecisions.findIndex(
+      (decision) => decision.pageId === "page:ms-01",
+    );
+    const contentRoute = {
+      workstream: mutableDecisions[content]!.workstream,
+      accountableExecutive: mutableDecisions[content]!.accountableExecutive,
+    };
+    mutableDecisions[content] = {
+      ...mutableDecisions[content]!,
+      workstream: mutableDecisions[microSaas]!.workstream,
+      accountableExecutive: mutableDecisions[microSaas]!.accountableExecutive,
+    };
+    mutableDecisions[microSaas] = {
+      ...mutableDecisions[microSaas]!,
+      ...contentRoute,
+    };
+
+    await expect(harness.executeCutoverPhaseA()).rejects.toThrow(
+      /does not match.*CEO-approved decision|CEO-approved decision.*does not match/i,
+    );
+    expect(harness.cutoverRetiredSources()).toHaveLength(0);
+  });
+
+  it("rejects a projected record that drifted from its exact canonical Work Item", async () => {
+    const harness = startHarness();
+    await harness.executeCutoverPhaseA();
+    const captured = harness
+      .workItems()
+      .find((workItem) => workItem.state === "Captured");
+    expect(captured).toBeDefined();
+    harness.simulateMasterTasksProviderEdit(captured!.id, {
+      lifecycle: "Planned",
+      updatedAt: "2026-08-29T09:05:00.000Z",
+    });
+
+    await expect(harness.executeCutoverPhaseA()).rejects.toThrow(
+      /projection.*does not match|does not match.*canonical Work Item/i,
+    );
+    expect(harness.cutoverRetiredSources()).toHaveLength(0);
+  });
+
   it("rejects a stale Approval before reading or writing anything", async () => {
     const harness = startHarness();
 
@@ -356,6 +434,19 @@ describe("RM-11 Master Tasks cutover", () => {
         digestSha256: "c".repeat(64),
       }),
     ).rejects.toThrow(/stale/i);
+    expect(harness.workItems()).toHaveLength(0);
+    expect(harness.cutoverSourceReadCount()).toBe(0);
+  });
+
+  it("rejects a Phase B continuation whose bound Phase A report has drifted", async () => {
+    const harness = startHarness();
+
+    await expect(
+      harness.executeCutoverPhaseA({
+        ...approval,
+        phaseAReportSha256: "c".repeat(64),
+      }),
+    ).rejects.toThrow(/stale.*Phase A report|Phase A report.*stale/i);
     expect(harness.workItems()).toHaveLength(0);
     expect(harness.cutoverSourceReadCount()).toBe(0);
   });
@@ -505,8 +596,8 @@ describe("RM-11 Master Tasks cutover", () => {
   });
 
   it("switches daily use to linked views whose edits reach the canonical Work Item", async () => {
-    const harness = startHarness();
-    await harness.executeCutoverPhaseA();
+    const harness = startHarness({ plan: phaseBPlan });
+    await harness.seedPriorCutoverPhaseA();
 
     const report = await harness.executeCutoverPhaseB();
 
@@ -535,8 +626,11 @@ describe("RM-11 Master Tasks cutover", () => {
   });
 
   it("stops before retirement when a legacy source cannot be locked", async () => {
-    const harness = startHarness({ retirementFailureFor: sourceIds[2] });
-    await harness.executeCutoverPhaseA();
+    const harness = startHarness({
+      plan: phaseBPlan,
+      retirementFailureFor: sourceIds[2],
+    });
+    await harness.seedPriorCutoverPhaseA();
 
     await expect(harness.executeCutoverPhaseB()).rejects.toThrow(/retire/i);
     expect(harness.cutoverRetiredSources()).toEqual([]);
@@ -548,8 +642,11 @@ describe("RM-11 Master Tasks cutover", () => {
     // retirement onward the operator must be told the commit point is behind
     // them, or they will be told the legacy databases are still the daily
     // system while two of them are already locked.
-    const harness = startHarness({ retirementWriteFailureFor: sourceIds[2] });
-    await harness.executeCutoverPhaseA();
+    const harness = startHarness({
+      plan: phaseBPlan,
+      retirementWriteFailureFor: sourceIds[2],
+    });
+    await harness.seedPriorCutoverPhaseA();
 
     await expect(harness.executeCutoverPhaseB()).rejects.toThrow(/retire/i);
 
@@ -560,21 +657,48 @@ describe("RM-11 Master Tasks cutover", () => {
     expect(harness.cutoverRecovery().stage).toBe("after-commit-point");
   });
 
-  it("refuses Phase B before Phase A verification has passed", async () => {
-    const harness = startHarness();
+  it("refuses a Phase B continuation when the approved Phase A state is absent", async () => {
+    const harness = startHarness({ plan: phaseBPlan });
 
-    await expect(harness.executeCutoverPhaseB()).rejects.toThrow(/Phase A/i);
-    expect(harness.cutoverRetiredSources()).toEqual([]);
+    await expect(harness.executeCutoverPhaseB()).rejects.toThrow(
+      /Phase A.*missing|missing.*Phase A|continuation.*requires/i,
+    );
+    expect(harness.workItems()).toHaveLength(0);
+    expect(harness.cutoverRetiredSources()).toHaveLength(0);
+  });
+
+  it("refuses a Phase B continuation when one Phase A projection is missing", async () => {
+    const harness = startHarness({ plan: phaseBPlan });
+    await harness.seedPriorCutoverPhaseA();
+    const missing = harness.workItems()[0]!;
+    harness.removeMasterTaskProjection(missing.id);
+
+    await expect(harness.executeCutoverPhaseB()).rejects.toThrow(
+      /Phase A.*projection|projection.*missing|requires.*projection/i,
+    );
+    expect(harness.cutoverRetiredSources()).toHaveLength(0);
+  });
+
+  it("refuses a Phase B continuation with a duplicate Phase A source projection", async () => {
+    const harness = startHarness({ plan: phaseBPlan });
+    await harness.seedPriorCutoverPhaseA();
+    const duplicated = harness.workItems()[0]!;
+    harness.duplicateMasterTaskProjection(duplicated.id, "duplicate-work-item");
+
+    await expect(harness.executeCutoverPhaseB()).rejects.toThrow(
+      /duplicate|another Work Item|Phase A.*projection/i,
+    );
+    expect(harness.cutoverRetiredSources()).toHaveLength(0);
   });
 
   it("names the recovery boundary on each side of the retirement commit point", async () => {
-    const harness = startHarness();
+    const harness = startHarness({ plan: phaseBPlan });
+    await harness.seedPriorCutoverPhaseA();
 
     const before = harness.cutoverRecovery();
     expect(before.stage).toBe("before-commit-point");
     expect(before.backupSha256).toBe(bindings.backupSha256);
 
-    await harness.executeCutoverPhaseA();
     await harness.executeCutoverPhaseB();
 
     const after = harness.cutoverRecovery();

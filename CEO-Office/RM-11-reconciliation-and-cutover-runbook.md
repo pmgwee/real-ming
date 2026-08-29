@@ -1,10 +1,9 @@
 # RM-11 — Reconcile and approve the Master Tasks cutover
 
-> **TL;DR — start a CEO working session before any Notion mutation.** Reply with
-> the sentence at the end of Step 1. The agent will use the gitignored RM-10
-> evidence to prepare the 34-item reconciliation in reviewable batches. You will
-> accept or correct each disposition, then separately approve the exact cutover
-> plan and final digest. No cutover occurs merely by starting the session.
+> **TL;DR — reconciliation and Phase A are complete.** Review the current
+> [Phase B packet](RM-11-phase-b-approval-packet.md) and paste its exact Approval
+> sentence to authorize the linked-view cutover and retirement of the five legacy
+> writers. No Phase B mutation occurs merely by reading this runbook.
 
 ---
 
@@ -24,15 +23,16 @@ approved plan, but it cannot approve its own proposal.
 - [x] RM-09 Master Tasks and six Work Views exist.
 - [x] RM-10 backed up five sources and completed a read-only isolated rehearsal.
 - [x] The local evidence directory is gitignored and contains 34 source records.
-- [ ] Ming starts the CEO reconciliation session.
-- [ ] Every active item receives an accepted status, Workstream, Accountable Executive, commitment provenance, and migration disposition.
-- [ ] Ming approves the exact cutover plan and final reconciliation digest.
+- [x] Ming started the CEO reconciliation session.
+- [x] Every active item received an accepted status, Workstream, Accountable Executive, commitment provenance, and migration disposition.
+- [x] Ming approved `RM11-CUTOVER-2`; Phase A imported and verified 30 Work Items.
+- [ ] Ming approves `RM11-CUTOVER-3` for the Phase B commit point.
 
 Do not paste task contents, Notion credentials, or backup JSON into chat.
 
 ---
 
-## Steps
+## Completed reconciliation steps
 
 1. Reply in the active implementation session:
 
@@ -101,30 +101,39 @@ against the ones you approved. Only the four payload hashes moved.
 re-bound to a snapshot that matches Notion as it stands now. Your RM-10 backup is
 untouched and remains the immutable recovery evidence.
 
-Paste the approval sentence at the end of the packet and the cutover will run.
+That historical approval completed Phase A. It must not be replayed for Phase B.
 
 ---
 
-## Execution (Approval granted 29 Aug 2026 — now stale, see above)
+## Current execution state (29 Aug 2026)
 
-`RM11-CUTOVER-1` is approved and bound. The implementation is built, reviewed and
-gated; both bound hashes and all five source identifiers verify with no drift.
+`RM11-CUTOVER-2` received exact Approval. Phase A then completed: 30 canonical
+Work Items were imported, the four archive-only records were excluded, all
+approved lifecycle and routing totals reconciled, and the five legacy databases
+remained unchanged and writable.
 
-Phase A is reversible — it imports into Master Tasks and leaves your five
-databases as the daily system. Phase B is the commit point.
+Before Phase B, a checkpoint audit found one clerical contradiction in the
+published packet: its bound-value table, private digest hash, executable binding,
+and completed Phase A all use `RM11-DIGEST-2`, while Phase A Step 4 still named
+`RM11-DIGEST-1`. Version 2 is preserved as historical evidence; the new
+`RM11-CUTOVER-3` Phase B packet binds Digest 2 and the completed Phase A report.
+No reviewed decision, count, mapping, target, or prior executable behavior changed.
+
+Because this is an exact-Approval boundary, Phase B remains paused until Ming
+approves Version 3 and explicitly authorizes the commit point. Use the single
+exact sentence in `CEO-Office/RM-11-phase-b-approval-packet.md`.
+
+Phase A is reversible — the 30 imports can be quarantined by their deterministic
+`notion-migration:` source-reference prefix while the five legacy databases
+remain the daily system. Phase B is the commit point.
 
 ```bash
-npm run notion:cutover-master-tasks -- --live --phase=A --plan-version=RM11-CUTOVER-1 --approval=<approval-id> --digest-sha256=<digest-hash> --backup-sha256=<backup-hash>
+npm run notion:cutover-master-tasks -- --live --phase=B --plan-version=RM11-CUTOVER-3 --approval=<approval-id> --digest-sha256=<digest-hash> --backup-sha256=<backup-hash> --phase-a-report-sha256=<phase-a-report-hash>
 ```
 
-Then, only after Phase A reports 30 imports:
-
-```bash
-npm run notion:cutover-master-tasks -- --live --phase=B --plan-version=RM11-CUTOVER-1 --approval=<approval-id> --digest-sha256=<digest-hash> --backup-sha256=<backup-hash>
-```
-
-The command refuses to run without every flag, and refuses again if either file
-on disk no longer hashes to the approved value.
+The command refuses to run without every flag, and refuses again if the digest,
+source snapshot, or completed Phase A report no longer hashes to the approved
+value. It then replays Phase A idempotently as a live drift check before Phase B.
 
 ### What the two independent reviews changed
 
@@ -175,4 +184,3 @@ confirming. Nothing claims Real-Ming executed or verified the original work.
 | Counts differ from 34 before cutover | The source snapshot changed. Rerun a read-only backup/reconciliation and invalidate the old digest. |
 | A source changed after Approval | Treat the Approval as stale and require a new digest and exact-version Approval. |
 | Linked views do not update Master Tasks | Stop the cutover and use the documented recovery path; do not leave two writable task systems active. |
-
