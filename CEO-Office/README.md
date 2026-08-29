@@ -13,18 +13,20 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 | | |
 | --- | --- |
 | Phase 3 tickets closed | **12 of 44** |
-| Startable by an agent right now | **RM-11 execution — approved and built** |
-| Waiting on you | **Nothing. The cutover is authorized and ready to run.** |
+| Startable by an agent right now | **Nothing — RM-11 is stopped on stale Approval** |
+| Waiting on you | **Re-confirm 4 task statuses, then approve `RM11-CUTOVER-2`** |
 
-**You approved `RM11-CUTOVER-1`. The cutover is built, reviewed and verified against the bound evidence with no drift**: both hashes match byte-for-byte, all five sources and 34 records reconcile, and the plan resolves to the approved 30 imports / 4 archive-only. Execution steps are in the [RM-11 runbook](RM-11-reconciliation-and-cutover-runbook.md).
+**`RM11-CUTOVER-1` is stale and was not executed. Nothing in Notion was changed.** The cutover is fully built and reviewed, but its read-only preflight found that **4 of your 34 records had their Status edited** in Notion after you approved the plan. Status is the exact field the whole reconciliation was about, so the Approval no longer describes the records it would migrate. Your own approval sentence said to stop on any drift, so it stopped — before any write. See [RM-11 runbook → Stale Approval](RM-11-reconciliation-and-cutover-runbook.md#stale-approval-29-aug-2026).
 
 ---
 
 ## 🔀 Decisions awaiting you
 
-**None open.**
+| Decision | What it contains | Recommendation | Status |
+| --- | --- | --- | --- |
+| Prepare `RM11-CUTOVER-2` | Re-read the five sources, re-confirm only the 4 records whose Status changed, and re-bind the plan to fresh hashes. The other 30 decisions stand. | **Yes** — it is a small re-confirmation, not a redo of the 34-item session. | Awaiting your go |
 
-*Settled:* `RM11-CUTOVER-1` approved on 29 Aug 2026 with the exact bound sentence. No drift was found against it.
+*Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
 *Settled:* [PR #46](https://github.com/pmgwee/real-ming/pull/46) merged into `main` on 2026-08-27 with your approval — the 7 closed tickets plus tooling and baseline.
 
@@ -34,9 +36,9 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## ✅ What needs you
 
-**Nothing is blocked on you.** `RM11-CUTOVER-1` is approved and the cutover is built and verified.
+**One action:** say whether to prepare `RM11-CUTOVER-2`. Four of your task records changed Status after you approved, so the bound plan is stale. Preparing a new version means re-reading the sources into fresh evidence and bringing you just those 4 rows to re-confirm — the other 30 decisions carry over unchanged.
 
-One thing to know before Phase B, because it changes what you can do with three records: the 3 `Pending to Review` items arrive carrying a **migration Outcome Report** that states the effect Real-Ming performed was the migration itself, not the original work. That is what makes them completable at all — without it they could only ever be cancelled or rejected. The [runbook](RM-11-reconciliation-and-cutover-runbook.md) explains what you are confirming when you complete one.
+Also worth knowing before any future Phase B, because it changes what you can do with three records: the 3 `Pending to Review` items arrive carrying a **migration Outcome Report** that states the effect Real-Ming performed was the migration itself, not the original work. That is what makes them completable at all — without it they could only ever be cancelled or rejected. The [runbook](RM-11-reconciliation-and-cutover-runbook.md) explains what you are confirming when you complete one.
 
 Both initial gates remain closed:
 

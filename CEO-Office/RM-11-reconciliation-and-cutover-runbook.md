@@ -63,7 +63,45 @@ Do not paste task contents, Notion credentials, or backup JSON into chat.
 
 ---
 
-## Execution (Approval granted 29 Aug 2026)
+## Stale Approval (29 Aug 2026)
+
+**`RM11-CUTOVER-1` was not executed. Notion is unchanged.**
+
+The read-only preflight compared every one of your 34 records against the payload
+you reviewed. The record set is intact — same five sources, same counts
+(4, 8, 7, 15, 0), nothing added or removed — but **4 records had their Status
+edited** after you approved:
+
+| Source | Records with a changed Status |
+| --- | ---: |
+| Content Creation | 1 |
+| MicroSaaS | 3 |
+
+Titles are unchanged; in each case exactly one property moved, and it was Status.
+That is the one field the entire reconciliation turned on — `Pending`, `To Do`,
+`Issues` and `Pending to Review` are what decided each record's lifecycle. So the
+Approval no longer describes the records it would migrate, and your own sentence
+said to stop on any drift.
+
+Nothing was written. This is the documented behaviour, not a failure.
+
+### What happens next
+
+1. Say the word and I will snapshot the existing RM-10 evidence under a new name
+   (it stays immutable — it is your recovery evidence), re-read the five sources
+   read-only, and rebuild the reconciliation digest.
+2. I will bring you **only the 4 changed rows** to re-confirm. The other 30
+   decisions carry over untouched, so this is a short working session, not a
+   repeat of the 34-item review.
+3. You approve `RM11-CUTOVER-2` with a fresh bound sentence, and the cutover runs
+   against evidence that matches reality.
+
+If instead you changed those statuses deliberately and want the new values to be
+authoritative, that is the normal case — step 2 is where you say so.
+
+---
+
+## Execution (Approval granted 29 Aug 2026 — now stale, see above)
 
 `RM11-CUTOVER-1` is approved and bound. The implementation is built, reviewed and
 gated; both bound hashes and all five source identifiers verify with no drift.
