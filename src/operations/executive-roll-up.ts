@@ -12,7 +12,12 @@ import {
   blockersFor,
   pendingApprovalsFor,
 } from "../dashboard/dashboard-read-model.js";
-import { dailyOccurrence, isWeekend } from "./daily-schedule.js";
+import {
+  dailyOccurrence,
+  isWeekend,
+  operatingDayOf,
+  operatingTimeZone,
+} from "./daily-schedule.js";
 import type {
   ExceptionNotice,
   ExceptionNoticeAdmission,
@@ -55,6 +60,20 @@ export interface ExecutiveRollUp {
   readonly text: string;
 }
 
+/**
+ * A blocker reason is written by a worker or an adapter, not by the CEO. It is
+ * projected into the account rather than pasted, so an unbounded or noisy
+ * string cannot ride across the Trust Domain boundary into Telegram.
+ */
+const projectedReasonLimit = 160;
+
+function projectReason(reason: string): string {
+  const collapsed = reason.replace(/\s+/gu, " ").trim();
+  return collapsed.length <= projectedReasonLimit
+    ? collapsed
+    : `${collapsed.slice(0, projectedReasonLimit)}…`;
+}
+
 const openStates: readonly WorkItem["state"][] = [
   "Captured",
   "Triaged",
@@ -77,7 +96,9 @@ export function buildExecutiveRollUp(input: {
   readonly workItems: readonly WorkItem[];
   readonly approvals: (workItemId: string) => readonly Approval[];
   readonly auditTrail: (workItemId: string) => readonly AuditEvent[];
-  readonly outcomeReportId: (workItemId: string) => string | undefined;
+  readonly outcomeReport: (
+    workItemId: string,
+  ) => { readonly id: string; readonly createdAt: string } | undefined;
 }): ExecutiveRollUp {
   const occurrence = dailyOccurrence({
     now: input.now,
@@ -95,15 +116,20 @@ export function buildExecutiveRollUp(input: {
   for (const workItem of input.workItems) {
     const approvals = input.approvals(workItem.id);
     const trail = input.auditTrail(workItem.id);
-    const outcome = input.outcomeReportId(workItem.id);
+    const outcome = input.outcomeReport(workItem.id);
     const workstream = workItem.workstream ?? "unrouted";
 
-    if (outcome !== undefined) {
+    // Tonight's account, not every outcome the system has ever produced.
+    if (
+      outcome !== undefined &&
+      operatingDayOf(Date.parse(outcome.createdAt)) ===
+        occurrence.occurrenceDate
+    ) {
       verifiedOutcomes.push(
         entry(
           workItem,
           `${workstream} — ${workItem.intent} (${workItem.state})`,
-          outcome,
+          outcome.id,
         ),
       );
     }
@@ -116,7 +142,7 @@ export function buildExecutiveRollUp(input: {
 
     for (const blocker of blockersFor(workItem, approvals, trail)) {
       outstandingRisks.push(
-        entry(workItem, `${workstream} — ${blocker}`, workItem.id),
+        entry(workItem, `${workstream} — ${projectReason(blocker)}`, workItem.id),
       );
     }
 
@@ -164,7 +190,12 @@ function section(title: string, entries: readonly RollUpEntry[]): string {
 
 function renderExecutiveRollUp(rollUp: Omit<ExecutiveRollUp, "text">): string {
   return [
-    `Executive Roll-Up — ${rollUp.occurrenceDate} (21:30 Asia/Kuala_Lumpur)`,
+    `Executive Roll-Up — ${rollUp.occurrenceDate} (${String(
+      executiveRollUpHour,
+    ).padStart(2, "0")}:${String(executiveRollUpMinute).padStart(
+      2,
+      "0",
+    )} ${operatingTimeZone})`,
     `Consolidated by the ${rollUp.consolidatedBy}${
       rollUp.weekend ? " · weekend rhythm" : ""
     }`,
@@ -190,6 +221,7 @@ export interface ExecutiveRollUpRunner {
 
 export function createExecutiveRollUpRunner(options: {
   readonly state: OperationsState;
+  readonly workspaceId: string;
   readonly admit: (
     notice: ExceptionNotice,
   ) => Promise<ExceptionNoticeAdmission>;
@@ -200,11 +232,12 @@ export function createExecutiveRollUpRunner(options: {
     async run(): Promise<ExecutiveRollUpResult> {
       const rollUp = buildExecutiveRollUp({
         now: now(),
-        workItems: options.state.workItems(),
+        workItems: options.state
+          .workItems()
+          .filter((workItem) => workItem.workspaceId === options.workspaceId),
         approvals: (workItemId) => options.state.approvals(workItemId),
         auditTrail: (workItemId) => options.state.auditTrail(workItemId),
-        outcomeReportId: (workItemId) =>
-          options.state.outcomeReport(workItemId)?.id,
+        outcomeReport: (workItemId) => options.state.outcomeReport(workItemId),
       });
       // An identical retry deduplicates; an evening whose picture has changed
       // is a correction, not a duplicate.

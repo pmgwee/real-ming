@@ -1453,7 +1453,11 @@ export class OperationsState {
         `INSERT INTO held_exception_notices
            (idempotency_key, kind, text, held_at, release_at, released_at)
          VALUES (?, ?, ?, ?, ?, NULL)
-         ON CONFLICT(idempotency_key) DO NOTHING`,
+         ON CONFLICT(idempotency_key) DO UPDATE SET
+           held_at = excluded.held_at,
+           release_at = excluded.release_at,
+           released_at = NULL
+         WHERE held_exception_notices.released_at IS NOT NULL`,
       )
       .run(
         notification.idempotencyKey,

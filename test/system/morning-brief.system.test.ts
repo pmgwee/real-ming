@@ -122,7 +122,7 @@ describe("RM-13 07:30 Morning Brief", () => {
 
     expect(result.brief.occurrenceDate).toBe("2026-08-29");
     expect(result.brief.idempotencyKey).toBe("morning-brief:2026-08-29");
-    expect(result.delivery.kind).toBe("sent");
+    expect(result.delivery?.kind).toBe("sent");
     expect(
       result.brief.sources.map((source) => `${source.source}:${source.health}`),
     ).toEqual(["google-calendar:current", "work-items:current"]);
@@ -151,7 +151,7 @@ describe("RM-13 07:30 Morning Brief", () => {
     // against strings the renderer actually emits, not ones it never could.
     expect(result.brief.text).toMatch(/Source health:/);
     expect(result.brief.text).toMatch(/Google Calendar is unavailable/);
-    expect(result.delivery.kind).toBe("sent");
+    expect(result.delivery?.kind).toBe("sent");
   });
 
   it("never renders a calendar-backed section as empty when the calendar failed", async () => {
@@ -402,12 +402,12 @@ describe("RM-13 07:30 Morning Brief", () => {
     // as a duplicate would leave Ming with the broken brief for the whole day.
     const harness = startHarness();
     const result = await harness.runMorningBrief();
-    expect(result.delivery.kind).toBe("sent");
+    expect(result.delivery?.kind).toBe("sent");
 
     await captureWorkItem(harness, "rm13:late-arrival", "Work that arrived later");
     const corrected = await harness.runMorningBrief();
 
-    expect(corrected.delivery.kind).toBe("sent");
+    expect(corrected.delivery?.kind).toBe("sent");
     expect(corrected.brief.occurrenceDate).toBe(result.brief.occurrenceDate);
     expect(harness.telegramMessages()).toHaveLength(2);
   });

@@ -79,6 +79,69 @@ describe("RM-14 Executive Roll-Up and notification rhythm", () => {
     });
   });
 
+  it("guards both ends of the do-not-disturb window", () => {
+    // KL is UTC+8, so 22:59 KL is 14:59 UTC.
+    expect(isDoNotDisturb("2026-08-31T14:59:00.000Z")).toBe(false);
+    expect(isDoNotDisturb("2026-08-31T15:00:00.000Z")).toBe(true);
+    expect(isDoNotDisturb("2026-08-31T16:00:00.000Z")).toBe(true);
+    expect(isDoNotDisturb("2026-08-31T22:59:00.000Z")).toBe(true);
+    expect(isDoNotDisturb("2026-08-31T23:00:00.000Z")).toBe(false);
+  });
+
+  it("reports only the operating day's verified outcomes", async () => {
+    let clock = weekdayEvening;
+    const harness = startHarness({ clock: () => clock });
+    const yesterday = await captureWorkItem(
+      harness,
+      "rm14:yesterday",
+      "Work finished yesterday",
+    );
+    await harness.executeWorkItem(yesterday.id);
+    expect(
+      (await harness.runExecutiveRollUp()).rollUp.verifiedOutcomes.length,
+    ).toBeGreaterThan(0);
+
+    // Tomorrow evening. Replaying every outcome ever produced would grow this
+    // Telegram message without bound.
+    clock = "2026-09-01T13:30:00.000Z";
+
+    const tomorrow = await harness.runExecutiveRollUp();
+    expect(tomorrow.rollUp.occurrenceDate).toBe("2026-09-01");
+    expect(tomorrow.rollUp.verifiedOutcomes).toEqual([]);
+  });
+
+  it("bounds a recorded blocker reason before it crosses into the account", async () => {
+    const harness = startHarness();
+    const workItem = await captureWorkItem(harness, "rm14:long", "Long blocker");
+    await harness.executeWorkItem(workItem.id);
+    await harness.reviewWorkItem({
+      workItemId: workItem.id,
+      actorId: "ceo:ming",
+      decision: "request-changes",
+      reason: "x".repeat(600),
+    });
+
+    const result = await harness.runExecutiveRollUp();
+
+    // A reason is written by a worker, not the CEO. It is projected, not
+    // pasted, so an unbounded string cannot ride into the message.
+    const risk = result.rollUp.outstandingRisks.find(
+      (entry) => entry.workItemId === workItem.id,
+    );
+    expect(risk?.label.length).toBeLessThan(300);
+    expect(risk?.label).toContain("…");
+  });
+
+  it("holds a brief raised inside do-not-disturb, like any other notice", async () => {
+    // Do-not-disturb has to apply to the front door, not only to the Roll-Up.
+    const harness = startHarness({ clock: () => deepNight });
+
+    const result = await harness.runMorningBrief();
+
+    expect(result.admission.kind).toBe("held");
+    expect(harness.telegramMessages()).toHaveLength(0);
+  });
+
   it("consolidates verified outcomes, risks, changes requested, Approvals and next priorities", async () => {
     const harness = startHarness();
     const completed = await captureWorkItem(
@@ -126,12 +189,22 @@ describe("RM-14 Executive Roll-Up and notification rhythm", () => {
     const result = await harness.runExecutiveRollUp();
 
     expect(result.rollUp.occurrenceDate).toBe("2026-08-31");
+    // Asserted through the builder: the test supplies no hour or minute, so
+    // moving the roll-up off 21:30 fails here.
+    expect(result.rollUp.scheduledAt).toBe("2026-08-31T13:30:00.000Z");
+    expect(result.rollUp.text).toContain("21:30 Asia/Kuala_Lumpur");
     expect(
       result.rollUp.verifiedOutcomes.map((entry) => entry.workItemId),
     ).toContain(completed.id);
     expect(
       result.rollUp.changesRequested.map((entry) => entry.workItemId),
     ).toContain(changes.id);
+    expect(
+      result.rollUp.outstandingRisks.map((entry) => entry.workItemId),
+    ).toContain(changes.id);
+    expect(
+      result.rollUp.outstandingRisks.map((entry) => entry.label).join(" "),
+    ).toContain("Tighten the argument");
     if (decision.kind !== "approval-required") throw new Error("expected approval");
     expect(
       result.rollUp.pendingApprovals.map((entry) => entry.evidence),

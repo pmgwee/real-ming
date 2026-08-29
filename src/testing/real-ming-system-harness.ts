@@ -742,6 +742,7 @@ export function createRealMingSystemHarness(options: {
   });
   const executiveRollUp: ExecutiveRollUpRunner = createExecutiveRollUpRunner({
     state,
+    workspaceId: "workspace:real-ming",
     admit: (notification) => exceptionNoticeRhythm.admit(notification),
     ...(options.now === undefined ? {} : { now: options.now }),
   });
@@ -752,7 +753,7 @@ export function createRealMingSystemHarness(options: {
           state,
           listEvents: (window) =>
             calendarAdapter.listEvents(calendarId, window),
-          notify: (notification) => telegramFrontDoor.notify(notification),
+          admit: (notice) => exceptionNoticeRhythm.admit(notice),
           ...(options.now === undefined ? {} : { now: options.now }),
         });
 

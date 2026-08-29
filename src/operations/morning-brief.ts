@@ -11,10 +11,11 @@ import {
   operatingTimeZone,
   type DailyOccurrence,
 } from "./daily-schedule.js";
+import type { TelegramNotificationResult } from "../telegram/contracts.js";
 import type {
-  TelegramNotification,
-  TelegramNotificationResult,
-} from "../telegram/contracts.js";
+  ExceptionNotice,
+  ExceptionNoticeAdmission,
+} from "./exception-notice-rhythm.js";
 import { createHash } from "node:crypto";
 
 import type {
@@ -395,8 +396,10 @@ function renderMorningBrief(brief: Omit<MorningBrief, "text">): string {
 
 export interface MorningBriefResult {
   readonly brief: MorningBrief;
+  /** What happened to the notice: delivered, held by the rhythm, or stood down. */
+  readonly admission: ExceptionNoticeAdmission;
   /** Kept whole: when a brief fails to reach the CEO, the reason is the point. */
-  readonly delivery: TelegramNotificationResult;
+  readonly delivery: TelegramNotificationResult | undefined;
 }
 
 export interface MorningBriefRunner {
@@ -408,9 +411,7 @@ export function createMorningBriefRunner(options: {
   readonly listEvents: (
     window: CalendarWindow,
   ) => Promise<ProviderReadResult<readonly CalendarEvent[]>>;
-  readonly notify: (
-    notification: TelegramNotification,
-  ) => Promise<TelegramNotificationResult>;
+  readonly admit: (notice: ExceptionNotice) => Promise<ExceptionNoticeAdmission>;
   readonly now?: () => string;
 }): MorningBriefRunner {
   const now = options.now ?? (() => new Date().toISOString());
@@ -431,7 +432,7 @@ export function createMorningBriefRunner(options: {
       // An identical retry deduplicates; a retry whose picture has changed is
       // a correction, not a duplicate, and must still reach the CEO. Keying on
       // the occurrence plus the rendered text gives both.
-      const delivery = await options.notify({
+      const admission = await options.admit({
         kind: "brief",
         text: brief.text,
         idempotencyKey: `${brief.idempotencyKey}:${createHash("sha256")
@@ -439,7 +440,12 @@ export function createMorningBriefRunner(options: {
           .digest("hex")
           .slice(0, 16)}`,
       });
-      return { brief, delivery };
+      return {
+        brief,
+        admission,
+        delivery:
+          admission.kind === "delivered" ? admission.delivery : undefined,
+      };
     },
   };
 }
