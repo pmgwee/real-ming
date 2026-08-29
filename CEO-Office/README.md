@@ -12,11 +12,13 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **12 of 44** |
-| Startable by an agent right now | **Nothing — RM-11 is stopped on stale Approval** |
+| Phase 3 tickets closed | **13 of 44** |
+| Startable by an agent right now | **Nothing. RM-11 is the only unblocked ticket and it needs you.** |
 | Waiting on you | **Re-confirm 4 task statuses, then approve `RM11-CUTOVER-2`** |
 
 **`RM11-CUTOVER-1` is stale and was not executed. Nothing in Notion was changed.** The cutover is fully built and reviewed, but its read-only preflight found that **4 of your 34 records had their Status edited** in Notion after you approved the plan. Status is the exact field the whole reconciliation was about, so the Approval no longer describes the records it would migrate. Your own approval sentence said to stop on any drift, so it stopped — before any write. See [RM-11 runbook → Stale Approval](RM-11-reconciliation-and-cutover-runbook.md#stale-approval-29-aug-2026).
+
+**RM-12 is complete** ([#13](https://github.com/pmgwee/real-ming/issues/13)) — Google Calendar is now the calendar Source of Record, and one commitment reconciles onto a Work Item. It was independent of RM-11, and RM-13 needed both, so it is done and waiting. **Every remaining ticket is now behind RM-11.**
 
 ---
 
