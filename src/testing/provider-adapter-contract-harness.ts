@@ -23,6 +23,8 @@ import {
   type NotionProviderAdapter,
 } from "../providers/notion-provider-adapter.js";
 import { readLegacyNotionTaskSources } from "../providers/notion-legacy-task-reader.js";
+import { createNotionCutoverWorkspace } from "../providers/notion-cutover-workspace.js";
+import type { CutoverWorkspace } from "../migration/master-tasks-cutover.js";
 import { legacyTaskSourceDefinitions, type LegacyTaskSource } from "../migration/task-migration-rehearsal.js";
 
 export const contractSecretFixture = "provider-secret-must-never-be-reported";
@@ -692,6 +694,193 @@ export function providerAdapterContractCases(): readonly ProviderAdapterContract
       createAdapter: createNotionContractAdapter,
     },
   ];
+}
+
+export interface CutoverWorkspaceContractHarness {
+  readonly workspace: CutoverWorkspace;
+  readonly sourceDataSourceIds: readonly string[];
+  readonly masterTasksDatabaseId: string;
+  readonly masterTasksDataSourceId: string;
+  viewCreateCount(): number;
+  viewUpdateCount(): number;
+  renameCount(): number;
+  lockedDatabases(): readonly string[];
+  editSourcePage(dataSourceId: string, pageId: string): void;
+}
+
+/**
+ * Controlled Notion for the cutover workspace. It models the two facts the
+ * cutover depends on and nothing else: a page edit must change its payload
+ * hash, and a retired database must come back renamed and locked.
+ */
+export function createCutoverWorkspaceContractHarness(options: {
+  readonly lockedBeforeCutover?: string;
+} = {}): CutoverWorkspaceContractHarness {
+  const masterTasksDatabaseId = "notion-database:master-tasks";
+  const masterTasksDataSourceId = "notion-data-source:master-tasks";
+  const sourceDataSourceIds = [
+    "notion-data-source:legacy-1",
+    "notion-data-source:legacy-2",
+  ] as const;
+  const databaseIdFor = (dataSourceId: string): string =>
+    dataSourceId.replace("data-source", "database");
+
+  const titles = new Map<string, string>(
+    sourceDataSourceIds.map((id, index) => [id, `(Legacy ${index + 1}) Task To Do List`]),
+  );
+  const locked = new Set<string>(
+    options.lockedBeforeCutover === undefined
+      ? []
+      : [databaseIdFor(options.lockedBeforeCutover)],
+  );
+  const pages = new Map<string, Record<string, unknown>[]>(
+    sourceDataSourceIds.map((id, index) => [
+      id,
+      [
+        {
+          object: "page",
+          id: `${id}:page-${index + 1}`,
+          last_edited_time: "2026-08-29T03:00:00.000Z",
+          properties: {
+            Name: { type: "title", title: [{ plain_text: `Legacy task ${index + 1}` }] },
+            Status: { type: "status", status: { name: "Pending" } },
+          },
+        },
+      ],
+    ]),
+  );
+  const views: Array<{ id: string; name: string; filter?: unknown }> = [];
+  let viewsCreated = 0;
+  let viewsUpdated = 0;
+  let renames = 0;
+
+  const fetchImplementation = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url = new URL(String(input));
+    const method = init?.method ?? "GET";
+    const path = decodeURIComponent(url.pathname);
+    const body =
+      typeof init?.body === "string"
+        ? (JSON.parse(init.body) as Record<string, unknown>)
+        : {};
+
+    if (path.startsWith("/v1/data_sources/") && path.endsWith("/query")) {
+      const id = path.slice("/v1/data_sources/".length, -"/query".length);
+      return Response.json({
+        object: "list",
+        results: pages.get(id) ?? [],
+        has_more: false,
+        next_cursor: null,
+      });
+    }
+
+    if (path.startsWith("/v1/data_sources/") && method === "GET") {
+      const id = path.slice("/v1/data_sources/".length);
+      return Response.json({
+        object: "data_source",
+        id,
+        title: [{ plain_text: titles.get(id) ?? id }],
+        parent: { type: "database_id", database_id: databaseIdFor(id) },
+      });
+    }
+
+    if (path === `/v1/databases/${masterTasksDatabaseId}` && method === "GET") {
+      return Response.json({
+        object: "database",
+        id: masterTasksDatabaseId,
+        data_sources: [{ id: masterTasksDataSourceId, name: "Master Tasks" }],
+      });
+    }
+
+    if (path.startsWith("/v1/databases/") && method === "GET") {
+      const id = path.slice("/v1/databases/".length);
+      return Response.json({
+        object: "database",
+        id,
+        is_locked: locked.has(id),
+        data_sources: [{ id: id.replace("database", "data-source") }],
+      });
+    }
+
+    if (path.startsWith("/v1/databases/") && method === "PATCH") {
+      const id = path.slice("/v1/databases/".length);
+      const title = body["title"];
+      if (Array.isArray(title)) {
+        const first = title[0];
+        const text = isRecord(first) ? first["text"] : undefined;
+        if (isRecord(text) && typeof text["content"] === "string") {
+          titles.set(id.replace("database", "data-source"), text["content"]);
+          renames += 1;
+        }
+      }
+      if (body["is_locked"] === true) locked.add(id);
+      return Response.json({ object: "database", id, is_locked: locked.has(id) });
+    }
+
+    if (path === "/v1/views" && method === "GET") {
+      return Response.json({
+        object: "list",
+        results: views,
+        has_more: false,
+        next_cursor: null,
+      });
+    }
+
+    if (path === "/v1/views" && method === "POST") {
+      const name = body["name"];
+      if (typeof name !== "string") {
+        return Response.json({ message: "View name is required." }, { status: 422 });
+      }
+      const view = { id: `notion-view:${views.length + 1}`, name, filter: body["filter"] };
+      views.push(view);
+      viewsCreated += 1;
+      return Response.json(view);
+    }
+
+    if (path.startsWith("/v1/views/") && method === "PATCH") {
+      const id = path.slice("/v1/views/".length);
+      const view = views.find((candidate) => candidate.id === id);
+      if (view === undefined) {
+        return Response.json({ message: "Unknown view." }, { status: 404 });
+      }
+      view.filter = body["filter"];
+      viewsUpdated += 1;
+      return Response.json(view);
+    }
+
+    return Response.json(
+      { message: `Unsupported fixture request: ${method} ${path}` },
+      { status: 422 },
+    );
+  };
+
+  return {
+    workspace: createNotionCutoverWorkspace({
+      token: contractSecretFixture,
+      databaseId: masterTasksDatabaseId,
+      sourceDataSourceIds,
+      fetch: fetchImplementation,
+    }),
+    sourceDataSourceIds,
+    masterTasksDatabaseId,
+    masterTasksDataSourceId,
+    viewCreateCount: () => viewsCreated,
+    viewUpdateCount: () => viewsUpdated,
+    renameCount: () => renames,
+    lockedDatabases: () => [...locked],
+    editSourcePage: (dataSourceId, pageId) => {
+      const page = (pages.get(dataSourceId) ?? []).find(
+        (candidate) => candidate["id"] === pageId,
+      );
+      if (page === undefined) throw new Error("Unknown controlled page.");
+      page["properties"] = {
+        Name: { type: "title", title: [{ plain_text: "Edited legacy task" }] },
+        Status: { type: "status", status: { name: "To Do" } },
+      };
+    },
+  };
 }
 
 export interface LiveSmokeGate {

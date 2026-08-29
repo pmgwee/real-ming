@@ -16,7 +16,8 @@
     "secrets:preflight": "npm run build --silent && node --env-file-if-exists=.env dist/config/secret-preflight-cli.js",
     "google:refresh-token": "npm run build --silent && node --env-file-if-exists=.env dist/config/google-refresh-token-cli.js",
     "notion:provision-master-tasks": "npm run build --silent && node --env-file-if-exists=.env dist/config/notion-master-tasks-cli.js",
-    "notion:rehearse-task-migration": "npm run build --silent && node --env-file-if-exists=.env dist/config/notion-task-migration-rehearsal-cli.js"
+    "notion:rehearse-task-migration": "npm run build --silent && node --env-file-if-exists=.env dist/config/notion-task-migration-rehearsal-cli.js",
+    "notion:cutover-master-tasks": "npm run build --silent && node --env-file-if-exists=.env dist/config/notion-master-tasks-cutover-cli.js"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

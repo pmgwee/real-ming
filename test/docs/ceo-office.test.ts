@@ -67,11 +67,14 @@ describe("CEO Office", () => {
     expect(prompt).toContain("feat/tracer-1-daily-operations");
   });
 
-  it("carries a portable prompt for agents without Claude Code slash commands", () => {
+  it("carries a prompt for each agent in the rotation", () => {
     const prompt = officeFile("RESUME-PROMPT.md");
 
-    expect(prompt).toContain("Codex has no equivalent");
-    expect(prompt).toContain("DO NOT STOP after one ticket");
+    expect(prompt).toContain("Claude Code continuation prompt");
+    expect(prompt).toContain("Codex Goal continuation prompt");
+    expect(prompt).toContain(
+      "Ordinary ticket completion is a checkpoint, not permission to stop",
+    );
     expect(prompt).toContain("AGENTS.md");
     expect(prompt).toContain("CONTEXT.md");
   });
@@ -95,7 +98,7 @@ describe("CEO Office", () => {
     const prompt = officeFile("RESUME-PROMPT.md");
 
     expect(prompt).toContain("npm run graph:status");
-    expect(prompt).toContain("never pick tickets from memory");
+    expect(prompt).toContain("never select from memory");
     expect(prompt).toContain("main remains unmerged");
   });
 

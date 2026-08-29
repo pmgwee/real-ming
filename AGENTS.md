@@ -12,6 +12,10 @@ The repository uses the five canonical triage labels. See `docs/agents/triage-la
 
 This is a single-context repository with `CONTEXT.md` and system-wide ADRs under `docs/adr/`. See `docs/agents/domain.md`.
 
+### Notion task semantics
+
+Before interpreting, migrating, or writing a Notion task status, read `docs/agents/notion-task-status-semantics.md`. It defines the CEO-confirmed legacy meanings and canonical lifecycle mapping.
+
 ## Environment prerequisites
 
 The loop needs three things present before the first ticket:

@@ -11,6 +11,7 @@ import type {
   CeoCommandResult,
   CommandClassifier,
   EffectVerifier,
+  ImportMigratedWorkItemRequest,
   NormalizedCeoAction,
   OperationsResult,
   QuestionResponder,
@@ -21,9 +22,13 @@ import type {
   WorkItemState,
   WorkerEffect,
 } from "./contracts.js";
+import { migratedWorkItemStates } from "./contracts.js";
 import { OperationsState } from "./operations-state.js";
 import { isCeoActor } from "./actor-identity.js";
-import { routeAccountableExecutive } from "./executive-role-router.js";
+import {
+  routeAccountableExecutive,
+  workstreamRoutes,
+} from "./executive-role-router.js";
 import { lifecyclePathTo } from "./work-item-lifecycle.js";
 import { evaluateAction, findEffectiveApproval } from "./policy-engine.js";
 import { detectSensitiveFields } from "./sensitive-secret.js";
@@ -41,6 +46,9 @@ export interface OperationsGateway {
   acknowledgeCeoAction(
     action: NormalizedCeoAction,
   ): Promise<WorkItemAcknowledgement>;
+  importMigratedWorkItem(
+    request: ImportMigratedWorkItemRequest,
+  ): Promise<WorkItem>;
   executeWorkItem(workItemId: string): Promise<OperationsResult>;
   reworkWorkItem(workItemId: string): Promise<OperationsResult>;
   recordWorkItemCommitment(
@@ -639,6 +647,30 @@ export function createOperationsGateway(options: {
       );
     };
 
+  const importMigratedWorkItem: OperationsGateway["importMigratedWorkItem"] =
+    async (request) => {
+      if (request.approvalReference.trim() === "") {
+        throw new Error(
+          "A migrated Work Item requires the exact cutover Approval reference.",
+        );
+      }
+      if (!migratedWorkItemStates.includes(request.lifecycle)) {
+        throw new Error(
+          `A migration may not create a Work Item in ${request.lifecycle}.`,
+        );
+      }
+      const expectedExecutive =
+        workstreamRoutes[request.workstream].executive;
+      if (request.accountableExecutive !== expectedExecutive) {
+        throw new Error(
+          `Workstream ${request.workstream} is accountable to ${expectedExecutive}, not ${request.accountableExecutive}.`,
+        );
+      }
+      return publish(
+        options.state.importMigratedWorkItem(request, now()),
+      );
+    };
+
   const recordWorkItemPriority: OperationsGateway["recordWorkItemPriority"] =
     async (request) => {
       requireWorkItem(request.workItemId);
@@ -659,6 +691,7 @@ export function createOperationsGateway(options: {
 
   return {
     acknowledgeCeoAction,
+    importMigratedWorkItem,
     executeWorkItem,
     reworkWorkItem,
     requestAction,

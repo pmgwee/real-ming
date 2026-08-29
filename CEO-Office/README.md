@@ -13,16 +13,18 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 | | |
 | --- | --- |
 | Phase 3 tickets closed | **12 of 44** |
-| Startable by an agent right now | **Run the graph scheduler after RM-10** |
-| Waiting on you | **Nothing from RM-10** |
+| Startable by an agent right now | **RM-11 execution — approved and built** |
+| Waiting on you | **Nothing. The cutover is authorized and ready to run.** |
 
-**RM-10 is complete.** Its live read-only rehearsal covered five sources and 34 records, proved idempotent isolated replay, made no source mutations, and rolled the isolated target back to zero.
+**You approved `RM11-CUTOVER-1`. The cutover is built, reviewed and verified against the bound evidence with no drift**: both hashes match byte-for-byte, all five sources and 34 records reconcile, and the plan resolves to the approved 30 imports / 4 archive-only. Execution steps are in the [RM-11 runbook](RM-11-reconciliation-and-cutover-runbook.md).
 
 ---
 
 ## 🔀 Decisions awaiting you
 
-**None open.** Anything needing a yes/no from you appears here with a recommendation — a pull request, a vendor choice, an architecture change. You should never have to discover one yourself.
+**None open.**
+
+*Settled:* `RM11-CUTOVER-1` approved on 29 Aug 2026 with the exact bound sentence. No drift was found against it.
 
 *Settled:* [PR #46](https://github.com/pmgwee/real-ming/pull/46) merged into `main` on 2026-08-27 with your approval — the 7 closed tickets plus tooling and baseline.
 
@@ -32,7 +34,9 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## ✅ What needs you
 
-**No action is currently required for RM-10.** The completed source-sharing and rehearsal evidence remains in the [RM-10 source-sharing runbook](RM-10-share-legacy-task-sources.md).
+**Nothing is blocked on you.** `RM11-CUTOVER-1` is approved and the cutover is built and verified.
+
+One thing to know before Phase B, because it changes what you can do with three records: the 3 `Pending to Review` items arrive carrying a **migration Outcome Report** that states the effect Real-Ming performed was the migration itself, not the original work. That is what makes them completable at all — without it they could only ever be cancelled or rejected. The [runbook](RM-11-reconciliation-and-cutover-runbook.md) explains what you are confirming when you complete one.
 
 Both initial gates remain closed:
 
@@ -56,7 +60,7 @@ The runbooks stay as the record of what was done: [Gate 1](GATE-1-provisioning-r
 
 Nothing needs restarting or re-explaining. The scheduler reconciles against live GitHub, so a closed issue is all it takes.
 
-> 💡 **Using Codex or another agent?** `/goal` is a Claude Code slash command that installs a stop condition; other agents read it as plain text and are likely to stop after one ticket. `RESUME-PROMPT.md` carries a portable version for exactly that case. The conventions themselves live in `AGENTS.md`, which agents read by convention, so they do not depend on which tool you use.
+> 💡 **Using Codex or another agent?** Codex has its own `/goal` (0.128.0 or later), so the rotation works in both directions — `RESUME-PROMPT.md` carries a prompt for each. Run `/goal` first in the receiving session: resume the Goal if one exists, and paste the full prompt only if none does. An agent with no Goal command reads the block as ordinary text and is likely to stop after one ticket. The conventions themselves live in `AGENTS.md`, which agents read by convention, so they do not depend on which tool you use.
 
 ---
 
@@ -86,6 +90,8 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [GATE-2-pilot-selection-runbook.md](GATE-2-pilot-selection-runbook.md) | Step-by-step: choose and capture the DuitSini pilot |
 | [RM-09-master-tasks-provisioning-runbook.md](RM-09-master-tasks-provisioning-runbook.md) | One-minute Notion parent-page share required to create Master Tasks |
 | [RM-10-share-legacy-task-sources.md](RM-10-share-legacy-task-sources.md) | Share the five legacy task databases for the read-only migration rehearsal |
+| [RM-11-reconciliation-and-cutover-runbook.md](RM-11-reconciliation-and-cutover-runbook.md) | Review all 34 migration dispositions and approve the exact cutover separately |
+| [RM-11-cutover-approval-packet.md](RM-11-cutover-approval-packet.md) | Exact digest hashes, source/target bindings, cutover steps, verification, recovery, and approval sentence |
 | [CREDENTIAL-INVENTORY.md](CREDENTIAL-INVENTORY.md) | All ten credentials: owner, purpose, environment, revocation — **no values** |
 
 ---

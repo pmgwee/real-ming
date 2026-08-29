@@ -8,6 +8,8 @@ import type {
   AuditEvent,
   ConfirmedCommitment,
   EffectVerification,
+  ImportMigratedWorkItemRequest,
+  MigratedWorkItemState,
   NormalizedCeoAction,
   OutcomeReport,
   ProposedCommitment,
@@ -28,6 +30,15 @@ import type {
   TelegramReviewDecision,
 } from "../telegram/contracts.js";
 import type { ProviderFailure } from "../providers/adapter-contract.js";
+
+const clearedPriorityLedgerValue = "cleared";
+
+const migratedLifecycleEvents = {
+  Captured: "work-item.captured",
+  Planned: "work-item.planned",
+  "Waiting/Blocked": "work-item.waiting-blocked",
+  "Ready for CEO Review": "work-item.ready-for-ceo-review",
+} as const satisfies Readonly<Record<MigratedWorkItemState, AuditEvent["type"]>>;
 import { lifecycleEventFor } from "./work-item-lifecycle.js";
 
 interface WorkItemRow {
@@ -482,6 +493,16 @@ export class OperationsState {
       BEFORE DELETE ON telegram_delivery_receipts
       BEGIN
         SELECT RAISE(ABORT, 'telegram_delivery_receipts are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS work_items_require_outcome_on_insert
+      BEFORE INSERT ON work_items
+      WHEN NEW.state IN ('Ready for CEO Review', 'Completed')
+        AND NOT EXISTS (
+          SELECT 1 FROM outcome_reports WHERE work_item_id = NEW.id
+        )
+      BEGIN
+        SELECT RAISE(ABORT, 'review-ready work requires an Outcome Report');
       END;
 
       CREATE TRIGGER IF NOT EXISTS work_items_require_outcome_before_review
@@ -1197,23 +1218,187 @@ export class OperationsState {
     return this.#requireWorkItem(id);
   }
 
+  /**
+   * Lands a CEO-reconciled legacy record as canonical state. The trail always
+   * opens with work-item.captured and, when the approved lifecycle is not
+   * Captured, carries exactly one further event naming the migration as its
+   * basis. It never claims the record executed.
+   */
+  importMigratedWorkItem(
+    request: ImportMigratedWorkItemRequest,
+    occurredAt: string,
+  ): WorkItem {
+    const existing = this.findWorkItemByCommand(
+      request.workspaceId,
+      request.sourceReference,
+    );
+    if (existing !== undefined) {
+      return existing;
+    }
+
+    const id = randomUUID();
+    const provenance = {
+      basis: "ceo-approved-migration",
+      approvalReference: request.approvalReference,
+      sourceReference: request.sourceReference,
+      legacyStatus: request.legacyStatus,
+      commitmentProvenance: request.commitmentProvenance,
+      workstream: request.workstream,
+      accountableExecutive: request.accountableExecutive,
+    } as const;
+
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      this.#database
+        .prepare(
+          `INSERT INTO work_items (
+            id, actor_id, workspace_id, idempotency_key, intent,
+            expected_effect_json, accountable_executive, workstream,
+            collaborating_executives_json, confirmed_commitment_json,
+            proposed_commitment_json, priority, state, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', NULL, NULL, NULL, 'Captured', ?, ?)`,
+        )
+        .run(
+          id,
+          request.actorId,
+          request.workspaceId,
+          request.sourceReference,
+          request.intent,
+          JSON.stringify({
+            kind: "migrated-legacy-task",
+            value: request.sourceReference,
+          }),
+          request.accountableExecutive,
+          request.workstream,
+          occurredAt,
+          occurredAt,
+        );
+      this.#appendAudit(id, "work-item.captured", occurredAt, {
+        ...provenance,
+        actorId: request.actorId,
+        workspaceId: request.workspaceId,
+        idempotencyKey: request.sourceReference,
+      });
+      if (request.lifecycle === "Ready for CEO Review") {
+        this.#recordMigratedOutcomeReport(id, request, occurredAt);
+      }
+      if (request.lifecycle !== "Captured") {
+        this.#database
+          .prepare(
+            "UPDATE work_items SET state = ?, updated_at = ? WHERE id = ?",
+          )
+          .run(request.lifecycle, occurredAt, id);
+        this.#appendAudit(
+          id,
+          migratedLifecycleEvents[request.lifecycle],
+          occurredAt,
+          {
+            ...provenance,
+            // The CEO dashboard reads `reason` off the last waiting-blocked
+            // event. Without it a migrated blocker reads as an unexplained one.
+            reason: `Migrated at the CEO-approved lifecycle ${request.lifecycle} from legacy status "${request.legacyStatus}". The clearing action has not been recorded yet.`,
+          },
+        );
+      }
+      this.#database.exec("COMMIT;");
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+
+    return this.#requireWorkItem(id);
+  }
+
+  /**
+   * Review-Ready Work is defined as a Work Item presented with an Outcome
+   * Report, so a migrated Pending-to-Review record must arrive with one. The
+   * report is explicit that the effect Real-Ming completed was the migration
+   * itself and that the underlying work happened elsewhere.
+   */
+  #recordMigratedOutcomeReport(
+    workItemId: string,
+    request: ImportMigratedWorkItemRequest,
+    occurredAt: string,
+  ): void {
+    const completedEffect: WorkerEffect = {
+      workItemId,
+      executive: request.accountableExecutive,
+      authority: "accountable",
+      idempotencyKey: `${request.sourceReference}:migration`,
+      kind: "migrated-legacy-task",
+      value: request.sourceReference,
+    };
+    const outcomeReport: OutcomeReport = {
+      id: randomUUID(),
+      workItemId,
+      revision: 1,
+      requestedIntent: request.intent,
+      completedEffect,
+      verification: {
+        status: "verified",
+        evidence: {
+          kind: "controlled-effect-reference",
+          reference: request.sourceReference,
+        },
+      },
+      remainingRisks: [
+        "The underlying work was performed outside Real-Ming; the evidence is the legacy record named in this report, not a controlled effect Real-Ming executed.",
+      ],
+      requiredDecisions: [
+        `Confirm the legacy "${request.legacyStatus}" outcome before completing this migrated Work Item.`,
+      ],
+      createdAt: occurredAt,
+    };
+
+    const values = [
+      outcomeReport.workItemId,
+      outcomeReport.revision,
+      outcomeReport.requestedIntent,
+      JSON.stringify(outcomeReport.completedEffect),
+      JSON.stringify(outcomeReport.verification),
+      JSON.stringify(outcomeReport.remainingRisks),
+      JSON.stringify(outcomeReport.requiredDecisions),
+      outcomeReport.createdAt,
+    ] as const;
+    for (const table of ["outcome_report_revisions", "outcome_reports"]) {
+      this.#database
+        .prepare(
+          `INSERT INTO ${table} (
+            id, work_item_id, revision, requested_intent,
+            completed_effect_json, verification_json, remaining_risks_json,
+            required_decisions_json, created_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(outcomeReport.id, ...values);
+    }
+    this.#appendAudit(workItemId, "outcome-report.recorded", occurredAt, {
+      outcomeReportId: outcomeReport.id,
+      revision: outcomeReport.revision,
+      basis: "ceo-approved-migration",
+      sourceReference: request.sourceReference,
+    });
+  }
+
   recordPriority(
     workItemId: string,
-    priority: WorkItemPriority,
+    priority: WorkItemPriority | null,
     idempotencyKey: string,
     occurredAt: string,
   ): WorkItem {
     this.#requireWorkItem(workItemId);
+    // The write ledger is NOT NULL, so a cleared priority is recorded under a
+    // sentinel that no Work Item Priority can collide with.
+    const ledgerValue = priority ?? clearedPriorityLedgerValue;
     const replay = this.#database
       .prepare(
         `SELECT work_item_id, priority FROM work_item_priority_writes
          WHERE idempotency_key = ?`,
       )
       .get(idempotencyKey) as unknown as
-      | { readonly work_item_id: string; readonly priority: WorkItemPriority }
+      | { readonly work_item_id: string; readonly priority: string }
       | undefined;
     if (replay !== undefined) {
-      if (replay.work_item_id !== workItemId || replay.priority !== priority) {
+      if (replay.work_item_id !== workItemId || replay.priority !== ledgerValue) {
         throw new Error("Priority idempotency key was reused for a different edit.");
       }
       return this.#requireWorkItem(workItemId);
@@ -1230,7 +1415,7 @@ export class OperationsState {
            (idempotency_key, work_item_id, priority, recorded_at)
            VALUES (?, ?, ?, ?)`,
         )
-        .run(idempotencyKey, workItemId, priority, occurredAt);
+        .run(idempotencyKey, workItemId, ledgerValue, occurredAt);
       this.#appendAudit(workItemId, "work-item.priority-recorded", occurredAt, {
         idempotencyKey,
         priority,

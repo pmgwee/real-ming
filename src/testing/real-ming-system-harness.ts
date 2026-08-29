@@ -50,6 +50,7 @@ import type {
   TelegramUpdate,
 } from "../telegram/contracts.js";
 import type { ProviderFailure } from "../providers/adapter-contract.js";
+import type { Workstream } from "../operations/contracts.js";
 import {
   MasterTasksProjection,
   type EditMasterTaskThroughViewRequest,
@@ -63,6 +64,113 @@ import {
   type MigrationBackup,
   type TaskMigrationRehearsalResult,
 } from "../migration/task-migration-rehearsal.js";
+import {
+  MasterTasksCutover,
+  type CutoverApproval,
+  type CutoverLinkedView,
+  type CutoverPhaseAReport,
+  type CutoverPhaseBReport,
+  type CutoverPlan,
+  type CutoverRecovery,
+  type CutoverRetirement,
+  type CutoverSourceSnapshot,
+  type CutoverTarget,
+  type CutoverWorkspace,
+} from "../migration/master-tasks-cutover.js";
+
+import {
+  buildCutoverPlan,
+  type CutoverEvidenceSource,
+  type CutoverPlanBuildResult,
+  type CutoverTitleMatchCounts,
+} from "../migration/cutover-plan-builder.js";
+import type { CutoverBindings } from "../migration/master-tasks-cutover.js";
+
+export type ControlledCutoverSource = CutoverSourceSnapshot;
+
+export interface ControlledCutoverOptions {
+  readonly plan: CutoverPlan;
+  readonly approval: CutoverApproval;
+  readonly sources: readonly ControlledCutoverSource[];
+  readonly target: CutoverTarget;
+  readonly foreignSourceReference?: string;
+  readonly retirementFailureFor?: string;
+  readonly retirementWriteFailureFor?: string;
+}
+
+class ControlledCutoverWorkspace implements CutoverWorkspace {
+  #sourceReads = 0;
+  readonly #views = new Map<string, CutoverLinkedView>();
+  readonly #retired = new Map<string, CutoverRetirement>();
+
+  constructor(private readonly options: ControlledCutoverOptions) {}
+
+  async readSources(): Promise<readonly CutoverSourceSnapshot[]> {
+    this.#sourceReads += 1;
+    return this.options.sources;
+  }
+
+  async masterTasksTarget(): Promise<CutoverTarget> {
+    return this.options.target;
+  }
+
+  async ensureLinkedView(request: {
+    readonly name: string;
+    readonly dataSourceId: string;
+    readonly workstreams: readonly Workstream[];
+  }): Promise<CutoverLinkedView> {
+    const existing = this.#views.get(request.name);
+    if (existing !== undefined) return existing;
+    const view: CutoverLinkedView = {
+      id: `linked-view:${this.#views.size + 1}`,
+      name: request.name,
+      dataSourceId: request.dataSourceId,
+      workstreams: request.workstreams,
+    };
+    this.#views.set(request.name, view);
+    return view;
+  }
+
+  async verifyRetirable(dataSourceId: string): Promise<void> {
+    if (this.options.retirementFailureFor === dataSourceId) {
+      throw new Error("Controlled Notion refused to lock the legacy source.");
+    }
+  }
+
+  async retireLegacySource(request: {
+    readonly dataSourceId: string;
+    readonly archivedName: string;
+  }): Promise<CutoverRetirement> {
+    if (
+      this.options.retirementFailureFor === request.dataSourceId ||
+      this.options.retirementWriteFailureFor === request.dataSourceId
+    ) {
+      throw new Error("Controlled Notion refused to lock the legacy source.");
+    }
+    const retirement: CutoverRetirement = {
+      dataSourceId: request.dataSourceId,
+      archivedName: request.archivedName,
+      locked: true,
+    };
+    this.#retired.set(request.dataSourceId, retirement);
+    return retirement;
+  }
+
+  async writableTaskSystems(): Promise<readonly string[]> {
+    const remaining = this.options.plan.bindings.sources
+      .filter((source) => !this.#retired.has(source.dataSourceId))
+      .map((source) => source.dataSourceId);
+    return [this.options.target.dataSourceId, ...remaining];
+  }
+
+  sourceReadCount(): number {
+    return this.#sourceReads;
+  }
+
+  retiredSources(): readonly string[] {
+    return [...this.#retired.keys()];
+  }
+}
 
 export interface RealMingSystemHarness {
   captureTaskMigrationBackups(): Promise<readonly MigrationBackup[]>;
@@ -71,6 +179,17 @@ export interface RealMingSystemHarness {
   ): Promise<TaskMigrationRehearsalResult>;
   migrationRehearsalTargetCount(): number;
   rollbackTaskMigrationRehearsal(): void;
+  executeCutoverPhaseA(approval?: CutoverApproval): Promise<CutoverPhaseAReport>;
+  executeCutoverPhaseB(): Promise<CutoverPhaseBReport>;
+  cutoverSourceReadCount(): number;
+  cutoverRetiredSources(): readonly string[];
+  cutoverRecovery(): CutoverRecovery;
+  buildCutoverPlanFromEvidence(evidence: {
+    readonly digest: string;
+    readonly sources: readonly CutoverEvidenceSource[];
+    readonly bindings: CutoverBindings;
+    readonly expectedTitleMatches: CutoverTitleMatchCounts;
+  }): CutoverPlanBuildResult;
   editMasterTaskThroughView(
     request: EditMasterTaskThroughViewRequest,
   ): Promise<MasterTaskRecord>;
@@ -305,6 +424,7 @@ export function createRealMingSystemHarness(options: {
     readonly auditPseudonymKey?: string;
   };
   readonly legacyTaskSources?: readonly LegacyTaskSource[];
+  readonly cutover?: ControlledCutoverOptions;
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
   const masterTaskRecords = new Map<string, MasterTaskRecord>();
@@ -348,6 +468,60 @@ export function createRealMingSystemHarness(options: {
     workItemChanged: (workItem) => masterTasks.sync(workItem).then(() => undefined),
     ...(options.now === undefined ? {} : { now: options.now }),
   });
+  const cutoverWorkspace =
+    options.cutover === undefined
+      ? undefined
+      : new ControlledCutoverWorkspace(options.cutover);
+  if (options.cutover?.foreignSourceReference !== undefined) {
+    const reference = options.cutover.foreignSourceReference;
+    masterTaskRecords.set(reference, {
+      id: reference,
+      workItemId: reference,
+      workspaceId: "workspace:real-ming",
+      title: "Foreign migration record",
+      intent: "Foreign migration record",
+      source: "Notion",
+      sourceReference: reference,
+      trustDomain: "Personal",
+      workstream: null,
+      accountableExecutive: "COO",
+      collaboratingExecutives: [],
+      lifecycle: "Captured",
+      priority: null,
+      commitmentValue: null,
+      commitmentProvenance: null,
+      riskClass: null,
+      approvalRequired: false,
+      approvalReference: null,
+      portfolioProject: null,
+      evidenceReferences: [],
+      outcomeReportReference: null,
+      createdAt: "2026-08-29T09:00:00.000Z",
+      updatedAt: "2026-08-29T09:00:00.000Z",
+    });
+  }
+  const cutover =
+    options.cutover === undefined || cutoverWorkspace === undefined
+      ? undefined
+      : new MasterTasksCutover({
+          plan: options.cutover.plan,
+          approval: options.cutover.approval,
+          workspace: cutoverWorkspace,
+          state,
+          gateway,
+          projection: masterTasks,
+          store: masterTasksStore,
+          actorId: "ceo:ming",
+          workspaceId: "workspace:real-ming",
+          ...(options.now === undefined ? {} : { now: options.now }),
+        });
+  const requireCutover = (): MasterTasksCutover => {
+    if (cutover === undefined) {
+      throw new Error("This harness was not configured with a cutover plan.");
+    }
+    return cutover;
+  };
+
   const telegramTransport = new ControlledTelegramTransport(
     options.telegram?.deliveryFailure,
     options.telegram?.crashAfterDelivery,
@@ -394,6 +568,15 @@ export function createRealMingSystemHarness(options: {
       migrationRehearsal.importVerifiedBackups(backups),
     migrationRehearsalTargetCount: () => migrationRehearsal.targetCount(),
     rollbackTaskMigrationRehearsal: () => migrationRehearsal.rollback(),
+    executeCutoverPhaseA: (approval) =>
+      approval === undefined
+        ? requireCutover().executePhaseA()
+        : requireCutover().executePhaseA(approval),
+    executeCutoverPhaseB: () => requireCutover().executePhaseB(),
+    cutoverSourceReadCount: () => cutoverWorkspace?.sourceReadCount() ?? 0,
+    cutoverRetiredSources: () => cutoverWorkspace?.retiredSources() ?? [],
+    cutoverRecovery: () => requireCutover().recovery(),
+    buildCutoverPlanFromEvidence: (evidence) => buildCutoverPlan(evidence),
     editMasterTaskThroughView: async (request) =>
       masterTasks.editThroughView(request, gateway),
     masterTasksView: (name) => masterTasks.view(name),

@@ -229,8 +229,40 @@ export interface WorkItem {
 
 export interface RecordWorkItemPriorityRequest {
   readonly workItemId: string;
-  readonly priority: WorkItemPriority;
+  readonly priority: WorkItemPriority | null;
   readonly idempotencyKey: string;
+}
+
+/**
+ * A CEO-approved migration is an authorized origin of canonical state, like a
+ * CEO action is. It may only land a record in a state the CEO reconciled: no
+ * controlled effect ever ran for an imported record, so it can never arrive
+ * Executing, Verifying, or Completed.
+ */
+export const migratedWorkItemStates = [
+  "Captured",
+  "Planned",
+  "Waiting/Blocked",
+  "Ready for CEO Review",
+] as const satisfies readonly WorkItemState[];
+export type MigratedWorkItemState = (typeof migratedWorkItemStates)[number];
+
+export type MigratedCommitmentProvenance =
+  | "none-in-source"
+  | "source-date"
+  | "ceo-set-date";
+
+export interface ImportMigratedWorkItemRequest {
+  readonly actorId: string;
+  readonly workspaceId: string;
+  readonly sourceReference: string;
+  readonly intent: string;
+  readonly lifecycle: MigratedWorkItemState;
+  readonly workstream: Workstream;
+  readonly accountableExecutive: ExecutiveRole;
+  readonly legacyStatus: string;
+  readonly commitmentProvenance: MigratedCommitmentProvenance;
+  readonly approvalReference: string;
 }
 
 export interface CeoSetCommitment {
