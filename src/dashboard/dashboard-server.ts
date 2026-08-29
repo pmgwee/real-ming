@@ -150,9 +150,16 @@ export function createDashboardServer(options: {
   readonly state: OperationsState;
   readonly gateway: OperationsGateway;
   readonly credentials: readonly DashboardCredential[];
+  /**
+   * The operating clock. Without it the dashboard would report scheduler
+   * timing against wall-clock time while the rest of the system runs on the
+   * injected one, so the two would disagree about when a job next runs.
+   */
+  readonly now?: () => string;
 }): Promise<DashboardServer> {
+  const now = options.now ?? (() => new Date().toISOString());
   const overviewFor = (session: DashboardSession): DashboardOverview =>
-    buildDashboardOverview(options.state, session);
+    buildDashboardOverview(options.state, { ...session, now: now() });
 
   const server: Server = createServer((request, response) => {
     void (async () => {

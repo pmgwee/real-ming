@@ -121,6 +121,15 @@ import {
   type HeldRelease,
 } from "../operations/exception-notice-rhythm.js";
 
+import {
+  createDailyOperationsScheduler,
+  executiveRollUpJobName,
+  morningBriefJobName,
+  releaseHeldJobName,
+  type DailyOperationsScheduler,
+  type DailyOperationsTick,
+} from "../operations/daily-operations-scheduler.js";
+
 export interface ControlledMorningBriefOptions {
   readonly calendarId: string;
 }
@@ -294,6 +303,8 @@ export interface RealMingSystemHarness {
   ): Promise<ExceptionNoticeAdmission>;
   recordExceptionNoticeRecovery(signature: string): Promise<ExceptionNoticeAdmission>;
   releaseHeldExceptionNotices(): Promise<HeldRelease>;
+  tickDailyOperations(): Promise<DailyOperationsTick>;
+  failNextScheduledRun(job: string): Promise<void>;
   acknowledgeCeoAction(
     action: NormalizedCeoAction,
   ): Promise<WorkItemAcknowledgement>;
@@ -740,6 +751,9 @@ export function createRealMingSystemHarness(options: {
     notify: (notification) => telegramFrontDoor.notify(notification),
     now: clock,
   });
+  // Controlled failure injection, so a scheduler tick can be observed handling
+  // one job failing without stranding the others.
+  const forcedFailures = new Set<string>();
   const executiveRollUp: ExecutiveRollUpRunner = createExecutiveRollUpRunner({
     state,
     workspaceId: "workspace:real-ming",
@@ -756,6 +770,32 @@ export function createRealMingSystemHarness(options: {
           admit: (notice) => exceptionNoticeRhythm.admit(notice),
           ...(options.now === undefined ? {} : { now: options.now }),
         });
+
+  const guarded = (job: string, run: () => Promise<unknown>) => async () => {
+    if (forcedFailures.delete(job)) {
+      throw new Error(`Controlled failure of the ${job} job.`);
+    }
+    return run();
+  };
+  const dailyOperations: DailyOperationsScheduler =
+    createDailyOperationsScheduler({
+      state,
+      now: clock,
+      runners: {
+        [releaseHeldJobName]: guarded(releaseHeldJobName, () =>
+          exceptionNoticeRhythm.releaseHeld(),
+        ),
+        [morningBriefJobName]: guarded(morningBriefJobName, () => {
+          if (morningBrief === undefined) {
+            throw new Error("No Morning Brief is configured.");
+          }
+          return morningBrief.run();
+        }),
+        [executiveRollUpJobName]: guarded(executiveRollUpJobName, () =>
+          executiveRollUp.run(),
+        ),
+      },
+    });
 
   return {
     captureTaskMigrationBackups: async () => migrationRehearsal.captureBackups(),
@@ -804,6 +844,10 @@ export function createRealMingSystemHarness(options: {
     recordExceptionNoticeRecovery: (signature) =>
       exceptionNoticeRhythm.recordRecovery(signature),
     releaseHeldExceptionNotices: () => exceptionNoticeRhythm.releaseHeld(),
+    tickDailyOperations: () => dailyOperations.tick(),
+    failNextScheduledRun: async (job) => {
+      forcedFailures.add(job);
+    },
     buildCutoverPlanFromEvidence: (evidence) => buildCutoverPlan(evidence),
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
     listCalendarEvents: ({ calendarId }) =>
@@ -834,9 +878,10 @@ export function createRealMingSystemHarness(options: {
     approval: (id) => state.approval(id),
     approvals: (workItemId) => state.approvals(workItemId),
     standingAuthorities: () => state.standingAuthorities(),
-    dashboardOverview: (session) => buildDashboardOverview(state, session),
+    dashboardOverview: (session) =>
+      buildDashboardOverview(state, { ...session, now: clock() }),
     startDashboard: (credentials) =>
-      createDashboardServer({ state, gateway, credentials }),
+      createDashboardServer({ state, gateway, credentials, now: clock }),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),
     recordWorkItemCommitment: (request) =>
       gateway.recordWorkItemCommitment(request),

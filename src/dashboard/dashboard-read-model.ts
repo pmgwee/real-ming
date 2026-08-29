@@ -7,6 +7,10 @@ import type {
   WorkItemState,
 } from "../operations/contracts.js";
 import type { OperationsState } from "../operations/operations-state.js";
+import {
+  schedulerHealth,
+  type SchedulerJobHealth,
+} from "../operations/daily-operations-scheduler.js";
 
 export interface DashboardWorkItemView {
   readonly id: string;
@@ -69,6 +73,7 @@ export interface DashboardOverview {
   readonly outcomeReports: readonly DashboardOutcomeReportView[];
   readonly auditEvents: readonly DashboardAuditView[];
   readonly executives: readonly DashboardExecutiveView[];
+  readonly scheduler: readonly SchedulerJobHealth[];
 }
 
 const executiveRoles: readonly ExecutiveRole[] = [
@@ -133,7 +138,12 @@ export function blockersFor(
 
 export function buildDashboardOverview(
   state: OperationsState,
-  session: { readonly actorId: string; readonly workspaceId: string },
+  session: {
+    readonly actorId: string;
+    readonly workspaceId: string;
+    /** The operating clock, so scheduler health can name the next run. */
+    readonly now?: string;
+  },
 ): DashboardOverview {
   const workItems = state
     .workItems()
@@ -238,5 +248,6 @@ export function buildDashboardOverview(
     outcomeReports,
     auditEvents,
     executives,
+    scheduler: schedulerHealth(state, session.now ?? new Date().toISOString()),
   };
 }

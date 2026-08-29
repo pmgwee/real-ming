@@ -495,6 +495,16 @@ export class OperationsState {
         SELECT RAISE(ABORT, 'telegram_delivery_receipts are append-only');
       END;
 
+      CREATE TABLE IF NOT EXISTS scheduler_runs (
+        job TEXT NOT NULL,
+        occurrence_date TEXT NOT NULL,
+        scheduled_at TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT,
+        outcome TEXT,
+        PRIMARY KEY (job, occurrence_date)
+      );
+
       CREATE TABLE IF NOT EXISTS held_exception_notices (
         idempotency_key TEXT PRIMARY KEY,
         kind TEXT NOT NULL,
@@ -1434,6 +1444,85 @@ export class OperationsState {
       )
       .run(occurrences, occurredAt, signature);
     return { kind: "grouped", occurrences };
+  }
+
+  /**
+   * A scheduled occurrence claims its slot before it runs, so a restart, a
+   * second process, or a rapid tick cannot execute the same occurrence twice.
+   * A failed occurrence stays claimable: a scheduler that never retries is
+   * worse than one that repeats.
+   */
+  claimSchedulerRun(run: {
+    readonly job: string;
+    readonly occurrenceDate: string;
+    readonly scheduledAt: string;
+    readonly startedAt: string;
+  }): { readonly kind: "claimed" | "already-succeeded" } {
+    const row = this.#database
+      .prepare(
+        "SELECT outcome FROM scheduler_runs WHERE job = ? AND occurrence_date = ?",
+      )
+      .get(run.job, run.occurrenceDate) as unknown as
+      | { readonly outcome: string | null }
+      | undefined;
+    if (row?.outcome === "succeeded") {
+      return { kind: "already-succeeded" };
+    }
+    this.#database
+      .prepare(
+        `INSERT INTO scheduler_runs
+           (job, occurrence_date, scheduled_at, started_at, completed_at, outcome)
+         VALUES (?, ?, ?, ?, NULL, NULL)
+         ON CONFLICT(job, occurrence_date) DO UPDATE SET
+           started_at = excluded.started_at,
+           completed_at = NULL,
+           outcome = NULL`,
+      )
+      .run(run.job, run.occurrenceDate, run.scheduledAt, run.startedAt);
+    return { kind: "claimed" };
+  }
+
+  completeSchedulerRun(
+    job: string,
+    occurrenceDate: string,
+    completedAt: string,
+    outcome: "succeeded" | "failed",
+  ): void {
+    this.#database
+      .prepare(
+        `UPDATE scheduler_runs SET completed_at = ?, outcome = ?
+         WHERE job = ? AND occurrence_date = ?`,
+      )
+      .run(completedAt, outcome, job, occurrenceDate);
+  }
+
+  schedulerRuns(): readonly {
+    readonly job: string;
+    readonly occurrenceDate: string;
+    readonly scheduledAt: string;
+    readonly startedAt: string;
+    readonly completedAt: string | null;
+    readonly outcome: string | null;
+  }[] {
+    return (
+      this.#database
+        .prepare("SELECT * FROM scheduler_runs ORDER BY occurrence_date ASC, rowid ASC")
+        .all() as unknown as readonly {
+        readonly job: string;
+        readonly occurrence_date: string;
+        readonly scheduled_at: string;
+        readonly started_at: string;
+        readonly completed_at: string | null;
+        readonly outcome: string | null;
+      }[]
+    ).map((row) => ({
+      job: row.job,
+      occurrenceDate: row.occurrence_date,
+      scheduledAt: row.scheduled_at,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
+      outcome: row.outcome,
+    }));
   }
 
   /**
