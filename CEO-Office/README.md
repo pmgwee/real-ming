@@ -12,16 +12,19 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **14 of 44** |
-| Startable by an agent right now | **RM-13 — the 07:30 Morning Brief** |
-| Waiting on you | **Nothing** |
+| Phase 3 tickets closed | **16 of 44** |
+| Startable by an agent right now | **Nothing — RM-15 needs your host choice** |
+| Waiting on you | **Name the always-on host. One word.** |
 
-**RM-11 is complete. Master Tasks is now your single writable task system.**
+**RM-11 through RM-14 are complete.** Master Tasks is your single writable task system, Google Calendar is the calendar Source of Record, the 07:30 Morning Brief and 21:30 Executive Roll-Up are built, and do-not-disturb, weekend rhythm and error grouping all work.
 
-Verified against live Notion, not the command's exit code:
+**RM-15 is the first ticket that needs money and a vendor, so it stops here.** Gate 1 let you defer this and said "by RM-15 at the latest". This is RM-15.
 
-| | |
-| --- | --- |
+Everything that does not depend on the answer is already built and pushed — the scheduler runs the 07:00 held-notice sweep, the 07:30 brief and the 21:30 roll-up, each claiming its slot durably so a restart cannot double-send. Three of the five acceptance criteria are met. The other two cannot be, because there is nowhere for a timer to live.
+
+**Read [RM-15 — Choose where Real-Ming actually lives](RM-15-choose-the-always-on-host.md) and reply with a host name.** My recommendation is Fly.io, and the note explains why Vercel — already in your stack — is the wrong shape for this.
+
+--- | --- |
 | Legacy databases renamed `ARCHIVED EVIDENCE` and locked | **5 of 5** |
 | Linked views over Master Tasks, familiar names kept | **5** |
 | Sample edits proven to reach the canonical Work Item, then restored | **5** |
@@ -38,7 +41,7 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
-| Run Phase B | Approve `RM11-CUTOVER-3`, which binds the unchanged Digest 2 and source snapshot plus the completed Phase A report; then create five linked views, prove edit round-trips, and rename and lock the five originals read-only. | **Approve and execute** — Version 3 restores an unambiguous exact-Approval boundary without changing any reviewed decision. | Awaiting the exact sentence below |
+| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Fly.io** — closest fit to a small stateful Node service, and it does not make you a sysadmin. | Awaiting your word |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
