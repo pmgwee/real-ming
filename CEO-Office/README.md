@@ -12,22 +12,25 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **13 of 44** |
-| Startable by an agent right now | **Nothing. RM-11 is the only unblocked ticket and it needs you.** |
-| Waiting on you | **Approve `RM11-CUTOVER-3` and start Phase B — the commit point** |
+| Phase 3 tickets closed | **14 of 44** |
+| Startable by an agent right now | **RM-13 — the 07:30 Morning Brief** |
+| Waiting on you | **Nothing** |
 
-**Phase A is done. 30 Work Items are in Master Tasks. Your five databases are still the daily system and are untouched.**
+**RM-11 is complete. Master Tasks is now your single writable task system.**
 
-Verified against live Notion, not just the command's exit code: 30 pages, 30 unique source references, lifecycles 15 Captured / 10 Planned / 2 Waiting-Blocked / 3 Ready for CEO Review, and all six Workstream totals exact. The 4 archive-only records were correctly not imported.
+Verified against live Notion, not the command's exit code:
 
-**Phase B has not run.** That is the commit point: it turns your five familiar pages into linked views over Master Tasks, then renames and locks the originals as `ARCHIVED EVIDENCE`. Until then you can still stop — the legacy databases remain writable and the imports can be quarantined by their `notion-migration:` prefix.
+| | |
+| --- | --- |
+| Legacy databases renamed `ARCHIVED EVIDENCE` and locked | **5 of 5** |
+| Linked views over Master Tasks, familiar names kept | **5** |
+| Sample edits proven to reach the canonical Work Item, then restored | **5** |
+| Master Tasks | 30 pages, 30 unique source references, writable |
+| Writable task systems | **exactly one** |
 
-`RM11-CUTOVER-1` went stale before it ran: four records were renamed from `To Do (Event/Work)` to `To Do` after you approved. Under the status semantics you confirmed, a domain suffix keeps the `To Do` meaning — so **not one of the 34 decisions changed**. I re-read the five sources read-only, re-bound the identical reconciliation to a fresh snapshot, and proved the decisions are byte-identical to the ones you approved. Your original RM-10 backup is untouched and remains your recovery evidence.
+Your five task pages still look and work the way they did — they are now views over one database. The originals are locked read-only evidence; nothing was deleted and nothing synchronizes back.
 
-The one current approval sentence is in the
-[Phase B packet](RM-11-phase-b-approval-packet.md).
-
-**RM-12 is complete** ([#13](https://github.com/pmgwee/real-ming/issues/13)) — Google Calendar is now the calendar Source of Record, and one commitment reconciles onto a Work Item. It was independent of RM-11, and RM-13 needed both, so it is done and waiting. **Every remaining ticket is now behind RM-11.**
+Phase B failed once before this, at the linked-view step, and retired nothing. The all-or-nothing guard held: all five databases stayed writable until the fix landed.
 
 ---
 
