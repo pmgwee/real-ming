@@ -24,7 +24,9 @@ Everything that does not depend on the answer is already built and pushed — th
 
 **You chose Azure.** Follow [RM-15 — Put Real-Ming on Azure](RM-15-azure-deployment-runbook.md): five steps, and **Step 1 is the budget alert** because your $200 expires in 30 days and then bills your card silently. Steps 2–5 are yours because they spend money and hold credentials; Step 6 is mine.
 
-That runbook also records why a VM rather than an Azure agent PaaS: Real-Ming makes **no model calls at all**, its Executive Roles are governance roles rather than hosted agents, and its append-only guarantees rest on 15 SQLite triggers that want a real local disk.
+⚠️ **Unbinding the card on day 31 stops Real-Ming, not just the billing.** The runbook now names that plainly and gives you three honest answers — keep paying about RM50 a month, migrate to GCP on the RM1,318 you already hold, or accept it only runs when the Lenovo is awake. I am building the deployment portable so that choice costs an afternoon rather than a rewrite.
+
+That runbook also records why a VM rather than an Azure agent PaaS, and where Azure AI Foundry genuinely does belong later: Real-Ming makes **no model calls at all**, its Executive Roles are governance roles rather than hosted agents, and its append-only guarantees rest on 15 SQLite triggers that want a real local disk.
 
 --- | --- |
 | Legacy databases renamed `ARCHIVED EVIDENCE` and locked | **5 of 5** |

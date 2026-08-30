@@ -61,6 +61,67 @@ decision, and it should be taken on its own merits rather than smuggled in here.
 
 ## Steps
 
+## ⚠️ What happens on day 31
+
+You said the budget is not a worry because you will unbind the card once the
+30-day credit expires. That solves overspending, but it is not the risk here.
+
+**RM-15 exists to make Real-Ming run while your Lenovo is shut — indefinitely.**
+Unbind the card and the virtual machine stops. Telegram goes quiet, the 07:30
+brief and 21:30 roll-up stop firing, and the ticket is undone. The danger is not
+a surprise bill; it is that the always-on host is only always-on for 30 days.
+
+So day 31 is a real decision, and there are three honest answers:
+
+| Option | Cost | Consequence |
+| --- | --- | --- |
+| Keep paying | roughly **$10–15/month** for a `B1s` — around RM50, well inside your RM250 cap | Nothing changes |
+| **Migrate to GCP** | Free — you hold **RM1,318** in credit, roughly 8–12 months of the same size machine | An afternoon of work, if we build for it now |
+| Stop | Free | Real-Ming goes back to running only when the Lenovo is awake |
+
+**Because of this, I will build the deployment to be portable from the start:**
+a container image, an explicit state backup, and no Azure-only glue in the
+application. Nothing here will bind you to Azure. Day 31 then costs you an
+afternoon rather than a rewrite, and you still get the Azure experience on your
+résumé either way.
+
+Set the budget alert anyway — it is how you learn the credit is nearly gone
+before the machine stops, rather than after.
+
+---
+
+## Is Azure AI Foundry the right home for the agents?
+
+You showed me the Foundry Agents portal and you are right that it is a Cloud
+Agent PaaS. My earlier answer — "it solves a problem we do not have" — was true
+of RM-15 but too dismissive of its future role. The honest split:
+
+**Yes, later, as a model provider and evaluation surface.** Real-Ming will make
+model calls: brokered Agent Brain evidence (RM-20), email read-and-draft
+(RM-29), the content workflow (RM-32), and model routing with Metered Platform
+Cost (RM-37). Foundry's traces, evaluations and guardrails are genuinely useful
+there, and its guardrails could help enforce the Sensitive Secret exclusion the
+specification requires.
+
+**No, as the runtime that holds context and takes actions.** Two conflicts, and
+both are with the parts of the design that give this system its point:
+
+- **Knowledge and Memory in Foundry would bypass the Vaults.** The Context Vault
+  (RM-17, RM-18) and Trust-Domain Knowledge Vault (RM-41) exist so Personal
+  Context is encrypted, CEO-controlled and role-scoped. Uploading notes into a
+  Foundry agent's Knowledge would put that material in a vendor runtime with
+  none of those boundaries.
+- **A Foundry agent calling tools directly would route around the Policy and
+  Approval Engine.** Real-Ming's thesis is that every action is policy-checked
+  and irreversible ones need an exact-version Approval. An agent that acts on
+  its own is precisely what the Approval Engine exists to prevent.
+
+**Either way it is not RM-15.** Foundry does not host a long-lived Node process
+with a local SQLite file. Use it as a provider behind our own gateway, not as a
+replacement for it. That decision belongs to RM-37 when model routing is built.
+
+---
+
 ### Step 1 · Budget alert — do this first (you)
 
 Portal → **Cost Management** → **Budgets** → **Add**.
@@ -116,6 +177,7 @@ GitHub issue.
 
 Once Steps 1–5 are done I will:
 
+- containerise the service so day 31 is a migration, not a rewrite
 - write the systemd unit that runs the scheduler and the Telegram front door
 - fetch secrets from Key Vault at start-up via managed identity, never to disk
 - put the SQLite state on the managed disk and add a **daily backup** to Azure
