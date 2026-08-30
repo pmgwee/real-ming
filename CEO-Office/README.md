@@ -38,10 +38,24 @@ Cost Management → Budgets → Add → subscription scope → RM250 → alerts 
 to your email. It is the only thing that tells you when the $200 credit stops
 absorbing the bill. It does not block RM-15.
 
-**RM-15 is now agent work.** Credential resolution, the Key Vault reader, the
-durable Telegram cursor and the two-loop supervisor are built and pushed. What
-remains is the production composition root, the deployment artefacts, and the
+**RM-15 is now agent work.** Built and pushed: credential resolution
+(`src/runtime/credential-resolver.ts`, environment first so the vault stays
+optional and day 31 is a redeploy), the Key Vault reader via the VM's managed
+identity (`src/providers/azure-key-vault-reader.ts`), the durable Telegram
+ingress cursor, the two-loop supervisor, and the Google access-token exchange.
+
+Remaining: the production composition root, the deployment artefacts
+(container, systemd unit, state on the managed disk, daily backup), and the
 opt-in live smoke test.
+
+⚠️ **A scoping finding that belongs in the RM-15 close-out.** No production
+composition root exists yet; only `src/config/notion-master-tasks-cutover-cli.ts`
+wires real adapters, and it uses refusing `ControlledWorker` / `EffectVerifier`
+/ `QuestionResponder` implementations. The control plane follows that pattern,
+because the Lenovo private worker is **RM-21**, which is blocked by RM-16. So
+capture, review, approvals, the brief, the roll-up and Telegram all work, but
+the deployed service cannot yet *execute* a Work Item autonomously. That will be
+stated plainly when #16 closes rather than left to look complete.
 
 --- | --- |
 | Phase 3 tickets closed | **16 of 44** |
