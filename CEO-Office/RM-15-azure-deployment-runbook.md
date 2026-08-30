@@ -154,51 +154,113 @@ Your $200 credit expires in 30 days. Without this you find out by being charged.
 
 ### Step 2 · Resource group and virtual machine (you)
 
-Portal → **Create a resource** → **Virtual machine**.
+Portal → **Create a resource** → **Virtual machine**. Every field, every tab.
+
+#### Three settings that silently break this ticket
+
+Get these wrong and Real-Ming looks deployed but is not:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| **Run with Azure Spot discount** | **UNCHECKED** | Spot machines are evicted with about 30 seconds' notice. Fatal for an always-on service. |
+| **Auto-shutdown** (Management tab) | **Off** | Azure often defaults it on. It would shut the machine down nightly — the exact opposite of this ticket. |
+| **System assigned managed identity** (Management tab) | **On** | Step 3's Key Vault access depends on it. Without it the service cannot read its own credentials. |
+
+#### Basics
 
 | Field | Value |
 | --- | --- |
-| Resource group | `real-ming` (create new) |
-| Name | `real-ming-control-plane` |
-| Region | **Southeast Asia** (Singapore, closest to you) |
-| Image | Ubuntu Server LTS |
-| Size | **B1s** — see the note below |
-| Authentication | SSH public key |
-| Inbound ports | **SSH (22) only** |
-| Disk | Standard SSD, 30 GB |
-| Identity | Enable **system-assigned managed identity** |
+| Subscription | Azure subscription 1 |
+| Resource group | **(New)** `real-ming` |
+| Virtual machine name | `real-ming-control-plane` |
+| Region | **(Asia Pacific) Southeast Asia** |
+| Availability options | Availability zone *(or "No infrastructure redundancy required" — either is fine for one VM)* |
+| Zone options | Self-selected zone |
+| Availability zone | Zone 1 |
+| Security type | Trusted launch virtual machines — **switch to Standard if it blocks the B-series size** |
+| Image | **Ubuntu Server 24.04 LTS - x64 Gen2** |
+| VM architecture | x64 |
+| **Size** | **`B1s`** — click **See all sizes**, search `B1s`. Expect roughly **US$8–10/month**. Anything showing $90 is the wrong size. |
+| Run with Azure Spot discount | **UNCHECKED** |
+| Authentication type | SSH public key |
+| Username | `azureuser` |
+| SSH public key source | Generate new key pair |
+| SSH Key Type | **Ed25519** — shorter and more modern than RSA |
+| Key pair name | `real-ming-control-plane_key` |
+| Public inbound ports | Allow selected ports |
+| Select inbound ports | **SSH (22)** only |
 
-Do not open port 80 or 443. The Telegram front door polls outward; nothing
-needs to reach in.
+If `B1s` is unavailable for your subscription, take the cheapest **B-series**
+offered — `B1ms`, `B2ts_v2`, anything beginning with B. The family matters more
+than the exact model.
 
-#### Ignore the "recommended defaults" workload page
+#### Disks
 
-Azure offers General purpose (D-series), Memory optimized (E-series) and
-Compute optimized (F-series). **None of them is right here**, and the smallest
-one shown — `DS2_v2`, 2 CPU and 7 GB — is roughly ten times the machine this
-needs and would consume the $200 credit in a couple of months.
+| Field | Value |
+| --- | --- |
+| OS disk size | Image default (30 GiB) |
+| OS disk type | **Standard SSD (locally-redundant storage)** — Premium costs more for no benefit here |
+| Delete with VM | ✅ Checked |
+| Key management | Platform-managed key |
+| Enable Ultra Disk | No |
+| Data disks | **None.** State lives on the OS disk; the backup in Step 6 is what protects it, not the disk layout. |
 
-Real-Ming is idle almost all the time. It polls Telegram, holds a SQLite file,
-and wakes three times a day at 07:00, 07:30 and 21:30. That is the textbook
-**burstable** workload, which is the **B-series** — and Azure does not show it
-on that page because it defaults to production-grade families.
+#### Networking
 
-**The workload page has no "see all sizes" link, and that is fine — it is only
-a default for the next form.** Choose **General purpose**, which is genuinely
-correct: the B-series sits inside the General purpose family in Azure's own
-classification, and the page merely shows `DS2_v2` as its example. Then
-**continue to Create a VM**.
+| Field | Value |
+| --- | --- |
+| Virtual network | (new) default |
+| Subnet | default |
+| Public IP | (new) — you need it for SSH |
+| NIC network security group | Basic |
+| Public inbound ports | Allow selected ports |
+| Select inbound ports | **SSH (22)** |
+| Delete public IP and NIC when VM is deleted | ✅ Checked |
+| Load balancing | None |
 
-On the VM form's **Basics** tab, find **Size** → **See all sizes** → search
-**`B1s`**, and select it — 1 vCPU, 1 GiB, roughly $8–10 a month. If the form
-arrives pre-filled with a D-series, change it; that is expected. The size on
-this tab is the one that counts. Check the price the portal shows as you
-select; it is the number that decides how far your credit stretches.
+⚠️ Azure will warn that SSH is open to every IP on the internet. It is right.
+Key-only authentication makes it survivable, but this machine will hold your ten
+credentials. **After the VM is running, restrict the SSH rule to your own IP**
+in the network security group. Do not skip that once you are set up.
 
-⚠️ **Do not build the container on the box.** 1 GiB is ample for running
-Real-Ming and tight for compiling it. The image gets built off the machine and
-pulled, which is also what keeps day 31 cheap. If you would rather build on the
-box, take `B2s` instead and accept the higher burn.
+#### Management
+
+| Field | Value |
+| --- | --- |
+| **System assigned managed identity** | ✅ **On** — required by Step 3 |
+| Login with Microsoft Entra ID | Off |
+| **Enable auto-shutdown** | ❌ **Off** |
+| Enable backup | Off — Step 6 backs up the state file itself, which is what matters |
+| Enable disaster recovery | Off |
+| Patch orchestration | **Azure-orchestrated** — automatic guest patching. A reboot is safe: systemd restarts the service and the scheduler's occurrence claim prevents a duplicate brief. |
+
+#### Monitoring
+
+| Field | Value |
+| --- | --- |
+| Boot diagnostics | Enable with managed storage account — free, and the only way to see why a boot failed |
+| Enable OS guest diagnostics | Off |
+| Recommended alert rules | Off — they cost money and the dashboard already reports scheduler health |
+| Application health monitoring | Off |
+
+#### Advanced
+
+Leave every field at its default. No extensions, no custom data, no user data,
+no proximity placement group. Step 6 configures the machine over SSH.
+
+#### Tags
+
+Optional but worth thirty seconds, because it makes cost attribution readable:
+
+| Name | Value |
+| --- | --- |
+| `project` | `real-ming` |
+| `owner` | `ming` |
+
+#### Review + create
+
+**Check the estimated monthly cost before you press create.** It should be
+single-digit US dollars. If it is not, the size is wrong — go back to Basics.
 
 ### Step 3 · Key Vault (you)
 
