@@ -77,9 +77,25 @@ So day 31 is a real decision, and there are three honest answers:
 
 | Option | Cost | Consequence |
 | --- | --- | --- |
-| Keep paying | roughly **$10–15/month** for a `B1s` — around RM50, well inside your RM250 cap | Nothing changes |
-| **Migrate to GCP** | Free — you hold **RM1,318** in credit, roughly 8–12 months of the same size machine | An afternoon of work, if we build for it now |
+| Keep paying, as built | roughly **$95–115/month** — around **RM450–540** | Nothing changes, but this is real money |
+| Keep paying, resized | roughly **$10–15/month** on a `B1s` | Nothing changes; the workload never needed `D2as_v5` |
+| **Migrate to GCP** | Free — you hold **RM1,318** in credit, roughly 8–12 months of a small machine | An afternoon of work, if we build for it now |
 | Stop | Free | Real-Ming goes back to running only when the Lenovo is awake |
+
+**A correction to what this table said before.** It quoted RM50/month against a
+`B1s`, which was the size assumed when the choice was first written. You then
+chose `D2as_v5` — correctly, because the trial credit makes the larger machine
+free for thirty days and the experience is worth having. But the consequence
+followed the size: 2 vCPU and 8 GiB with a 128 GiB premium disk and a static
+public IP is roughly **ten times** the running cost of the machine this table
+was describing, and it is well above the RM250 cap the specification sets for
+Metered Platform Cost.
+
+That does not make the choice wrong. It makes "keep paying, as built" the option
+you would not want to pick by default on day 31. The workload — one Node
+process, a SQLite file, three scheduled jobs a day, no model inference anywhere
+in the codebase — has never needed more than a `B1s`. Resizing is a slider in
+the portal, not a migration.
 
 ### Your stated exit plan
 
@@ -151,7 +167,11 @@ replacement for it. That decision belongs to RM-37 when model routing is built.
 Portal → **Cost Management** → **Budgets** → **Add**.
 
 - Scope: your subscription
-- Amount: **RM250** (the cap in the specification)
+- Amount: **RM250** (the Metered Platform Cost cap in the specification)
+
+  This is a tripwire, not a sizing constraint. It exists so that the moment the
+  trial credit stops absorbing the bill, you hear about it from an alert rather
+  than from a charge.
 - Alerts at 50%, 80%, 100%, to your email
 
 Your $200 credit expires in 30 days. Without this you find out by being charged.
@@ -300,14 +320,91 @@ Optional but worth thirty seconds, because it makes cost attribution readable:
 **Check the estimated monthly cost before you press create.** It should be
 single-digit US dollars. If it is not, the size is wrong — go back to Basics.
 
+#### Lock SSH to your own address
+
+The portal creates the SSH rule with `Source: Any`, which means every address on
+the internet may attempt to log in. Fix that as soon as the key is proven to
+work — prove it first, so a failure afterwards has only one possible cause.
+
+**Networking → Network settings →** click the rule named `SSH`. One field
+changes; everything else is already correct.
+
+| Field | Value |
+| --- | --- |
+| **Source** | **`My IP address`** — the only change |
+| Source IP addresses/CIDR ranges | appears once Source changes; confirm it is populated |
+| Source port ranges | `*` |
+| Destination | `Any` |
+| Service | `SSH` |
+| Destination port ranges | `22` — greyed out, set by Service |
+| Protocol | `TCP` — greyed out, set by Service |
+| Action | `Allow` |
+| Priority | `300` |
+| Name | `SSH` — greyed out, fixed at creation |
+
+The amber "exposed to the Internet" banner disappears when it is right. Prove it
+from a second terminal before closing the first.
+
+Malaysian home connections are usually dynamic, so this rule will eventually
+reject you after a router reboot. That is the rule working. Return here and
+click **My IP address** again. You cannot lock yourself out permanently: the
+rule is edited from the portal, not from inside the machine.
+
 ### Step 3 · Key Vault (you)
 
-Portal → **Create a resource** → **Key Vault**, into the `real-ming` group,
-Southeast Asia, name `real-ming-vault`.
+Portal → **Create a resource** → **Key Vault**.
 
-Then **Access control (IAM)** → grant the VM's managed identity the
-**Key Vault Secrets User** role. That is what lets the service read its own
-credentials without any secret living on the disk.
+**Basics**
+
+| Field | Value |
+| --- | --- |
+| Subscription | `Azure subscription 1` |
+| Resource group | `real-ming` |
+| Key vault name | `real-ming-vault` — globally unique across Azure; if taken, add a suffix and tell me |
+| Region | **East Asia** — the same region as the VM |
+| Pricing tier | **Standard** |
+| Days to retain deleted vaults | **7** |
+| Purge protection | **Disabled** |
+
+**Purge protection must stay disabled, and it is irreversible.** Enabled, the
+vault survives deletion of its resource group for the full retention period,
+which defeats the day-31 teardown below. Retention of 7 rather than the default
+90 matters for the same reason: a soft-deleted vault keeps its name reserved,
+so 90 days would block reusing the name for the whole trial and beyond.
+
+**Access configuration**
+
+| Field | Value |
+| --- | --- |
+| Permission model | **Azure role-based access control (RBAC)** |
+| The three resource-access checkboxes | all unchecked |
+
+**This is the field that must be right.** Choose the legacy "Vault access
+policy" model instead and Step 3's role assignments have nothing to bind to;
+the vault has to be reconfigured before the managed identity can read anything.
+
+**Networking**
+
+| Field | Value |
+| --- | --- |
+| Connectivity method | **Public endpoint (all networks)** |
+
+Access is gated by RBAC and the managed identity rather than by the network. A
+private endpoint is more machinery for no gain over a thirty-day trial.
+
+#### Two role assignments, not one
+
+**Access control (IAM) → + Add → Add role assignment**, twice.
+
+| # | Role | Assign to | Why |
+| --- | --- | --- | --- |
+| a | **Key Vault Secrets User** | Managed identity → Virtual machine → `real-ming-control-plane` | lets the service read its own credentials with no secret on disk |
+| b | **Key Vault Secrets Officer** | User → your own account | lets **you** create the secrets in the first place |
+
+**Being subscription Owner does not let you write a secret.** Under the RBAC
+model, Owner and Contributor govern the vault as a *resource*; they say nothing
+about the data inside it. Without (b) the Secrets blade answers `The operation
+is not allowed by RBAC`, which reads like a fault and is not one.
 
 ### Step 4 · Tell me the names (you)
 

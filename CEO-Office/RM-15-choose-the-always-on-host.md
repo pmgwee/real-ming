@@ -1,6 +1,6 @@
 # RM-15 — Choose where Real-Ming actually lives
 
-> **✅ Decided: Azure, Southeast Asia.** See
+> **✅ Decided: Azure, East Asia.** See
 > [RM-15 — Put Real-Ming on Azure](RM-15-azure-deployment-runbook.md) for what
 > to do. This note is kept as the record of how the choice was made.
 
@@ -56,8 +56,10 @@ Not much, but these four are non-negotiable:
    every Work Item, Approval and audit row on each deploy.
 3. **Hold secrets with rotation.** Ten credentials, and `AGENTS.md` requires
    they live in a secret store, never in Git.
-4. **Cost a few ringgit a month.** Your global Metered Platform Cost cap is
-   RM250 and this should be a rounding error against it.
+4. **Cost nothing for thirty days.** The Azure trial credit covers this
+   entirely, so size for the work rather than for thrift. What matters is the
+   day-31 exit, not the monthly figure — see the exit plan in the deployment
+   runbook.
 
 ---
 
