@@ -505,6 +505,12 @@ export class OperationsState {
         PRIMARY KEY (job, occurrence_date)
       );
 
+      CREATE TABLE IF NOT EXISTS telegram_ingress_cursor (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        update_id INTEGER NOT NULL,
+        advanced_at TEXT NOT NULL
+      );
+
       CREATE TABLE IF NOT EXISTS held_exception_notices (
         idempotency_key TEXT PRIMARY KEY,
         kind TEXT NOT NULL,
@@ -1494,6 +1500,40 @@ export class OperationsState {
          WHERE job = ? AND occurrence_date = ?`,
       )
       .run(completedAt, outcome, job, occurrenceDate);
+  }
+
+  /**
+   * The highest Telegram update this control plane has finished handling.
+   *
+   * Telegram redelivers every update until the polling offset moves past it,
+   * so this has to outlive the process. Held in memory, a restart would replay
+   * the CEO's last instructions -- the same duplicate-execution fault the
+   * scheduler's occurrence claim already prevents.
+   */
+  telegramIngressCursor(): number {
+    const row = this.#database
+      .prepare("SELECT update_id FROM telegram_ingress_cursor WHERE id = 1")
+      .get() as { readonly update_id: number } | undefined;
+    return row?.update_id ?? 0;
+  }
+
+  /**
+   * Move the cursor forward. Monotonic on purpose: an out-of-order or replayed
+   * update must never drag it backwards and reopen everything after it.
+   */
+  advanceTelegramIngressCursor(updateId: number, advancedAt: string): void {
+    if (!Number.isSafeInteger(updateId) || updateId < 0) {
+      throw new Error("A Telegram ingress cursor must be a non-negative safe integer.");
+    }
+    this.#database
+      .prepare(
+        `INSERT INTO telegram_ingress_cursor (id, update_id, advanced_at)
+         VALUES (1, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           update_id = MAX(telegram_ingress_cursor.update_id, excluded.update_id),
+           advanced_at = excluded.advanced_at`,
+      )
+      .run(updateId, advancedAt);
   }
 
   schedulerRuns(): readonly {

@@ -1,3 +1,16 @@
+import {
+  pollTelegramUpdates as pollUpdates,
+  type TelegramPollResult,
+} from "../runtime/telegram-ingress.js";
+
+import {
+  resolveControlPlaneCredentials as resolveCredentials,
+  type ResolvedCredentials,
+  type VaultFailure,
+  type VaultReadResult,
+  type VaultSecretReader,
+} from "../runtime/credential-resolver.js";
+
 import type {
   Approval,
   AuditEvent,
@@ -135,6 +148,17 @@ export interface ControlledMorningBriefOptions {
 }
 
 export type ControlledCutoverSource = CutoverSourceSnapshot;
+
+/**
+ * A controlled stand-in for Azure Key Vault. Tests configure what the vault
+ * holds, or how it fails, without any network call or credential.
+ */
+export interface ControlledVaultOptions {
+  readonly secrets?: Readonly<Record<string, string>>;
+  readonly failure?: VaultFailure;
+  /** Counts reads, so a test can prove a failed vault is not retried per credential. */
+  readonly onRead?: () => void;
+}
 
 export interface ControlledCalendarOptions {
   readonly events: readonly CalendarEvent[];
@@ -296,6 +320,10 @@ export interface RealMingSystemHarness {
   cutoverSourceReadCount(): number;
   cutoverRetiredSources(): readonly string[];
   cutoverRecovery(): CutoverRecovery;
+  resolveControlPlaneCredentials(request: {
+    readonly environment: Readonly<Record<string, string | undefined>>;
+    readonly vault?: ControlledVaultOptions;
+  }): Promise<ResolvedCredentials>;
   runMorningBrief(): Promise<MorningBriefResult>;
   runExecutiveRollUp(): Promise<ExecutiveRollUpResult>;
   admitExceptionNotice(
@@ -366,6 +394,10 @@ export interface RealMingSystemHarness {
   controlledReceipts(): readonly WorkerReceipt[];
   controlledVerificationResults(): readonly VerifierResult[];
   receiveTelegramUpdate(update: TelegramUpdate): Promise<TelegramIngressResult>;
+  pollTelegramUpdates(
+    updates: readonly TelegramUpdate[],
+  ): Promise<TelegramPollResult>;
+  telegramIngressCursor(): number;
   publishTelegramReviewControls(
     request: PublishTelegramReviewControlsRequest,
   ): Promise<readonly TelegramInlineControl[]>;
@@ -556,6 +588,8 @@ export function createRealMingSystemHarness(options: {
     readonly afterReviewControlClaimedError?: string;
     readonly afterReplyDeliveredError?: string;
     readonly auditPseudonymKey?: string;
+    /** Throw while handling this update, to prove the cursor stays behind it. */
+    readonly ingressFailureFor?: number;
   };
   readonly legacyTaskSources?: readonly LegacyTaskSource[];
   readonly cutover?: ControlledCutoverOptions;
@@ -833,6 +867,27 @@ export function createRealMingSystemHarness(options: {
     cutoverSourceReadCount: () => cutoverWorkspace?.sourceReadCount() ?? 0,
     cutoverRetiredSources: () => cutoverWorkspace?.retiredSources() ?? [],
     cutoverRecovery: () => requireCutover().recovery(),
+    resolveControlPlaneCredentials: (request) => {
+      const configured = request.vault;
+      let vault: VaultSecretReader | undefined;
+      if (configured !== undefined) {
+        const failure = configured.failure;
+        const secrets = configured.secrets ?? {};
+        vault = {
+          read: async (secretName): Promise<VaultReadResult> => {
+            configured.onRead?.();
+            if (failure !== undefined) return { kind: "failed", failure };
+            const value = secrets[secretName];
+            return value === undefined
+              ? { kind: "absent" }
+              : { kind: "found", value };
+          },
+        };
+      }
+      return vault === undefined
+        ? resolveCredentials({ environment: request.environment })
+        : resolveCredentials({ environment: request.environment, vault });
+    },
     runMorningBrief: () => {
       if (morningBrief === undefined) {
         throw new Error("This harness was not configured with a Morning Brief.");
@@ -896,6 +951,27 @@ export function createRealMingSystemHarness(options: {
     controlledVerificationResults: () => verifier.results(),
     receiveTelegramUpdate: (update) =>
       telegramFrontDoor.receiveUpdate(normalizeHarnessTelegramUpdate(update)),
+    pollTelegramUpdates: (updates) =>
+      pollUpdates({
+        updates,
+        cursor: () => state.telegramIngressCursor(),
+        advance: (updateId) =>
+          state.advanceTelegramIngressCursor(
+            updateId,
+            options.now?.() ?? new Date().toISOString(),
+          ),
+        receive: async (update) => {
+          if (options.telegram?.ingressFailureFor === update.updateId) {
+            throw new Error(
+              `Controlled ingress failure for update ${update.updateId}.`,
+            );
+          }
+          return telegramFrontDoor.receiveUpdate(
+            normalizeHarnessTelegramUpdate(update),
+          );
+        },
+      }),
+    telegramIngressCursor: () => state.telegramIngressCursor(),
     publishTelegramReviewControls: (request) =>
       telegramFrontDoor.publishReviewControls(request),
     notifyTelegram: (notification) => telegramFrontDoor.notify(notification),
@@ -910,6 +986,7 @@ export function createRealMingSystemHarness(options: {
 export type {
   Approval,
   AuditEvent,
+  ResolvedCredentials,
   DashboardCredential,
   DashboardOverview,
   DashboardServer,
