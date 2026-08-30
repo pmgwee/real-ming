@@ -173,7 +173,7 @@ Get these wrong and Real-Ming looks deployed but is not:
 | Subscription | Azure subscription 1 |
 | Resource group | **(New)** `real-ming` |
 | Virtual machine name | `real-ming-control-plane` |
-| Region | **(Asia Pacific) Southeast Asia** |
+| Region | **Southeast Asia** if sizes are available, otherwise **East Asia** — see the note below |
 | Availability options | Availability zone *(or "No infrastructure redundancy required" — either is fine for one VM)* |
 | Zone options | Self-selected zone |
 | Availability zone | Zone 1 |
@@ -190,9 +190,42 @@ Get these wrong and Real-Ming looks deployed but is not:
 | Public inbound ports | Allow selected ports |
 | Select inbound ports | **SSH (22)** only |
 
-If `B1s` is unavailable for your subscription, take the cheapest **B-series**
-offered — `B1ms`, `B2ts_v2`, anything beginning with B. The family matters more
-than the exact model.
+#### If every small size says `NotAvailableForSubscription`
+
+This happened, and it is a subscription restriction rather than a size or region
+fault: the SKU exists in Southeast Asia, but a new subscription is not permitted
+to use it there. Microsoft restricts capacity-constrained regions for new
+accounts, and Singapore is one of the most constrained it operates.
+
+**The fix is to change the region, and it costs this workload nothing.**
+
+Latency is close to irrelevant here. Real-Ming polls Telegram, calls Notion and
+Google, and wakes three times a day. It does not serve interactive requests to
+Ming, so 30 milliseconds versus 90 changes nothing he would ever perceive.
+"Closest to you" was good general practice, not a requirement of this system.
+
+On **Basics → Region**, try these in order and re-check the size list each time:
+
+| Region | Approx. latency from KL | Note |
+| --- | --- | --- |
+| **East Asia** (Hong Kong) | ~30 ms | Closest alternative |
+| **Japan East** (Tokyo) | ~70 ms | Usually good availability |
+| **Australia East** (Sydney) | ~90 ms | Usually good availability |
+| **Central India** (Pune) | ~60 ms | Usually good availability |
+
+⚠️ **This decides where your personal data sits.** Task titles, calendar
+entries and Work Items would live in that region rather than Singapore. For a
+personal system any of these is defensible, but it is your call rather than
+mine — pick the one you are comfortable with rather than simply the fastest.
+
+**If you would rather stay in Singapore**, the alternative is a quota request:
+Subscription → **Usage + quotas** → search **Standard BS Family vCPUs** →
+**Request increase** → ask for 2–4 vCPUs. It is free. Trial subscriptions are
+sometimes refused until upgraded to pay-as-you-go, so treat it as the slower
+path rather than the reliable one.
+
+Whichever region you land on, still take a **B-series** size — `B1s`, `B1ms`,
+`B2ts_v2`. The family matters more than the exact model.
 
 #### Disks
 
