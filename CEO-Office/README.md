@@ -41,7 +41,7 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
-| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Fly.io** — closest fit to a small stateful Node service, and it does not make you a sysadmin. | Awaiting your word |
+| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Fly.io** for least ongoing work, or **GCP Compute Engine** in `asia-southeast1` if you want a real rotating secret store and accept being a sysadmin. | Awaiting your word |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 

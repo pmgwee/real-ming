@@ -69,8 +69,46 @@ My assessment, not verified pricing — check the current rate before you commit
 | **Vercel** | **No** | Already in your stack for the consent site, so it is the tempting answer. It is the wrong shape: serverless functions, no persistent disk, no long-lived process. SQLite would not survive a deploy. |
 | **Home machine / Raspberry Pi** | No | Defeats the point. "While the Lenovo is asleep" includes power cuts and your home internet. |
 
-**Recommendation: Fly.io.** It is the closest fit to a small stateful Node
-service with a disk, and it does not make you a sysadmin.
+### If you want a hyperscaler VM
+
+You asked about GCP Compute Engine and Azure Virtual Machines. Both clear all
+four requirements, and both are the "small VPS" row above with a bigger console
+around them.
+
+| | GCP Compute Engine | Azure Virtual Machines |
+| --- | --- | --- |
+| Long-running process | Yes | Yes |
+| Persistent disk for SQLite | Yes, persistent disk | Yes, managed disk |
+| Secret store with rotation | **Secret Manager** — versioned, rotation schedules | **Key Vault** — versioned, rotation policies |
+| Nearest region to KL | `asia-southeast1`, Singapore | `Southeast Asia`, Singapore |
+| Free allowance | An `e2-micro` free tier exists but only in US regions, which puts the machine far from you | Twelve months of `B1s`, and Azure for Students gives credit without a card |
+| Ongoing work | You own OS patching, firewall, TLS, systemd and backups | Same |
+
+**They correct something in my Fly.io recommendation.** I said Fly secrets
+"support rotation". That was loose: Fly secrets are environment values you can
+replace, not a versioned store with rotation schedules. Secret Manager and Key
+Vault genuinely are. `AGENTS.md` asks for "a secret store that supports
+rotation", so on that requirement a hyperscaler is the stronger answer, not
+merely an equal one.
+
+**What they cost you is not money, it is time.** A VM makes you the system
+administrator permanently: kernel updates, firewall rules, certificate renewal,
+and — the one people forget — your own backup of the SQLite file. Fly.io and
+Railway absorb most of that.
+
+**If you want a hyperscaler, I would pick GCP Compute Engine in
+`asia-southeast1`,** for one practical reason beyond features: your Google
+credentials already exist for Calendar, so it is one fewer vendor relationship
+and one fewer payment method to place. Azure is not worse on the merits; it is
+just another account unless you already have student credit there.
+
+### Recommendation
+
+- **Least ongoing work:** Fly.io.
+- **Best secret handling, and you accept being a sysadmin:** GCP Compute Engine,
+  `asia-southeast1`, with Secret Manager.
+
+Either is defensible. Pick on whether you would rather spend money or evenings.
 
 ---
 
