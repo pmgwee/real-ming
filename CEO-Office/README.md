@@ -8,10 +8,42 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## 🚦 Current status
 
-*As of 2026-08-29 · run `npm run graph:status` for live truth*
+*As of 2026-08-31 · run `npm run graph:status` for live truth*
 
 | | |
 | --- | --- |
+| Phase 3 tickets closed | **16 of 44** |
+| Startable by an agent right now | **RM-15 (#16)** — in progress, no CEO action needed |
+| Waiting on you | **One optional item: the Azure budget alert** |
+
+**RM-11 through RM-14 are complete and closed.** Master Tasks is your single
+writable task system, Google Calendar is the calendar Source of Record, and the
+07:30 Morning Brief, 21:30 Executive Roll-Up, do-not-disturb, weekend rhythm and
+error grouping all work.
+
+**Azure is fully provisioned.** You did every step that needed you:
+
+| | |
+| --- | --- |
+| Virtual machine | `real-ming-control-plane` — D2as_v5, 2 vCPU, 8 GiB, Ubuntu 24.04, East Asia Zone 1 |
+| Disk | 128 GiB Premium SSD, expanded, 122 GiB free |
+| SSH | key proven, rule restricted from `Any` to your own address |
+| Managed identity | system-assigned, On |
+| Key Vault | `real-ming-vault`, East Asia, **Azure RBAC** model, purge protection disabled, 7-day retention |
+| Role assignments | Key Vault Secrets **User** to the VM, Secrets **Officer** to you — both scoped to the vault, not the subscription |
+| Secrets | **10 of 10** loaded and Enabled |
+
+⚠️ **Still outstanding, and only you can do it: the budget alert.**
+Cost Management → Budgets → Add → subscription scope → RM250 → alerts at 50/80/100%
+to your email. It is the only thing that tells you when the $200 credit stops
+absorbing the bill. It does not block RM-15.
+
+**RM-15 is now agent work.** Credential resolution, the Key Vault reader, the
+durable Telegram cursor and the two-loop supervisor are built and pushed. What
+remains is the production composition root, the deployment artefacts, and the
+opt-in live smoke test.
+
+--- | --- |
 | Phase 3 tickets closed | **16 of 44** |
 | Startable by an agent right now | **Nothing — RM-15 needs your host choice** |
 | Waiting on you | **Azure: budget alert, VM, Key Vault, ten secrets** |
@@ -24,7 +56,7 @@ Everything that does not depend on the answer is already built and pushed — th
 
 **You chose Azure.** Follow [RM-15 — Put Real-Ming on Azure](RM-15-azure-deployment-runbook.md): five steps, and **Step 1 is the budget alert** because your $200 expires in 30 days and then bills your card silently. Steps 2–5 are yours because they spend money and hold credentials; Step 6 is mine.
 
-⚠️ **Unbinding the card on day 31 stops Real-Ming, not just the billing.** The runbook now names that plainly and gives you three honest answers — keep paying about RM50 a month, migrate to GCP on the RM1,318 you already hold, or accept it only runs when the Lenovo is awake. Your plan is to migrate to Fly.io, Railway, ReadyServer or Hostinger at that point, so the deployment is built portable: a container image, environment variables as the only secret interface, and a tested backup that *is* the migration. ⚠️ When you subscribe, buy a **VPS** plan — shared hosting cannot run a long-lived process or hold SQLite.
+⚠️ **Unbinding the card on day 31 stops Real-Ming, not just the billing.** The runbook now names that plainly and gives you three honest answers — keep paying (about **RM450-540/month as built**, or about RM50 if resized to a `B1s`, which is all this workload ever needed), migrate to GCP on the RM1,318 you already hold, or accept it only runs when the Lenovo is awake. Your plan is to migrate to Fly.io, Railway, ReadyServer or Hostinger at that point, so the deployment is built portable: a container image, environment variables as the only secret interface, and a tested backup that *is* the migration. ⚠️ When you subscribe, buy a **VPS** plan — shared hosting cannot run a long-lived process or hold SQLite.
 
 That runbook also records why a VM rather than an Azure agent PaaS, and where Azure AI Foundry genuinely does belong later: Real-Ming makes **no model calls at all**, its Executive Roles are governance roles rather than hosted agents, and its append-only guarantees rest on 15 SQLite triggers that want a real local disk.
 
@@ -45,7 +77,7 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
-| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Settled: Azure**, Southeast Asia. Chosen for the résumé value on the one cloud you have not used, with the credit difference largely illusory since both expire. | ✅ Decided |
+| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Settled: Azure**, East Asia (Southeast Asia refused every small size for this subscription). Chosen for the résumé value on the one cloud you have not used, with the credit difference largely illusory since both expire. | ✅ Decided |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
@@ -57,15 +89,19 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 
 ## ✅ What needs you
 
-**One action:** paste this exact sentence. It approves the immutable Phase B
-continuation and authorizes the irreversible commit point:
+**Nothing is blocking agent work.** The only item left for you is the Azure
+budget alert described in the status board above, and RM-15 proceeds without it.
 
-> I approve RM11-CUTOVER-3 bound to RM11-DIGEST-2, digest SHA-256 f6d31c8d318cdefb7f488df68f50be64829f99dc6b38369f1450f7bd721a17b6, source snapshot SHA-256 c66d697d04a7da1f0be61e2827e250a84cca47f1c10329f985757dda05546325, and completed Phase A report SHA-256 a148737ae4d6e61761570d5726130898d9c580a361bb070cf3dffaad725f2f7f. Execute only the documented Phase B continuation and stop on any drift.
+`RM11-CUTOVER-3` was approved and executed on 29 Aug 2026: 30 pages imported,
+all five legacy databases retired to read-only evidence, exactly one writable
+task system remaining. Nothing about RM-11 is outstanding.
 
-Phase B will lock and retire the five legacy databases. No Phase B mutation
-runs until that sentence is received.
-
-Also worth knowing before any future Phase B, because it changes what you can do with three records: the 3 `Pending to Review` items arrive carrying a **migration Outcome Report** that states the effect Real-Ming performed was the migration itself, not the original work. That is what makes them completable at all — without it they could only ever be cancelled or rejected. The [runbook](RM-11-reconciliation-and-cutover-runbook.md) explains what you are confirming when you complete one.
+Worth keeping, because it changes what you can do with three records: the 3
+`Pending to Review` items carry a **migration Outcome Report** stating the
+effect Real-Ming performed was the migration itself, not the original work.
+That is what makes them completable at all -- without it they could only ever
+be cancelled or rejected. The [runbook](RM-11-reconciliation-and-cutover-runbook.md)
+explains what you are confirming when you complete one.
 
 Both initial gates remain closed:
 
@@ -75,8 +111,7 @@ Both initial gates remain closed:
 | RM-24 · DuitSini pilot update · [#25](https://github.com/pmgwee/real-ming/issues/25) | ✅ 28 Aug 2026 | Add OpenCode and CommandCode provider presets. Code change plus a Supabase migration, so two separate Approvals. |
 
 The RM-11 reconciliation working session is complete: all 34 dispositions were
-accepted and Phase A was verified. Only the separate Phase B commit-point
-Approval above remains.
+accepted, Phase A was verified, and Phase B executed successfully.
 
 The runbooks stay as the record of what was done: [Gate 1](GATE-1-provisioning-runbook.md) · [Gate 2](GATE-2-pilot-selection-runbook.md).
 
@@ -105,9 +140,7 @@ Master Tasks     rehearsal        again         brief     roll-up   env        P
 
 After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM-16 is the milestone worth aiming for.**
 
-⚠️ **RM-11 is currently at its Phase B commit point.** The reconciliation and
-Phase A import are complete; `RM11-CUTOVER-3` awaits your exact Approval before
-the five legacy writers are retired.
+✅ **Tracer 1 is one ticket from proven.** RM-07 through RM-14 are closed, RM-15 is in progress with Azure provisioned, and RM-16 proves the loop end to end.
 
 ---
 
