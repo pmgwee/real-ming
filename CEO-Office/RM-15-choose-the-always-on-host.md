@@ -1,5 +1,9 @@
 # RM-15 — Choose where Real-Ming actually lives
 
+> **✅ Decided: Azure, Southeast Asia.** See
+> [RM-15 — Put Real-Ming on Azure](RM-15-azure-deployment-runbook.md) for what
+> to do. This note is kept as the record of how the choice was made.
+
 > **TL;DR — pick one host, then I do the rest.** Gate 1 let you defer this and
 > said "by RM-15 at the latest". This is RM-15. Everything that does not depend
 > on the answer is already built, tested and pushed. Reply with a host name and

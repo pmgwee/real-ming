@@ -14,7 +14,7 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 | --- | --- |
 | Phase 3 tickets closed | **16 of 44** |
 | Startable by an agent right now | **Nothing — RM-15 needs your host choice** |
-| Waiting on you | **Name the always-on host. One word.** |
+| Waiting on you | **Azure: budget alert, VM, Key Vault, ten secrets** |
 
 **RM-11 through RM-14 are complete.** Master Tasks is your single writable task system, Google Calendar is the calendar Source of Record, the 07:30 Morning Brief and 21:30 Executive Roll-Up are built, and do-not-disturb, weekend rhythm and error grouping all work.
 
@@ -22,7 +22,9 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 Everything that does not depend on the answer is already built and pushed — the scheduler runs the 07:00 held-notice sweep, the 07:30 brief and the 21:30 roll-up, each claiming its slot durably so a restart cannot double-send. Three of the five acceptance criteria are met. The other two cannot be, because there is nowhere for a timer to live.
 
-**Read [RM-15 — Choose where Real-Ming actually lives](RM-15-choose-the-always-on-host.md) and reply with a host name.** My recommendation is Fly.io, and the note explains why Vercel — already in your stack — is the wrong shape for this.
+**You chose Azure.** Follow [RM-15 — Put Real-Ming on Azure](RM-15-azure-deployment-runbook.md): five steps, and **Step 1 is the budget alert** because your $200 expires in 30 days and then bills your card silently. Steps 2–5 are yours because they spend money and hold credentials; Step 6 is mine.
+
+That runbook also records why a VM rather than an Azure agent PaaS: Real-Ming makes **no model calls at all**, its Executive Roles are governance roles rather than hosted agents, and its append-only guarantees rest on 15 SQLite triggers that want a real local disk.
 
 --- | --- |
 | Legacy databases renamed `ARCHIVED EVIDENCE` and locked | **5 of 5** |
@@ -41,7 +43,7 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
-| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Fly.io** for least ongoing work, or **GCP Compute Engine** in `asia-southeast1` if you want a real rotating secret store and accept being a sysadmin. | Awaiting your word |
+| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Settled: Azure**, Southeast Asia. Chosen for the résumé value on the one cloud you have not used, with the credit difference largely illusory since both expire. | ✅ Decided |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
