@@ -183,9 +183,17 @@ and wakes three times a day at 07:00, 07:30 and 21:30. That is the textbook
 **burstable** workload, which is the **B-series** — and Azure does not show it
 on that page because it defaults to production-grade families.
 
-Click through to see all sizes and choose **`B1s`** — 1 vCPU, 1 GiB, roughly
-$8–10 a month. Check the price the portal shows as you select; it is the number
-that decides how far your credit stretches.
+**The workload page has no "see all sizes" link, and that is fine — it is only
+a default for the next form.** Choose **General purpose**, which is genuinely
+correct: the B-series sits inside the General purpose family in Azure's own
+classification, and the page merely shows `DS2_v2` as its example. Then
+**continue to Create a VM**.
+
+On the VM form's **Basics** tab, find **Size** → **See all sizes** → search
+**`B1s`**, and select it — 1 vCPU, 1 GiB, roughly $8–10 a month. If the form
+arrives pre-filled with a D-series, change it; that is expected. The size on
+this tab is the one that counts. Check the price the portal shows as you
+select; it is the number that decides how far your credit stretches.
 
 ⚠️ **Do not build the container on the box.** 1 GiB is ample for running
 Real-Ming and tight for compiling it. The image gets built off the machine and
