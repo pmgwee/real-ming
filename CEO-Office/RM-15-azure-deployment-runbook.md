@@ -361,3 +361,13 @@ Once Steps 1–5 are done I will:
 | Telegram silent while the laptop sleeps | The VM is stopped, or `REAL_MING_TELEGRAM_BOT_TOKEN` is missing from the vault. |
 | A credential appears in a log | Stop. Rotate it in Key Vault, then find the line — `AGENTS.md` forbids credentials in logs. |
 | Cost rising after 30 days | The credit expired. Expected — the budget alert from Step 1 is what tells you. |
+| A charge continues after the VM is deleted | The public IP survives it. The portal's "delete public IP and NIC" checkbox sets the NIC to `Delete` but the IP to `Detach` — verified in the deployment template, `pipDeleteOption: "Detach"`. Delete `real-ming-control-plane-ip` by hand when you tear the VM down. |
+
+## Day-31 teardown
+
+When you migrate off Azure, deleting the VM is not enough. Delete the whole
+`real-ming` **resource group** instead — that removes the VM, disk, NIC, network
+security group, virtual network, boot-diagnostics storage account **and** the
+public IP the template would otherwise leave behind.
+
+Take the SQLite backup first. The resource group deletion is not reversible.
