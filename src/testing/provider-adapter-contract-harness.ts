@@ -32,6 +32,9 @@ import {
 import type { CutoverWorkspace } from "../migration/master-tasks-cutover.js";
 import { legacyTaskSourceDefinitions, type LegacyTaskSource } from "../migration/task-migration-rehearsal.js";
 
+import { createAzureKeyVaultReader } from "../providers/azure-key-vault-reader.js";
+import type { VaultSecretReader } from "../runtime/credential-resolver.js";
+
 export const contractSecretFixture = "provider-secret-must-never-be-reported";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1176,4 +1179,69 @@ export function liveSmokeGate(
         reason: `Missing securely supplied credentials: ${missing.join(", ")}.`,
       }
     : { enabled: true, reason: "Explicit flag and credentials are present." };
+}
+
+/** The bearer token the controlled metadata service issues. */
+export const harnessBearerToken = "harness-imds-bearer-token";
+
+export interface KeyVaultContractHarness {
+  readonly reader: VaultSecretReader;
+  tokenRequestCount(): number;
+  requestedUrls(): readonly string[];
+}
+
+/**
+ * A controlled Azure Key Vault and instance metadata service. No network call
+ * and no credential: the identity token is issued by the fixture, so these
+ * tests prove the adapter's behaviour without an Azure subscription.
+ */
+export function createKeyVaultContractHarness(scenario: {
+  readonly secrets: Readonly<Record<string, string>>;
+  readonly tokenStatus?: number;
+  readonly tokenFailure?: "unreachable";
+  readonly secretStatus?: number;
+  /** Body served on a failing secret read, to prove it is never echoed. */
+  readonly errorBody?: string;
+}): KeyVaultContractHarness {
+  let tokenRequests = 0;
+  const requested: string[] = [];
+
+  const controlledFetch = (async (
+    input: RequestInfo | URL,
+  ): Promise<Response> => {
+    const url = typeof input === "string" ? input : input.toString();
+    requested.push(url);
+
+    if (url.includes("169.254.169.254")) {
+      tokenRequests += 1;
+      if (scenario.tokenFailure === "unreachable") {
+        throw new Error("connect EHOSTUNREACH 169.254.169.254:80");
+      }
+      const status = scenario.tokenStatus ?? 200;
+      if (status !== 200) return new Response("", { status });
+      return new Response(
+        JSON.stringify({ access_token: harnessBearerToken }),
+        { status: 200 },
+      );
+    }
+
+    const status = scenario.secretStatus ?? 200;
+    if (status !== 200) {
+      return new Response(scenario.errorBody ?? "", { status });
+    }
+    const name = new URL(url).pathname.split("/").pop() ?? "";
+    const value = scenario.secrets[name];
+    return value === undefined
+      ? new Response("", { status: 404 })
+      : new Response(JSON.stringify({ value }), { status: 200 });
+  }) as typeof fetch;
+
+  return {
+    reader: createAzureKeyVaultReader({
+      vaultName: "real-ming-vault",
+      fetch: controlledFetch,
+    }),
+    tokenRequestCount: () => tokenRequests,
+    requestedUrls: () => requested,
+  };
 }
