@@ -77,11 +77,31 @@ So day 31 is a real decision, and there are three honest answers:
 | **Migrate to GCP** | Free — you hold **RM1,318** in credit, roughly 8–12 months of the same size machine | An afternoon of work, if we build for it now |
 | Stop | Free | Real-Ming goes back to running only when the Lenovo is awake |
 
-**Because of this, I will build the deployment to be portable from the start:**
-a container image, an explicit state backup, and no Azure-only glue in the
-application. Nothing here will bind you to Azure. Day 31 then costs you an
-afternoon rather than a rewrite, and you still get the Azure experience on your
-résumé either way.
+### Your stated exit plan
+
+> "Once the Azure 30-day free credit expires, I will migrate to
+> Fly.io / Railway / ReadyServer / Hostinger based on the plan I subscribed to."
+
+Recorded, and the deployment is built for it. Migration becomes: stop the
+service, copy one file, start it elsewhere.
+
+**Four rules I am holding myself to so that stays true:**
+
+1. **A container image is the unit of deployment.** It runs unchanged on Fly.io,
+   Railway, a Hostinger VPS, a ReadyServer VPS, or the Azure VM.
+2. **Environment variables are the only secret interface.** Key Vault is an
+   *optional* loader that populates them on Azure — never a hard dependency. If
+   I wired the application directly to Key Vault, moving to Fly.io would mean
+   rewriting the credential path. It will not.
+3. **The state path is configurable**, so the SQLite file follows the volume
+   wherever it is mounted.
+4. **Backup and restore are a documented, tested procedure**, not a footnote.
+   That procedure *is* the migration.
+
+⚠️ **When you subscribe, buy a VPS plan, not shared hosting.** Hostinger and
+ReadyServer both sell shared hosting far cheaper, and it will not work here: no
+long-lived process, no Docker, and no real local disk for SQLite. Fly.io and
+Railway are fine as they are — both give a persistent volume.
 
 Set the budget alert anyway — it is how you learn the credit is nearly gone
 before the machine stops, rather than after.
@@ -179,7 +199,8 @@ Once Steps 1–5 are done I will:
 
 - containerise the service so day 31 is a migration, not a rewrite
 - write the systemd unit that runs the scheduler and the Telegram front door
-- fetch secrets from Key Vault at start-up via managed identity, never to disk
+- read credentials from environment variables, with a small optional Key Vault
+  loader for Azure, so no other host needs that loader at all
 - put the SQLite state on the managed disk and add a **daily backup** to Azure
   Storage — your 30 migrated Work Items live in that one file
 - add the deployment scripts and an opt-in live smoke test to the repository
