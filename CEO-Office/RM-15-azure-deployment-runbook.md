@@ -162,7 +162,7 @@ Portal → **Create a resource** → **Virtual machine**.
 | Name | `real-ming-control-plane` |
 | Region | **Southeast Asia** (Singapore, closest to you) |
 | Image | Ubuntu Server LTS |
-| Size | **B1s** — enough for this workload |
+| Size | **B1s** — see the note below |
 | Authentication | SSH public key |
 | Inbound ports | **SSH (22) only** |
 | Disk | Standard SSD, 30 GB |
@@ -170,6 +170,27 @@ Portal → **Create a resource** → **Virtual machine**.
 
 Do not open port 80 or 443. The Telegram front door polls outward; nothing
 needs to reach in.
+
+#### Ignore the "recommended defaults" workload page
+
+Azure offers General purpose (D-series), Memory optimized (E-series) and
+Compute optimized (F-series). **None of them is right here**, and the smallest
+one shown — `DS2_v2`, 2 CPU and 7 GB — is roughly ten times the machine this
+needs and would consume the $200 credit in a couple of months.
+
+Real-Ming is idle almost all the time. It polls Telegram, holds a SQLite file,
+and wakes three times a day at 07:00, 07:30 and 21:30. That is the textbook
+**burstable** workload, which is the **B-series** — and Azure does not show it
+on that page because it defaults to production-grade families.
+
+Click through to see all sizes and choose **`B1s`** — 1 vCPU, 1 GiB, roughly
+$8–10 a month. Check the price the portal shows as you select; it is the number
+that decides how far your credit stretches.
+
+⚠️ **Do not build the container on the box.** 1 GiB is ample for running
+Real-Ming and tight for compiling it. The image gets built off the machine and
+pulled, which is also what keeps day 31 cheap. If you would rather build on the
+box, take `B2s` instead and accept the higher burn.
 
 ### Step 3 · Key Vault (you)
 
