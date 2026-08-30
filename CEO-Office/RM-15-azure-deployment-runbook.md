@@ -51,15 +51,13 @@ managed disk on a VM is the honest fit.
 | Azure Container Apps | Genuinely attractive — no OS to patch, cron jobs built in — but only after state moves off SQLite. |
 | Azure App Service | Same storage problem. |
 | Azure Functions | Wrong shape: no long-lived process, no local disk. |
-| Azure AI Foundry Agent Service | Solves a problem we do not have, and would move your personal context into a vendor runtime, against the Trust Domain design. |
+| Azure AI Foundry Agent Service | Not a host for this process. Useful later as a model provider — see the fuller answer below. |
 
 **Is it useful later?** Container Apps becomes the right answer the day state
 moves from SQLite to Postgres. That is a real future ticket, not an RM-15
 decision, and it should be taken on its own merits rather than smuggled in here.
 
 ---
-
-## Steps
 
 ## ⚠️ What happens on day 31
 
@@ -121,6 +119,8 @@ with a local SQLite file. Use it as a provider behind our own gateway, not as a
 replacement for it. That decision belongs to RM-37 when model routing is built.
 
 ---
+
+## Steps
 
 ### Step 1 · Budget alert — do this first (you)
 
