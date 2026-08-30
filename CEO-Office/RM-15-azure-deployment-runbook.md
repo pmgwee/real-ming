@@ -1,10 +1,14 @@
 # RM-15 — Put Real-Ming on Azure
 
 > **TL;DR — you create the account resources and paste ten secrets; I do the
-> rest.** One `B1s` virtual machine in Southeast Asia, a Key Vault holding the
+> rest.** One `D2as_v5` virtual machine in East Asia, a Key Vault holding the
 > credentials, and a systemd service that keeps Real-Ming running while your
-> Lenovo is shut. Set the budget alert in Step 1 before anything else: your $200
-> expires in 30 days and then it bills your card silently.
+> Lenovo is shut.
+
+> **✅ Chosen, 30 Aug 2026:** `Standard_D2as_v5` (2 dedicated vCPU, 8 GiB, AMD
+> x86-64), **East Asia**, Ubuntu Server 24.04 LTS Gen2, 128 GiB Premium SSD LRS,
+> SSH-only inbound, managed identity on. Southeast Asia refused every small size
+> with `NotAvailableForSubscription`; East Asia is the nearest region that works.
 
 ---
 
@@ -173,14 +177,14 @@ Get these wrong and Real-Ming looks deployed but is not:
 | Subscription | Azure subscription 1 |
 | Resource group | **(New)** `real-ming` |
 | Virtual machine name | `real-ming-control-plane` |
-| Region | **Southeast Asia** if sizes are available, otherwise **East Asia** — see the note below |
+| Region | **East Asia** — Southeast Asia refuses these sizes for this subscription |
 | Availability options | Availability zone *(or "No infrastructure redundancy required" — either is fine for one VM)* |
 | Zone options | Self-selected zone |
 | Availability zone | Zone 1 |
 | Security type | Trusted launch virtual machines — **switch to Standard if it blocks the B-series size** |
 | Image | **Ubuntu Server 24.04 LTS - x64 Gen2** |
 | VM architecture | x64 |
-| **Size** | **`B1s`** — click **See all sizes**, search `B1s`. Expect roughly **US$8–10/month**. Anything showing $90 is the wrong size. |
+| **Size** | **`Standard_D2as_v5`** — 2 dedicated vCPU, 8 GiB, AMD x86-64, ~US$87/month. Dedicated rather than burstable, so there are no CPU credits to reason about. |
 | Run with Azure Spot discount | **UNCHECKED** |
 | Authentication type | SSH public key |
 | Username | `azureuser` |
@@ -231,8 +235,8 @@ Whichever region you land on, still take a **B-series** size — `B1s`, `B1ms`,
 
 | Field | Value |
 | --- | --- |
-| OS disk size | Image default (30 GiB) |
-| OS disk type | **Standard SSD (locally-redundant storage)** — Premium costs more for no benefit here |
+| OS disk size | **128 GiB (P10)** — the tier sets IOPS as well as space, and ~500 IOPS suits building container images on the box |
+| OS disk type | **Premium SSD, Locally-Redundant Storage** — SQLite fsyncs on every commit, so lower disk latency genuinely helps. ZRS would double the cost to protect against a zone failure that would take the VM down anyway |
 | Delete with VM | ✅ Checked |
 | Key management | Platform-managed key |
 | Enable Ultra Disk | No |
@@ -248,7 +252,8 @@ Whichever region you land on, still take a **B-series** size — `B1s`, `B1ms`,
 | NIC network security group | Basic |
 | Public inbound ports | Allow selected ports |
 | Select inbound ports | **SSH (22)** |
-| Delete public IP and NIC when VM is deleted | ✅ Checked |
+| Delete public IP and NIC when VM is deleted | ✅ Checked — otherwise they orphan and bill on after the day-31 migration |
+| Enable accelerated networking | ✅ Checked — free, and Real-Ming is network-bound |
 | Load balancing | None |
 
 ⚠️ Azure will warn that SSH is open to every IP on the internet. It is right.
