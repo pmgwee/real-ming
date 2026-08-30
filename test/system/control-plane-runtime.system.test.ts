@@ -336,3 +336,90 @@ describe("RM-15 Telegram ingress across a restart", () => {
     expect(harness.telegramIngressCursor()).toBe(9301);
   });
 });
+
+describe("RM-15 control plane supervisor", () => {
+  const harnesses: RealMingSystemHarness[] = [];
+  const directories: string[] = [];
+
+  function startHarness(): RealMingSystemHarness {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-sup-"));
+    directories.push(directory);
+    const harness = createRealMingSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      telegram: { ceoTelegramId: "100000001" },
+    });
+    harnesses.push(harness);
+    return harness;
+  }
+
+  afterEach(() => {
+    for (const harness of harnesses.splice(0)) harness.close();
+    for (const directory of directories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the schedule running when Telegram polling fails", async () => {
+    // The two loops share a process but must not share a fate. A Telegram
+    // outage that stopped the scheduler would silently cancel the morning
+    // brief and the roll-up -- the CEO would notice only by their absence.
+    const harness = startHarness();
+    const supervisor = harness.superviseControlPlane({
+      pollTelegram: async () => {
+        throw new Error("Telegram is unreachable.");
+      },
+    });
+
+    const cycle = await supervisor.runCycle();
+
+    expect(cycle.telegram.kind).toBe("failed");
+    expect(cycle.schedule.kind).toBe("ran");
+    expect(supervisor.running()).toBe(true);
+  });
+
+  it("keeps Telegram answering when a scheduled job throws", async () => {
+    const harness = startHarness();
+    const supervisor = harness.superviseControlPlane({
+      tickSchedule: async () => {
+        throw new Error("The roll-up failed.");
+      },
+    });
+
+    const cycle = await supervisor.runCycle();
+
+    expect(cycle.schedule.kind).toBe("failed");
+    expect(cycle.telegram.kind).toBe("ran");
+    expect(supervisor.running()).toBe(true);
+  });
+
+  it("reports a cycle failure without putting the cause in the record", async () => {
+    // Cycle records are written to the service journal on every pass. An
+    // exception message can carry a URL with a token in it.
+    const harness = startHarness();
+    const supervisor = harness.superviseControlPlane({
+      pollTelegram: async () => {
+        throw new Error(
+          "getUpdates failed for https://api.telegram.org/bot8123:SECRET/getUpdates",
+        );
+      },
+    });
+
+    const cycle = await supervisor.runCycle();
+
+    expect(JSON.stringify(cycle)).not.toContain("SECRET");
+    expect(JSON.stringify(cycle)).not.toContain("api.telegram.org");
+  });
+
+  it("stops cleanly and refuses to run another cycle", async () => {
+    const harness = startHarness();
+    const supervisor = harness.superviseControlPlane({});
+
+    await supervisor.runCycle();
+    supervisor.stop();
+
+    expect(supervisor.running()).toBe(false);
+    const afterStop = await supervisor.runCycle();
+    expect(afterStop.telegram.kind).toBe("stopped");
+    expect(afterStop.schedule.kind).toBe("stopped");
+  });
+});

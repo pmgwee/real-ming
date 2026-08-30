@@ -33,6 +33,10 @@ import type { CutoverWorkspace } from "../migration/master-tasks-cutover.js";
 import { legacyTaskSourceDefinitions, type LegacyTaskSource } from "../migration/task-migration-rehearsal.js";
 
 import { createAzureKeyVaultReader } from "../providers/azure-key-vault-reader.js";
+import {
+  createGoogleAccessTokens,
+  type GoogleAccessTokens,
+} from "../runtime/google-access-token.js";
 import type { VaultSecretReader } from "../runtime/credential-resolver.js";
 
 export const contractSecretFixture = "provider-secret-must-never-be-reported";
@@ -1243,5 +1247,61 @@ export function createKeyVaultContractHarness(scenario: {
     }),
     tokenRequestCount: () => tokenRequests,
     requestedUrls: () => requested,
+  };
+}
+
+export const harnessGoogleAccessToken = "harness-google-access-token";
+
+export interface GoogleAccessTokenContractHarness {
+  readonly tokens: GoogleAccessTokens;
+  exchangeCount(): number;
+  advance(ms: number): void;
+}
+
+/**
+ * A controlled Google token endpoint. The refresh token never leaves the
+ * fixture, so these tests prove the exchange without a Google account.
+ */
+export function createGoogleAccessTokenContractHarness(
+  scenario: {
+    readonly status?: number;
+    readonly unreachable?: boolean;
+    readonly expiresIn?: number;
+    readonly errorBody?: string;
+  } = {},
+): GoogleAccessTokenContractHarness {
+  let exchanges = 0;
+  let clock = 1_700_000_000_000;
+
+  const controlledFetch = (async (): Promise<Response> => {
+    exchanges += 1;
+    if (scenario.unreachable === true) {
+      throw new Error("getaddrinfo ENOTFOUND oauth2.googleapis.com");
+    }
+    const status = scenario.status ?? 200;
+    if (status !== 200) {
+      return new Response(scenario.errorBody ?? "", { status });
+    }
+    return new Response(
+      JSON.stringify({
+        access_token: `${harnessGoogleAccessToken}-${exchanges}`,
+        expires_in: scenario.expiresIn ?? 3600,
+      }),
+      { status: 200 },
+    );
+  }) as typeof fetch;
+
+  return {
+    tokens: createGoogleAccessTokens({
+      clientId: "harness-client-id",
+      clientSecret: contractSecretFixture,
+      refreshToken: contractSecretFixture,
+      fetch: controlledFetch,
+      now: () => clock,
+    }),
+    exchangeCount: () => exchanges,
+    advance: (ms) => {
+      clock += ms;
+    },
   };
 }

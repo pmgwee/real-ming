@@ -1,4 +1,9 @@
 import {
+  createControlPlaneSupervisor,
+  type ControlPlaneSupervisor,
+} from "../runtime/control-plane-supervisor.js";
+
+import {
   pollTelegramUpdates as pollUpdates,
   type TelegramPollResult,
 } from "../runtime/telegram-ingress.js";
@@ -398,6 +403,10 @@ export interface RealMingSystemHarness {
     updates: readonly TelegramUpdate[],
   ): Promise<TelegramPollResult>;
   telegramIngressCursor(): number;
+  superviseControlPlane(overrides: {
+    readonly pollTelegram?: () => Promise<unknown>;
+    readonly tickSchedule?: () => Promise<unknown>;
+  }): ControlPlaneSupervisor;
   publishTelegramReviewControls(
     request: PublishTelegramReviewControlsRequest,
   ): Promise<readonly TelegramInlineControl[]>;
@@ -972,6 +981,27 @@ export function createRealMingSystemHarness(options: {
         },
       }),
     telegramIngressCursor: () => state.telegramIngressCursor(),
+    superviseControlPlane: (overrides) =>
+      createControlPlaneSupervisor({
+        pollTelegram:
+          overrides.pollTelegram ??
+          (() =>
+            pollUpdates({
+              updates: [],
+              cursor: () => state.telegramIngressCursor(),
+              advance: (updateId) =>
+                state.advanceTelegramIngressCursor(
+                  updateId,
+                  options.now?.() ?? new Date().toISOString(),
+                ),
+              receive: (update) =>
+                telegramFrontDoor.receiveUpdate(
+                  normalizeHarnessTelegramUpdate(update),
+                ),
+            })),
+        tickSchedule: overrides.tickSchedule ?? (() => dailyOperations.tick()),
+        now: options.now ?? (() => new Date().toISOString()),
+      }),
     publishTelegramReviewControls: (request) =>
       telegramFrontDoor.publishReviewControls(request),
     notifyTelegram: (notification) => telegramFrontDoor.notify(notification),
