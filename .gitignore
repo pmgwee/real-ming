@@ -1,4 +1,10 @@
 # Local secrets and environment overrides
+# Private keys never belong in this repository, wherever they are dropped.
+*.pem
+*.key
+*.ppk
+id_rsa
+id_ed25519
 .env
 .env.*
 !.env.example
