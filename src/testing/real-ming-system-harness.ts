@@ -657,6 +657,12 @@ export function createRealMingSystemHarness(options: {
     options.controlledQuestionAnswer ?? "No controlled answer was configured.",
   );
   const commandClassifier = createCommandClassifier();
+  // The Exception Notice rhythm needs the front door, which needs the gateway,
+  // so it cannot exist yet. Bound late rather than reordered, because the
+  // gateway must not depend on the rhythm in either direction.
+  let raiseMaterialBlocker:
+    | ((workItem: WorkItem, reason: string) => Promise<void>)
+    | undefined;
   const gateway = createOperationsGateway({
     state,
     worker,
@@ -664,6 +670,9 @@ export function createRealMingSystemHarness(options: {
     questionResponder,
     commandClassifier,
     workItemChanged: (workItem) => masterTasks.sync(workItem).then(() => undefined),
+    materialBlocker: async (workItem, reason) => {
+      await raiseMaterialBlocker?.(workItem, reason);
+    },
     ...(options.now === undefined ? {} : { now: options.now }),
   });
   const cutoverWorkspace =
@@ -813,6 +822,18 @@ export function createRealMingSystemHarness(options: {
     notify: (notification) => telegramFrontDoor.notify(notification),
     now: clock,
   });
+  raiseMaterialBlocker = async (workItem, reason) => {
+    // Signed by the Work Item, so the same item failing repeatedly groups into
+    // one interruption and a recovery reopens it. The text carries the item's
+    // own id and the reason code only: a provider's message could hold a
+    // request URL, and this goes straight to the CEO's phone.
+    await exceptionNoticeRhythm.admit({
+      kind: "material-blocker",
+      text: `Work Item ${workItem.id} is blocked (${reason}).`,
+      idempotencyKey: `material-blocker:${workItem.id}:${clock()}`,
+      signature: `work-item-blocked:${workItem.id}`,
+    });
+  };
   // Controlled failure injection, so a scheduler tick can be observed handling
   // one job failing without stranding the others.
   const forcedFailures = new Set<string>();

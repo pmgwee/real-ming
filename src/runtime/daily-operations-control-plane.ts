@@ -9,6 +9,7 @@ import type {
   EffectVerifier,
   QuestionResponder,
   WorkerReceipt,
+  WorkItem,
 } from "../operations/contracts.js";
 import { createCommandClassifier } from "../operations/command-classifier.js";
 import { createDailyOperationsScheduler } from "../operations/daily-operations-scheduler.js";
@@ -99,6 +100,12 @@ export async function createDailyOperationsControlPlane(options: {
   const now = options.now ?? (() => new Date().toISOString());
   const state = new OperationsState(options.statePath);
   const projection = new MasterTasksProjection(state, options.masterTasks);
+  // The rhythm needs the front door, which needs the gateway, so it cannot
+  // exist yet. Bound late rather than reordered, because the gateway must not
+  // depend on the Exception Notice rhythm in either direction.
+  let raiseMaterialBlocker:
+    | ((workItem: WorkItem, reason: string) => Promise<void>)
+    | undefined;
   const gateway = createOperationsGateway({
     state,
     worker: refusingWorker,
@@ -106,6 +113,9 @@ export async function createDailyOperationsControlPlane(options: {
     questionResponder: refusingResponder,
     commandClassifier: createCommandClassifier(),
     workItemChanged: (workItem) => projection.sync(workItem).then(() => undefined),
+    materialBlocker: async (workItem, reason) => {
+      await raiseMaterialBlocker?.(workItem, reason);
+    },
     now,
   });
   const frontDoor = createTelegramFrontDoor({
@@ -122,6 +132,18 @@ export async function createDailyOperationsControlPlane(options: {
     notify: (notification) => frontDoor.notify(notification),
     now,
   });
+  raiseMaterialBlocker = async (workItem, reason) => {
+    // Signed by the Work Item, so the same item failing repeatedly groups into
+    // one interruption and a recovery reopens it. The text carries the id and
+    // the reason code only: a provider's message could hold a request URL, and
+    // this goes straight to the CEO's phone.
+    await notices.admit({
+      kind: "material-blocker",
+      text: `Work Item ${workItem.id} is blocked (${reason}).`,
+      idempotencyKey: `material-blocker:${workItem.id}:${now()}`,
+      signature: `work-item-blocked:${workItem.id}`,
+    });
+  };
   const morningBrief = createMorningBriefRunner({
     state,
     listEvents: options.listCalendarEvents,

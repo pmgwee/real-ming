@@ -12,9 +12,9 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **16 of 44** |
-| Startable by an agent right now | **RM-15 (#16)** — implementation ready; live proof is next |
-| Waiting on you | **The VM stopped answering — check it first.** Then one activation decision. Optional: Azure budget alert. |
+| Phase 3 tickets closed | **17 of 44** |
+| Startable by an agent right now | **RM-16 (#17)** — in progress, tree clean and green |
+| Waiting on you | Nothing blocking. Optional: the Azure budget alert. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
@@ -38,18 +38,6 @@ Cost Management → Budgets → Add → subscription scope → RM250 → alerts 
 to your email. It is the only thing that tells you when the $200 credit stops
 absorbing the bill. It does not block RM-15.
 
-⚠️ **The control-plane VM stopped answering on 31 August.** SSH to
-`20.2.89.43` times out. Two possible causes, and one click tells them apart:
-**VM → Overview → Status**.
-
-- **Running** — your home IP changed, which Malaysian connections do. Networking
-  → Network settings → the `SSH` rule → Source → **My IP address** → Save.
-- **Stopped / Deallocated** — start it. While it is down, RM-15's first
-  acceptance criterion is unmet by definition: "reachable while the Lenovo is
-  asleep" needs the machine up.
-
-Nothing on the host can be verified until this is resolved.
-
 ### What the independent reviews found
 
 The Standards and Spec reviews AGENTS.md requires had not been run on the
@@ -67,22 +55,21 @@ deployment script would have halted at its first command because Chromium is
 absent on a fresh Ubuntu Server image; and a secret-leak assertion could not
 fail by construction.
 
-**RM-15 implementation is ready for its live deployment gate.** The production
-composition root, non-root container, systemd service, managed-disk SQLite
-state, transactionally consistent backup, daily timer, managed-identity Azure
-Blob upload and opt-in smoke probe are implemented locally. Automated
-production-composition tests are green. The exact live actions are in
-[RM-15 — Put Real-Ming on Azure](RM-15-azure-deployment-runbook.md#step-6--deploy-and-prove-the-service-agent-after-explicit-ceo-approval).
+✅ **RM-15 is closed. Real-Ming runs on its own machine.** Proven on 31 August
+by an instruction sent from a phone at 08:32 UTC, seven minutes after the
+Lenovo was shut, which produced Work Item `34e56f2e` at 08:32:49Z. The service
+is enabled so it survives a reboot; the local backup timer runs nightly at
+19:27 UTC.
 
-⚠️ **A scoping finding that belongs in the RM-15 close-out.** The new production
-composition root deliberately uses refusing `ControlledWorker` /
-`EffectVerifier` / `QuestionResponder` implementations, following the proven
-cutover composition pattern. The Lenovo private worker is **RM-21**, which is
-blocked by RM-16. So
-capture, review, approvals, the brief and the roll-up all work, and Telegram
-stays reachable, but the deployed service cannot yet *execute* a Work Item
-autonomously, and a question gets an honest "not yet" rather than an answer. That will be
-stated plainly when #16 closes rather than left to look complete.
+Access is over Tailscale now rather than a firewall rule pinned to one address,
+so moving between home, a café and tethering no longer breaks it, and port 22
+no longer answers the public internet at all.
+
+⚠️ **Two limits worth knowing.** The deployed service cannot yet *execute* a
+Work Item autonomously — the Lenovo private worker is **RM-21**, blocked by
+RM-16 — so capture, review, approvals, the brief and the roll-up work, and a
+question gets an honest "not yet". And durable state has no off-host copy: 33
+Work Items in one file on one machine. Pull a copy down before day 31.
 
 | RM-11 cutover evidence | Result |
 | --- | --- |
@@ -103,8 +90,9 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
 | Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Settled: Azure**, East Asia (Southeast Asia refused every small size for this subscription). Chosen for the résumé value on the one cloud you have not used, with the credit difference largely illusory since both expire. | ✅ Decided |
-| Prepare RM-15 candidate | Build reviewed implementation commit `a37804bb78ef96c2b9fe97245f902ca733c87cde`, create the private backup container, securely transfer the two canonical SQLite stores, and install inactive units. | **Approve Step 6A.** It produces the immutable hashes needed for a separate activation decision. | ⏳ Awaiting CEO approval |
-| Activate RM-15 candidate | Start only the exact image/database/unit hashes returned by Step 6A, then run the Telegram/restart/dashboard/backup proofs. | **Approve Step 6B only when every hash and storage scope matches.** | blocked by Step 6A |
+| Prepare RM-15 candidate | Rebuilt from `5016918` after two blocking defects were found in the earlier candidate. | Approved and executed 31 Aug. | ✅ Done |
+| Activate RM-15 candidate | Started image `sha256:0ed353723aa4…`; Telegram proven from a phone with the Lenovo shut. | Approved and executed 31 Aug. | ✅ Done |
+| Off-host backup | An Azure Storage account and a narrowly scoped role assignment, so the 33 Work Items survive losing the VM. | **Not yet.** Local backup meets every acceptance criterion, and a storage account is Azure-specific against your day-31 plan. Worth revisiting before teardown. | ⏳ Open |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 

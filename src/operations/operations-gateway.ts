@@ -74,6 +74,21 @@ export function createOperationsGateway(options: {
   readonly commandClassifier: CommandClassifier;
   readonly now?: () => string;
   readonly workItemChanged?: (workItem: WorkItem) => Promise<void>;
+  /**
+   * Raised when a Work Item is blocked by a failure it cannot recover from on
+   * its own. CONTEXT.md counts a material blocker among the four things that
+   * may interrupt the CEO directly, and until this existed nothing did: the
+   * only callers of the Exception Notice rhythm were the 07:30 brief and the
+   * 21:30 roll-up, so work that blocked at 08:00 sat silent for the rest of
+   * the day while the CEO had no reason to look.
+   *
+   * The gateway does not know what a notice is, deliberately. It reports the
+   * fact; the composition decides who hears about it.
+   */
+  readonly materialBlocker?: (
+    workItem: WorkItem,
+    reason: string,
+  ) => Promise<void>;
 }): OperationsGateway {
   const now = options.now ?? (() => new Date().toISOString());
 
@@ -126,6 +141,11 @@ export function createOperationsGateway(options: {
     options.state.recordWorkerFailure(workItemId, now());
     const blocked = options.state.transition(workItemId, "Waiting/Blocked", now(), { reason });
     await publish(blocked);
+    // Raised after the block is durable, so the CEO is never told about a
+    // state the database does not already hold. A failure to notify must not
+    // undo the block or mask the original fault, so it is swallowed here and
+    // remains visible in the Work Item's own state and audit trail.
+    await options.materialBlocker?.(blocked, reason).catch(() => undefined);
     throw new Error(message);
   };
 
