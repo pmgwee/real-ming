@@ -58,6 +58,11 @@ export async function verifyControlPlaneDeployment(
       ["boot-ordering", "After=real-ming.service"],
       ["root-owned-helper", "/usr/local/libexec/real-ming-backup"],
       ["release-binding", "EnvironmentFile=/etc/real-ming/release.env"],
+      // The backup stops the control plane. These two are what guarantee it
+      // comes back: a bounded start, and a restart that runs however the
+      // backup ended -- including killed on timeout.
+      ["bounded-start", "TimeoutStartSec="],
+      ["unconditional-restart", "ExecStopPost=-/usr/bin/systemctl --no-block start real-ming.service"],
     ],
     failures,
   );
@@ -67,7 +72,10 @@ export async function verifyControlPlaneDeployment(
     [
       ["detect-running-service", "systemctl is-active --quiet real-ming.service"],
       ["quiesce-writes", "systemctl stop real-ming.service"],
-      ["restart-on-exit", "trap restart_control_plane EXIT"],
+      // Bash skips an EXIT trap when it dies on an untrapped signal, so the
+      // signals must be named or a systemd timeout strands the service.
+      ["restart-on-exit", "trap restart_control_plane EXIT INT TERM"],
+      ["bounded-container-run", "timeout --signal=TERM"],
       ["run-live-backup", "control-plane-backup-cli.js --live"],
       ["immutable-release", "${REAL_MING_IMAGE}"],
       ["operations-state", "REAL_MING_STATE_PATH=/var/lib/real-ming/state.sqlite"],

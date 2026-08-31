@@ -9,14 +9,18 @@ restart_control_plane() {
   fi
 }
 
-trap restart_control_plane EXIT
+# EXIT alone is not enough: bash skips an EXIT trap when it dies on an
+# untrapped signal, so a systemd timeout would kill this script and leave the
+# control plane stopped. Trapping the signals makes the restart unconditional.
+trap restart_control_plane EXIT INT TERM
 
 if systemctl is-active --quiet real-ming.service; then
   control_plane_was_active=true
   systemctl stop real-ming.service
 fi
 
-/usr/bin/docker run --rm \
+# A bounded run, so a stalled upload cannot hold the service down all night.
+timeout --signal=TERM --kill-after=60s 20m /usr/bin/docker run --rm \
   --network host \
   --read-only \
   --tmpfs /tmp:rw,noexec,nosuid,size=32m \

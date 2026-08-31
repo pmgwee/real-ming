@@ -1087,7 +1087,20 @@ export async function createControlPlaneSystemHarness(options: {
           { status: 503 },
         );
       }
-      return Response.json({ ok: true, result: updates.splice(0) });
+      // Telegram confirms every update below the requested offset and
+      // redelivers everything at or above it. Draining the queue regardless of
+      // offset made the durable cursor untestable: an update the front door
+      // never finished would silently vanish here, when in production it comes
+      // back on every poll and blocks the ones behind it.
+      const polled = JSON.parse(String(init?.body ?? "{}")) as {
+        readonly offset?: number;
+      };
+      const offset = typeof polled.offset === "number" ? polled.offset : 0;
+      for (let index = updates.length - 1; index >= 0; index -= 1) {
+        const queued = updates[index] as { readonly update_id: number };
+        if (queued.update_id < offset) updates.splice(index, 1);
+      }
+      return Response.json({ ok: true, result: [...updates] });
     }
     if (url.includes("api.telegram.org") && url.endsWith("/sendMessage")) {
       if (telegramSendFailures > 0) {

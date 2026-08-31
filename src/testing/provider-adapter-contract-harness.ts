@@ -1326,6 +1326,8 @@ export function createAzureBlobBackupContractHarness(
     readonly tokenStatus?: number;
     readonly uploadStatus?: number;
     readonly errorBody?: string;
+    /** The connection fails outright, as a lost route to storage would. */
+    readonly unreachable?: boolean;
   } = {},
 ): AzureBlobBackupContractHarness {
   let tokenRequests = 0;
@@ -1339,6 +1341,9 @@ export function createAzureBlobBackupContractHarness(
     input: string | URL | Request,
     init?: RequestInit,
   ): Promise<Response> => {
+    if (scenario.unreachable === true) {
+      throw new Error("connect EHOSTUNREACH blob.core.windows.net");
+    }
     const url = String(input);
     if (url.includes("169.254.169.254")) {
       tokenRequests += 1;

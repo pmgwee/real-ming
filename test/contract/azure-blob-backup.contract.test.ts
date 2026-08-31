@@ -44,6 +44,30 @@ describe("RM-15 Azure Blob backup contract", () => {
       content: new Uint8Array([1]),
     });
     expect(failed).toEqual({ kind: "failed", reason: "unavailable" });
-    expect(JSON.stringify(failed)).not.toContain(harnessBearerToken);
+  });
+
+  it("returns every failure rather than throwing one", async () => {
+    // The previous leak assertion here could not fail: the result type is a
+    // closed union of {kind:"ok"} and {kind:"failed", reason}, so no
+    // type-checking implementation could put a token in it. The real exposure
+    // is a thrown Error, whose message would carry the blob URL and bearer
+    // token straight into the service journal -- so what is worth proving is
+    // that no failure path throws at all.
+    for (const scenario of [
+      { tokenStatus: 403 },
+      { tokenStatus: 500 },
+      { uploadStatus: 403 },
+      { uploadStatus: 503 },
+      { unreachable: true },
+      { errorBody: `credential=${harnessBearerToken}` , uploadStatus: 500 },
+    ] as const) {
+      const harness = createAzureBlobBackupContractHarness(scenario);
+      const result = await harness.uploader.upload({
+        blobName: "state.sqlite",
+        content: new Uint8Array([1]),
+      });
+      expect(result.kind).toBe("failed");
+      expect(Object.keys(result).sort()).toEqual(["kind", "reason"]);
+    }
   });
 });

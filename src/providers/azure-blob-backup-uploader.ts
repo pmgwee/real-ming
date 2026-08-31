@@ -22,6 +22,8 @@ export function createAzureBlobBackupUploader(options: {
   readonly accountName: string;
   readonly containerName: string;
   readonly fetch?: typeof fetch;
+  /** Bound every request so a stalled connection cannot hang the backup. */
+  readonly requestTimeoutMs?: number;
   readonly now?: () => string;
 }): AzureBlobBackupUploader {
   if (!storageAccountName.test(options.accountName)) {
@@ -31,6 +33,13 @@ export function createAzureBlobBackupUploader(options: {
     throw new Error("Azure backup container name is invalid.");
   }
   const request = options.fetch ?? fetch;
+  // Node's fetch never times out on its own. The nightly job stops the control
+  // plane before it runs, so a black-holed connection here -- a lost route to
+  // the link-local metadata address, an Azure storage incident -- would hang
+  // forever and leave the always-on service stopped until someone noticed by
+  // its absence. Bounded waits turn that outage into a failed backup.
+  const requestTimeoutMs = options.requestTimeoutMs ?? 60_000;
+  const deadline = (): AbortSignal => AbortSignal.timeout(requestTimeoutMs);
   const now = options.now ?? (() => new Date().toUTCString());
   let token: string | null = null;
 
@@ -40,6 +49,7 @@ export function createAzureBlobBackupUploader(options: {
     try {
       response = await request(storageTokenEndpoint, {
         headers: { Metadata: "true" },
+        signal: deadline(),
       });
     } catch {
       return { kind: "failed", reason: "unavailable" };
@@ -88,6 +98,7 @@ export function createAzureBlobBackupUploader(options: {
               "content-type": "application/vnd.sqlite3",
             },
             body: new Blob([Uint8Array.from(upload.content)]),
+            signal: deadline(),
           },
         );
       } catch {

@@ -45,9 +45,24 @@ const refusingVerifier: EffectVerifier = {
   },
 };
 
+/**
+ * The cloud control plane cannot research an answer until the Lenovo private
+ * worker arrives in RM-21. It must still say so out loud.
+ *
+ * Throwing here looked like an honest refusal and was not. The classifier
+ * routes anything opening "what/when/who/how" to this responder, the front
+ * door does not catch, and the ingress loop then holds the cursor behind the
+ * failed update -- correct in isolation, but Telegram redelivers that same
+ * update every cycle, so one ordinary question silences every message sent
+ * after it until Telegram's retention drops it about a day later. Silence is
+ * indistinguishable from the service being dead.
+ */
 const refusingResponder: QuestionResponder = {
   async answer(): Promise<string> {
-    throw new Error("The cloud control plane has no question responder yet.");
+    return (
+      "I cannot answer questions yet: the private worker that would research " +
+      "this is not deployed. Send it as an instruction and I will capture it."
+    );
   },
 };
 
@@ -151,12 +166,20 @@ export async function createDailyOperationsControlPlane(options: {
       if (read.kind === "failed") {
         throw new Error("Telegram polling failed.");
       }
-      await pollTelegramUpdates({
+      const polled = await pollTelegramUpdates({
         updates: read.value,
         cursor: () => state.telegramIngressCursor(),
         advance: (updateId) => state.advanceTelegramIngressCursor(updateId, now()),
         receive: (update) => frontDoor.receiveUpdate(update),
       });
+      // The failure count was being discarded, so an update the front door
+      // could not handle held the cursor while the dashboard still rendered
+      // "healthy". A dashboard reporting health it has not established is
+      // worse than one reporting nothing: it is the only place the CEO would
+      // look to find out the front door had stopped.
+      if (polled.failed > 0) {
+        throw new Error("A Telegram update could not be handled.");
+      }
       if (recovery.failed > 0 || recovery.uncertain > 0) {
         throw new Error("Telegram delivery recovery remains unresolved.");
       }

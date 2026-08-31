@@ -739,3 +739,78 @@ describe("RM-15 production-equivalent control plane composition", () => {
     }
   });
 });
+
+describe("RM-15 an ordinary question must not wedge the front door", () => {
+  const directories: string[] = [];
+  const open: { close(): Promise<void> }[] = [];
+
+  function temporaryStatePath(): string {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-wedge-"));
+    directories.push(directory);
+    return join(directory, "state.sqlite");
+  }
+
+  afterEach(async () => {
+    for (const harness of open.splice(0)) await harness.close();
+    for (const directory of directories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("answers a question rather than falling silent", async () => {
+    // The command classifier routes anything starting "what/when/who/how..."
+    // to the question responder. The cloud control plane has no responder
+    // until RM-21, but "not yet" must be said out loud: silence is
+    // indistinguishable from the service being dead.
+    const harness = await createControlPlaneSystemHarness({
+      statePath: temporaryStatePath(),
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+    open.push(harness);
+
+    harness.queueTelegramUpdate({
+      updateId: 9701,
+      senderId: "100000001",
+      chatId: "100000001",
+      text: "What is on my plate today?",
+    });
+    await harness.runCycle();
+
+    expect(harness.telegramMessages().length).toBeGreaterThan(0);
+  });
+
+  it("advances past a question so later messages still arrive", async () => {
+    // Telegram redelivers every update until the offset moves. A question that
+    // never clears the cursor blocks every message the CEO sends afterwards
+    // until Telegram's retention drops it, roughly a day later.
+    const harness = await createControlPlaneSystemHarness({
+      statePath: temporaryStatePath(),
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+    open.push(harness);
+
+    harness.queueTelegramUpdate({
+      updateId: 9801,
+      senderId: "100000001",
+      chatId: "100000001",
+      text: "What is on my plate today?",
+    });
+    await harness.runCycle();
+
+    harness.queueTelegramUpdate({
+      updateId: 9802,
+      senderId: "100000001",
+      chatId: "100000001",
+      text: "/do Renew the parking permit",
+    });
+    await harness.runCycle();
+
+    const overview = await harness.dashboardOverview();
+    expect(
+      overview.workItems.some((item) =>
+        item.intent.includes("Renew the parking permit"),
+      ),
+    ).toBe(true);
+  });
+
+});
