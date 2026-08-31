@@ -512,6 +512,26 @@ role scope before creation, then the exact proof results after deployment.
 
 ---
 
+## Review findings still open
+
+Both independent reviews ran against the previous commit. Everything blocking
+or major is fixed. These remain, deliberately, and none of them blocks
+activation:
+
+| Finding | Why it is being left | When it bites |
+| --- | --- | --- |
+| Backup sets are never pruned, locally or in blob storage | Retention is a CEO decision, not an engineering default. Backups sit on the same volume as the live database, so the eventual failure is the control plane's own writes failing. | Years away on a 128 GiB disk; sooner in blob cost |
+| `OperationsState` is not closed when composition fails midway | The process exits, so the OS reclaims it. The asymmetry -- the Notion ledger *is* closed -- is the actual defect | Never, in practice |
+| A failing backup writes its health row by reopening the database | If the backup failed *because* that database is unreadable, the reopen throws from inside the catch and replaces the real cause | Only while diagnosing a backup failure |
+| The VM's public address and the SSH key path are in Git history | No credential value is present, and `AGENTS.md` governs values rather than host identifiers. Flagged because it is irreversible and was not called out when it landed | Judgement call, yours |
+
+Also recorded, because it changes what the dashboard means: `telegram-ingress`
+health conflates two things. A permanently failing outbound delivery fails the
+cycle *after* ingress succeeded, so ingress reads as failed while it is fine.
+The component name is narrower than what it measures.
+
+---
+
 ## Test cases
 
 | Test | Expected result |
