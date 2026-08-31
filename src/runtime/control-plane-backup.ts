@@ -140,24 +140,36 @@ export async function backupAndUploadControlPlaneState(options: {
   readonly destinationDirectory: string;
   readonly backupId: string;
   readonly createdAt: string;
-  readonly uploader: ControlPlaneBackupUploader;
+  /**
+   * Where to copy the snapshot off the machine. Optional on purpose: no RM-15
+   * acceptance criterion asks for off-host backup, it is Azure-specific, and
+   * the day-31 host will not have one. Requiring it to take any backup at all
+   * made the durable local copy hostage to a cloud resource that need not
+   * exist.
+   */
+  readonly uploader?: ControlPlaneBackupUploader;
 }): Promise<ControlPlaneBackupSet> {
   let backup: ControlPlaneBackupSet;
   try {
     backup = await backupControlPlaneState(options);
-    for (const [name, path] of [
-      ["state.sqlite", backup.statePath],
-      ["notion-write-ledger.sqlite", backup.notionLedgerPath],
-      ["manifest.json", backup.manifestPath],
-    ] as const) {
-      const upload = await options.uploader.upload({
-        blobName: `${backup.manifest.backupId}/${name}`,
-        content: readFileSync(path),
-      });
-      if (upload.kind === "failed") {
-        throw new Error(
-          `Remote state backup failed (${upload.reason}); the local backup set was retained.`,
-        );
+    const uploader = options.uploader;
+    if (uploader !== undefined) {
+      // The manifest goes last on purpose: it is the completeness marker, so a
+      // partial upload can never look like a whole backup set.
+      for (const [name, path] of [
+        ["state.sqlite", backup.statePath],
+        ["notion-write-ledger.sqlite", backup.notionLedgerPath],
+        ["manifest.json", backup.manifestPath],
+      ] as const) {
+        const upload = await uploader.upload({
+          blobName: `${backup.manifest.backupId}/${name}`,
+          content: readFileSync(path),
+        });
+        if (upload.kind === "failed") {
+          throw new Error(
+            `Remote state backup failed (${upload.reason}); the local backup set was retained.`,
+          );
+        }
       }
     }
     recordBackupHealth(options.statePath, "healthy", options.createdAt);

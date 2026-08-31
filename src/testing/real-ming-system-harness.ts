@@ -1052,7 +1052,11 @@ export interface ControlPlaneSystemHarness {
   backup(destinationPath: string): Promise<void>;
   backupSet(
     destinationDirectory: string,
-    options?: { readonly failUpload?: boolean },
+    options?: {
+      readonly failUpload?: boolean;
+      /** Run with no off-host destination configured at all. */
+      readonly localOnly?: boolean;
+    },
   ): Promise<{
     readonly statePath: string;
     readonly notionLedgerPath: string;
@@ -1197,12 +1201,16 @@ export async function createControlPlaneSystemHarness(options: {
         destinationDirectory,
         backupId: now().replaceAll(":", "-"),
         createdAt: now(),
-        uploader: {
-          upload: async () =>
-            backupOptions?.failUpload === true
-              ? { kind: "failed", reason: "unavailable" }
-              : { kind: "ok" },
-        },
+        ...(backupOptions?.localOnly === true
+          ? {}
+          : {
+              uploader: {
+                upload: async () =>
+                  backupOptions?.failUpload === true
+                    ? { kind: "failed", reason: "unavailable" }
+                    : { kind: "ok" },
+              },
+            }),
       }),
     smoke: () =>
       verifyControlPlaneDashboard({

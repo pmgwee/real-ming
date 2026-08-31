@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -921,5 +921,46 @@ describe("RM-15 the deployed control plane long-polls Telegram", () => {
     expect(harness.telegramPollRequests()).toEqual([
       expect.objectContaining({ timeout: 20 }),
     ]);
+  });
+});
+
+describe("RM-15 backup without an off-host destination", () => {
+  const directories: string[] = [];
+  const open: { close(): Promise<void> }[] = [];
+
+  afterEach(async () => {
+    for (const harness of open.splice(0)) await harness.close();
+    for (const directory of directories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("writes a complete backup set with no storage account configured", async () => {
+    // Off-host backup is an enhancement, not a requirement: no acceptance
+    // criterion asks for it, it is Azure-specific, and the day-31 host will
+    // not have it. Requiring a storage account to take any backup at all made
+    // the durable local copy hostage to a cloud resource that need not exist.
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-local-"));
+    directories.push(directory);
+    const harness = await createControlPlaneSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+    open.push(harness);
+    await harness.runCycle();
+
+    const set = await harness.backupSet(join(directory, "backups"), {
+      localOnly: true,
+    });
+
+    expect(existsSync(set.statePath)).toBe(true);
+    expect(existsSync(set.notionLedgerPath)).toBe(true);
+    expect(set.manifest.files.map((file) => file.role).sort()).toEqual([
+      "notion-write-ledger",
+      "operations-state",
+    ]);
+    for (const file of set.manifest.files) {
+      expect(file.sha256).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 });
