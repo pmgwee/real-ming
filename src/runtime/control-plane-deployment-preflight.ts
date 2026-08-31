@@ -89,7 +89,10 @@ export async function verifyControlPlaneDeployment(
     [
       ["repository-gates", "npm run check"],
       ["container-build", "docker build"],
-      ["container-smoke", "control-plane-smoke-cli.js"],
+      // The smoke CLI without --live only proves the file exists. What must be
+      // asserted is that the production composition actually loads in the image.
+      ["container-composition-load", "production-control-plane.js"],
+      ["browser-dependency", "playwright install --with-deps chromium"],
       ["unit-validation", "systemd-analyze verify"],
       ["immutable-image-evidence", "docker image inspect"],
     ],

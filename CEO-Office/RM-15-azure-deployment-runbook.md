@@ -444,9 +444,15 @@ immediately on drift:
 2. Install Docker only if absent; clone and detach at the exact reviewed commit
    SHA named in the approval. Build `real-ming:tracer-1` on the VM, then record
    its immutable `sha256:` image ID. The tag is never used by systemd.
-   Run `bash deploy/verify-deployment.sh`, which repeats all repository gates, builds
-   and smoke-runs the container, and syntax-validates all units with
-   `systemd-analyze verify`.
+   Run `bash deploy/verify-deployment.sh`, which installs Chromium (the
+   dashboard browser test fails rather than skips without it), repeats all
+   repository gates, builds the image, loads the production composition inside
+   it, and syntax-validates all units with `systemd-analyze verify`.
+
+   It does **not** run the live smoke test. That needs credentials and a
+   separate activation approval. An earlier version of this line claimed the
+   script "smoke-runs the container"; it ran the smoke CLI without `--live`,
+   which prints "skipped" and exits 0 whatever the image contains.
 3. Create one private Azure Storage account/container in the existing
    `real-ming` resource group, grant only **Storage Blob Data Contributor** to
    the VM managed identity at the container/storage scope, and write the two

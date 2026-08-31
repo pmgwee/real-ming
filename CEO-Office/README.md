@@ -50,8 +50,9 @@ composition root deliberately uses refusing `ControlledWorker` /
 `EffectVerifier` / `QuestionResponder` implementations, following the proven
 cutover composition pattern. The Lenovo private worker is **RM-21**, which is
 blocked by RM-16. So
-capture, review, approvals, the brief, the roll-up and Telegram all work, but
-the deployed service cannot yet *execute* a Work Item autonomously. That will be
+capture, review, approvals, the brief and the roll-up all work, and Telegram
+stays reachable, but the deployed service cannot yet *execute* a Work Item
+autonomously, and a question gets an honest "not yet" rather than an answer. That will be
 stated plainly when #16 closes rather than left to look complete.
 
 | RM-11 cutover evidence | Result |
