@@ -814,3 +814,43 @@ describe("RM-15 an ordinary question must not wedge the front door", () => {
   });
 
 });
+
+describe("RM-15 health writes are cheap without being late", () => {
+  const directories: string[] = [];
+  const open: { close(): Promise<void> }[] = [];
+
+  afterEach(async () => {
+    for (const harness of open.splice(0)) await harness.close();
+    for (const directory of directories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reports a failure on the cycle it happens, not on a later heartbeat", async () => {
+    // Health is no longer written on every cycle, because at one cycle a
+    // second that was ~173,000 upserts a day into the database holding every
+    // durable Work Item. The saving must never cost latency on the one
+    // transition the CEO needs to see.
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-health-"));
+    directories.push(directory);
+    const harness = await createControlPlaneSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+    open.push(harness);
+
+    await harness.runCycle();
+    const healthy = (await harness.dashboardOverview()).controlPlane?.find(
+      (component) => component.component === "telegram-ingress",
+    );
+    expect(healthy?.lastOutcome).toBe("healthy");
+
+    harness.failNextTelegramPoll();
+    await harness.runCycle();
+
+    const failed = (await harness.dashboardOverview()).controlPlane?.find(
+      (component) => component.component === "telegram-ingress",
+    );
+    expect(failed?.lastOutcome).toBe("failed");
+  });
+});

@@ -158,6 +158,35 @@ export async function createDailyOperationsControlPlane(options: {
     ...(options.dashboardPort === undefined ? {} : { port: options.dashboardPort }),
   });
 
+  // At one cycle a second, writing both components unconditionally meant about
+  // 173,000 upserts a day into the same WAL database that holds every durable
+  // Work Item, Approval and audit row -- to record that nothing had changed.
+  // Health is written when it changes, plus a heartbeat, so the row still
+  // proves the loop is alive without keeping the state disk hot for it.
+  const healthHeartbeatMs = 300_000;
+  const lastHealthWrite = new Map<string, { at: number; outcome: string }>();
+  const recordHealthIfWorthWriting = (
+    component: "telegram-ingress" | "daily-scheduler",
+    outcome: "healthy" | "failed",
+    checkedAt: string,
+  ): void => {
+    const previous = lastHealthWrite.get(component);
+    const at = Date.parse(checkedAt);
+    if (
+      previous !== undefined &&
+      previous.outcome === outcome &&
+      Number.isFinite(at) &&
+      at - previous.at < healthHeartbeatMs
+    ) {
+      return;
+    }
+    state.recordControlPlaneHealth({ component, outcome, checkedAt });
+    lastHealthWrite.set(component, {
+      at: Number.isFinite(at) ? at : 0,
+      outcome,
+    });
+  };
+
   const supervisor = createControlPlaneSupervisor({
     pollTelegram: async () => {
       const recovery = await frontDoor.retryPendingDeliveries();
@@ -188,18 +217,18 @@ export async function createDailyOperationsControlPlane(options: {
     now,
     onCycle: (cycle) => {
       if (cycle.telegram.kind !== "stopped") {
-        state.recordControlPlaneHealth({
-          component: "telegram-ingress",
-          outcome: cycle.telegram.kind === "ran" ? "healthy" : "failed",
-          checkedAt: cycle.at,
-        });
+        recordHealthIfWorthWriting(
+          "telegram-ingress",
+          cycle.telegram.kind === "ran" ? "healthy" : "failed",
+          cycle.at,
+        );
       }
       if (cycle.schedule.kind !== "stopped") {
-        state.recordControlPlaneHealth({
-          component: "daily-scheduler",
-          outcome: cycle.schedule.kind === "ran" ? "healthy" : "failed",
-          checkedAt: cycle.at,
-        });
+        recordHealthIfWorthWriting(
+          "daily-scheduler",
+          cycle.schedule.kind === "ran" ? "healthy" : "failed",
+          cycle.at,
+        );
       }
     },
     ...(options.wait === undefined ? {} : { wait: options.wait }),
