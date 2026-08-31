@@ -14,7 +14,7 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 | --- | --- |
 | Phase 3 tickets closed | **16 of 44** |
 | Startable by an agent right now | **RM-15 (#16)** — implementation ready; live proof is next |
-| Waiting on you | **After the RM-15 commit is pushed: approve Step 6A and provide the VM SSH target/key path; optional: Azure budget alert** |
+| Waiting on you | **Approve RM-15 Step 6A for reviewed implementation commit `a37804bb78ef96c2b9fe97245f902ca733c87cde`; optional: Azure budget alert** |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
@@ -73,7 +73,7 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
 | Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Settled: Azure**, East Asia (Southeast Asia refused every small size for this subscription). Chosen for the résumé value on the one cloud you have not used, with the credit difference largely illusory since both expire. | ✅ Decided |
-| Prepare RM-15 candidate | Build one exact reviewed commit, create the private backup container, securely transfer the two canonical SQLite stores, and install inactive units. | **Approve Step 6A after the local commit is pushed.** It produces the immutable hashes needed for a separate activation decision. | ⏳ Awaiting exact commit |
+| Prepare RM-15 candidate | Build reviewed implementation commit `a37804bb78ef96c2b9fe97245f902ca733c87cde`, create the private backup container, securely transfer the two canonical SQLite stores, and install inactive units. | **Approve Step 6A.** It produces the immutable hashes needed for a separate activation decision. | ⏳ Awaiting CEO approval |
 | Activate RM-15 candidate | Start only the exact image/database/unit hashes returned by Step 6A, then run the Telegram/restart/dashboard/backup proofs. | **Approve Step 6B only when every hash and storage scope matches.** | blocked by Step 6A |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
@@ -86,13 +86,15 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 
 ## ✅ What needs you
 
-**The local RM-15 implementation is complete; the live acceptance gate now
-needs you.** After the reviewed local commit is pushed, approve the exact Step
-6A sentence in the deployment runbook and provide the VM public IP plus the
-local path to its SSH private key. Step 6A cannot start the service; it returns
-the immutable evidence for a separate Step 6B activation approval. Do not send
-any application credential. The Azure budget alert remains recommended but
-does not block deployment.
+**The local RM-15 implementation is complete and pushed at
+`a37804bb78ef96c2b9fe97245f902ca733c87cde`; the live
+acceptance gate now needs you.** Approve the exact Step 6A sentence in the
+deployment runbook. The VM target (`20.2.89.43`) and the SSH key path
+(`C:\Users\quekm\Desktop\projects\(key Value)\real-ming-control-plane_key.pem`)
+have been recovered locally without reading or printing the key. Step 6A cannot
+start the service; it returns immutable evidence for a separate Step 6B
+activation approval. Do not send any application credential. The Azure budget
+alert remains recommended but does not block deployment.
 
 `RM11-CUTOVER-3` was approved and executed on 29 Aug 2026: 30 pages imported,
 all five legacy databases retired to read-only evidence, exactly one writable
