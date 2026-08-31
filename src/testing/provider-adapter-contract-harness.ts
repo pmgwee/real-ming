@@ -50,6 +50,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export interface ContractScenario {
+  /** Seconds Telegram may hold an empty getUpdates open. */
+  readonly longPollSeconds?: number;
   readonly asOf?: string;
   readonly now?: string;
   readonly failure?: ProviderFailureClass;
@@ -168,6 +170,9 @@ function createTelegramContractAdapter(
       scenario.telegramDeliveryLedger ??
       createEphemeralTelegramDeliveryLedger(),
     fetch: fetchImplementation,
+    ...(scenario.longPollSeconds === undefined
+      ? {}
+      : { longPollSeconds: scenario.longPollSeconds }),
     now: () => now,
   });
 

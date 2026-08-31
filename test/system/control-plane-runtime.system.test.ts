@@ -891,3 +891,35 @@ describe("RM-15 bookkeeping must not kill the loops", () => {
     expect(supervisor.running()).toBe(true);
   });
 });
+
+describe("RM-15 the deployed control plane long-polls Telegram", () => {
+  const directories: string[] = [];
+  const open: { close(): Promise<void> }[] = [];
+
+  afterEach(async () => {
+    for (const harness of open.splice(0)) await harness.close();
+    for (const directory of directories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("asks Telegram to hold the connection rather than polling every second", async () => {
+    // The adapter supporting long polling is not the same as the deployed
+    // composition using it. Without this the service issues roughly 86,000
+    // getUpdates a day, almost all empty, and a sustained request rate is what
+    // earns a rate limit -- which stops the CEO's messages arriving at all.
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-poll-"));
+    directories.push(directory);
+    const harness = await createControlPlaneSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+    open.push(harness);
+
+    await harness.runCycle();
+
+    expect(harness.telegramPollRequests()).toEqual([
+      expect.objectContaining({ timeout: 20 }),
+    ]);
+  });
+});

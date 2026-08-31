@@ -954,3 +954,25 @@ describe("RM-05 failure classification", () => {
     expect(failure.retryable).toBe(true);
   });
 });
+
+describe("RM-15 Telegram long polling", () => {
+  it("asks Telegram to hold the connection when configured to", async () => {
+    // Without this the deployed control plane issues about 86,000 getUpdates a
+    // day, almost all of them empty.
+    const telegramCase = cases.find((entry) => entry.name === "telegram");
+    if (telegramCase === undefined) {
+      throw new Error("Expected the Telegram contract case.");
+    }
+    const adapter = telegramCase.createAdapter({ longPollSeconds: 20 });
+
+    await adapter.read({ reference: "offset:1" });
+
+    expect(adapter.providerRequests()).toEqual([
+      {
+        offset: 1,
+        allowed_updates: ["message", "callback_query"],
+        timeout: 20,
+      },
+    ]);
+  });
+});

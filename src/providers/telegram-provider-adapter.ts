@@ -40,6 +40,15 @@ export interface TelegramProviderAdapterOptions {
   readonly deliveryLedger: TelegramDeliveryLedger;
   readonly fetch?: FetchImplementation;
   readonly now?: () => string;
+  /**
+   * How long Telegram may hold an empty getUpdates open, in seconds. Long
+   * polling replaces one request a second with one request a minute while
+   * still delivering a message the moment it arrives. Zero restores short
+   * polling for tests that assert an exact request body.
+   */
+  readonly longPollSeconds?: number;
+  /** Bound every request so a stalled connection cannot hang the cycle. */
+  readonly requestTimeoutMs?: number;
 }
 
 export interface TelegramDeliveryLedgerReceipt {
@@ -356,6 +365,11 @@ export function createTelegramProviderAdapter(
   options: TelegramProviderAdapterOptions,
 ): TelegramProviderAdapter {
   const fetchImplementation = options.fetch ?? globalThis.fetch;
+  const longPollSeconds = options.longPollSeconds ?? 0;
+  // Comfortably longer than the long poll, so the deadline fires only when the
+  // connection is genuinely stalled rather than when Telegram is holding it.
+  const requestTimeoutMs =
+    options.requestTimeoutMs ?? Math.max(30_000, (longPollSeconds + 15) * 1000);
   const now = options.now ?? (() => new Date().toISOString());
   const identity: ProviderIdentity = {
     provider: "telegram",
@@ -398,6 +412,10 @@ export function createTelegramProviderAdapter(
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(body),
+        // Node's fetch never times out. A stalled poll would never return, so
+        // the supervisor's cycle would never finish and the daily schedule
+        // would stop with it -- no brief, no roll-up, and nothing reported.
+        signal: AbortSignal.timeout(requestTimeoutMs),
       });
     } catch {
       return {
@@ -464,6 +482,7 @@ export function createTelegramProviderAdapter(
       const performed = await perform("getUpdates", {
         ...(offset === undefined ? {} : { offset }),
         allowed_updates: ["message", "callback_query"],
+        ...(longPollSeconds > 0 ? { timeout: longPollSeconds } : {}),
       });
       if (performed.kind === "failed") {
         return { kind: "failed", failure: performed.failure };

@@ -69,6 +69,13 @@ export async function createProductionControlPlane(options: {
     accountReference: "telegram:real-ming",
     deliveryLedger: createEphemeralTelegramDeliveryLedger(),
     fetch: request,
+    // Long polling. Short polling at one cycle a second is roughly 86,000
+    // requests a day for a mailbox that is empty almost all of them, and
+    // sustained request rates are what earn a rate limit -- which would stop
+    // the CEO's messages arriving at all, the one thing this service exists
+    // to guarantee. Telegram holds the connection instead and answers the
+    // moment a message lands, so this is both cheaper and faster.
+    longPollSeconds: 20,
     now,
   });
   const notionLedger = new SqliteNotionWriteLedger(options.notionLedgerPath);

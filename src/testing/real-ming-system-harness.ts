@@ -1045,6 +1045,7 @@ export interface ControlPlaneSystemHarness {
     readonly text: string;
   }): void;
   failNextTelegramPoll(): void;
+  telegramPollRequests(): readonly unknown[];
   runCycle(): ReturnType<DailyOperationsControlPlane["runCycle"]>;
   dashboardOverview(): Promise<DashboardOverview>;
   telegramMessages(): readonly TelegramOutboundMessage[];
@@ -1087,6 +1088,7 @@ export async function createControlPlaneSystemHarness(options: {
   const messages: TelegramOutboundMessage[] = [];
   let telegramSendFailures = options.telegramSendFailures ?? 0;
   let telegramPollFailures = 0;
+  const pollRequests: unknown[] = [];
   const controlledFetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     if (url.includes("api.telegram.org") && url.endsWith("/getUpdates")) {
@@ -1105,6 +1107,7 @@ export async function createControlPlaneSystemHarness(options: {
       const polled = JSON.parse(String(init?.body ?? "{}")) as {
         readonly offset?: number;
       };
+      pollRequests.push(polled);
       const offset = typeof polled.offset === "number" ? polled.offset : 0;
       for (let index = updates.length - 1; index >= 0; index -= 1) {
         const queued = updates[index] as { readonly update_id: number };
@@ -1168,6 +1171,7 @@ export async function createControlPlaneSystemHarness(options: {
         },
       });
     },
+    telegramPollRequests: () => pollRequests,
     failNextTelegramPoll: () => {
       telegramPollFailures += 1;
     },
