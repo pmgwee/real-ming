@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  createControlPlaneSystemHarness,
   createRealMingSystemHarness,
   type RealMingSystemHarness,
 } from "../../src/testing/real-ming-system-harness.js";
@@ -421,5 +422,320 @@ describe("RM-15 control plane supervisor", () => {
     const afterStop = await supervisor.runCycle();
     expect(afterStop.telegram.kind).toBe("stopped");
     expect(afterStop.schedule.kind).toBe("stopped");
+  });
+
+  it("keeps both loops alive until the process is asked to stop", async () => {
+    const harness = startHarness();
+    let telegramPolls = 0;
+    let scheduleTicks = 0;
+    let supervisor: ReturnType<typeof harness.superviseControlPlane>;
+    supervisor = harness.superviseControlPlane({
+      pollTelegram: async () => {
+        telegramPolls += 1;
+      },
+      tickSchedule: async () => {
+        scheduleTicks += 1;
+      },
+      wait: async () => {
+        if (telegramPolls === 3) supervisor.stop();
+      },
+    });
+
+    await supervisor.run();
+
+    expect(telegramPolls).toBe(3);
+    expect(scheduleTicks).toBe(3);
+    expect(supervisor.running()).toBe(false);
+  });
+});
+
+describe("RM-15 production-equivalent control plane composition", () => {
+  it("shows secret-safe control-plane failure and recovery health", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-health-"));
+    let now = "2026-08-30T22:00:00.000Z";
+    const harness = await createControlPlaneSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      now: () => now,
+    });
+    try {
+      harness.failNextTelegramPoll();
+      expect((await harness.runCycle()).telegram.kind).toBe("failed");
+      now = "2026-08-30T22:01:00.000Z";
+      expect((await harness.runCycle()).telegram.kind).toBe("ran");
+      const overview = await harness.dashboardOverview();
+      const telegram = overview.controlPlane.find(
+        (component) => component.component === "telegram-ingress",
+      );
+
+      expect(telegram).toEqual(
+        expect.objectContaining({
+          lastOutcome: "healthy",
+          consecutiveFailures: 0,
+          lastRecoveredAt: "2026-08-30T22:01:00.000Z",
+        }),
+      );
+      expect(JSON.stringify(overview.controlPlane)).not.toContain(
+        "controlled failure",
+      );
+    } finally {
+      await harness.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the container and systemd deployment package under automated checks", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-deploy-check-"));
+    const harness = await createControlPlaneSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+    });
+    try {
+      expect(await harness.deploymentPreflight(process.cwd())).toEqual({
+        kind: "passed",
+        failures: [],
+      });
+    } finally {
+      await harness.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("turns one Telegram command into the same Work Item shown by the dashboard", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-composed-"));
+    const harness = await createControlPlaneSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+
+    try {
+      harness.queueTelegramUpdate({
+        updateId: 9401,
+        senderId: "100000001",
+        chatId: "100000001",
+        text: "/do Prepare the September operating plan",
+      });
+
+      const cycle = await harness.runCycle();
+      const overview = await harness.dashboardOverview();
+
+      expect(cycle.telegram.kind).toBe("ran");
+      expect(overview.workItems).toEqual([
+        expect.objectContaining({
+          intent: "Prepare the September operating plan",
+          accountableExecutive: "COO",
+          state: "Captured",
+        }),
+      ]);
+      expect(harness.telegramMessages()).toHaveLength(1);
+      expect(await harness.smoke()).toEqual({ kind: "passed" });
+    } finally {
+      await harness.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("restores durable work and audit state from a live SQLite backup", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-backup-"));
+    const statePath = join(directory, "state.sqlite");
+    const backupPath = join(directory, "backup.sqlite");
+    const before = await createControlPlaneSystemHarness({
+      statePath,
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+
+    try {
+      before.queueTelegramUpdate({
+        updateId: 9501,
+        senderId: "100000001",
+        chatId: "100000001",
+        text: "/do Preserve this Work Item",
+      });
+      await before.runCycle();
+      await before.backup(backupPath);
+    } finally {
+      await before.close();
+    }
+
+    const restored = await createControlPlaneSystemHarness({
+      statePath: backupPath,
+      now: () => "2026-08-30T22:05:00.000Z",
+    });
+    try {
+      const overview = await restored.dashboardOverview();
+      expect(overview.workItems).toEqual([
+        expect.objectContaining({ intent: "Preserve this Work Item" }),
+      ]);
+      expect(overview.auditEvents.length).toBeGreaterThan(0);
+    } finally {
+      await restored.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("backs up operations state and the Notion idempotency ledger as one set", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-backup-set-"));
+    const sourceStatePath = join(directory, "source-state.sqlite");
+    const sourceLedgerPath = join(directory, "source-notion-ledger.sqlite");
+    const harness = await createControlPlaneSystemHarness({
+      statePath: sourceStatePath,
+      notionLedgerPath: sourceLedgerPath,
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+
+    try {
+      harness.queueTelegramUpdate({
+        updateId: 9551,
+        senderId: "100000001",
+        chatId: "100000001",
+        text: "/do Preserve the entire production recovery set",
+      });
+      await harness.runCycle();
+      const backup = await harness.backupSet(join(directory, "backups"));
+
+      expect(backup.manifest.files.map((file) => file.role)).toEqual([
+        "operations-state",
+        "notion-write-ledger",
+      ]);
+      expect(backup.manifest.files.every((file) => file.sha256.length === 64)).toBe(true);
+      expect(
+        (await harness.dashboardOverview()).controlPlane.find(
+          (component) => component.component === "state-backup",
+        ),
+      ).toEqual(
+        expect.objectContaining({
+          lastOutcome: "healthy",
+          lastCheckedAt: "2026-08-30T22:00:00.000Z",
+        }),
+      );
+
+      await expect(
+        harness.backupSet(join(directory, "failed-backups"), {
+          failUpload: true,
+        }),
+      ).rejects.toThrow("Remote state backup failed");
+      expect(
+        (await harness.dashboardOverview()).controlPlane.find(
+          (component) => component.component === "state-backup",
+        )?.lastOutcome,
+      ).toBe("failed");
+
+      const restored = await createControlPlaneSystemHarness({
+        statePath: backup.statePath,
+        notionLedgerPath: backup.notionLedgerPath,
+        now: () => "2026-08-30T22:05:00.000Z",
+      });
+      try {
+        const overview = await restored.dashboardOverview();
+        expect(overview.workItems[0]?.intent).toBe(
+          "Preserve the entire production recovery set",
+        );
+      } finally {
+        await restored.close();
+      }
+    } finally {
+      await harness.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("does not duplicate a Telegram command after the process restarts", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-restart-"));
+    const statePath = join(directory, "state.sqlite");
+    const update = {
+      updateId: 9601,
+      senderId: "100000001",
+      chatId: "100000001",
+      text: "/do Survive the control-plane restart",
+    } as const;
+    const before = await createControlPlaneSystemHarness({
+      statePath,
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+    before.queueTelegramUpdate(update);
+    await before.runCycle();
+    await before.close();
+
+    const after = await createControlPlaneSystemHarness({
+      statePath,
+      now: () => "2026-08-30T22:05:00.000Z",
+    });
+    try {
+      after.queueTelegramUpdate(update);
+      await after.runCycle();
+      const overview = await after.dashboardOverview();
+
+      expect(overview.workItems).toHaveLength(1);
+      expect(overview.workItems[0]?.intent).toBe(
+        "Survive the control-plane restart",
+      );
+      expect(after.telegramMessages()).toHaveLength(0);
+    } finally {
+      await after.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("retries a durable failed notification after the process restarts", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-delivery-"));
+    const statePath = join(directory, "state.sqlite");
+    const before = await createControlPlaneSystemHarness({
+      statePath,
+      telegramSendFailures: 1,
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+    before.queueTelegramUpdate({
+      updateId: 9701,
+      senderId: "100000001",
+      chatId: "100000001",
+      text: "/do Retry my durable acknowledgement",
+    });
+    await before.runCycle();
+    expect(before.telegramMessages()).toHaveLength(0);
+    await before.close();
+
+    const after = await createControlPlaneSystemHarness({
+      statePath,
+      now: () => "2026-08-30T22:05:00.000Z",
+    });
+    try {
+      await after.runCycle();
+      expect(after.telegramMessages()).toHaveLength(1);
+    } finally {
+      await after.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("reports Telegram unhealthy while durable notification retries still fail", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-retry-health-"));
+    const statePath = join(directory, "state.sqlite");
+    const before = await createControlPlaneSystemHarness({
+      statePath,
+      telegramSendFailures: 1,
+      now: () => "2026-08-30T22:00:00.000Z",
+    });
+    before.queueTelegramUpdate({
+      updateId: 9751,
+      senderId: "100000001",
+      chatId: "100000001",
+      text: "/do Keep failed delivery recovery visible",
+    });
+    await before.runCycle();
+    await before.close();
+
+    const after = await createControlPlaneSystemHarness({
+      statePath,
+      telegramSendFailures: 1,
+      now: () => "2026-08-30T22:05:00.000Z",
+    });
+    try {
+      expect((await after.runCycle()).telegram.kind).toBe("failed");
+      const telegram = (await after.dashboardOverview()).controlPlane.find(
+        (component) => component.component === "telegram-ingress",
+      );
+      expect(telegram?.lastOutcome).toBe("failed");
+    } finally {
+      await after.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

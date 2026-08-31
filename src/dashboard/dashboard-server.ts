@@ -13,6 +13,16 @@ import { renderDashboardPage } from "./dashboard-page.js";
 export const dashboardSessionCookie = "real_ming_session";
 
 const maxRequestBodyBytes = 64 * 1024;
+// Fetch refuses these otherwise valid TCP destinations. An operating system
+// may assign one when tests or a smoke process request port 0.
+const fetchForbiddenPorts = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77,
+  79, 87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123,
+  135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530,
+  531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995,
+  1719, 1720, 1723, 2049, 3659, 4045, 5060, 5061, 6000, 6566, 6665, 6666,
+  6667, 6668, 6669, 6697, 10080,
+]);
 
 class RequestBodyError extends Error {
   constructor(
@@ -156,8 +166,12 @@ export function createDashboardServer(options: {
    * injected one, so the two would disagree about when a job next runs.
    */
   readonly now?: () => string;
+  readonly host?: string;
+  readonly port?: number;
 }): Promise<DashboardServer> {
   const now = options.now ?? (() => new Date().toISOString());
+  const host = options.host ?? "127.0.0.1";
+  const port = options.port ?? 0;
   const overviewFor = (session: DashboardSession): DashboardOverview =>
     buildDashboardOverview(options.state, { ...session, now: now() });
 
@@ -252,21 +266,33 @@ export function createDashboardServer(options: {
 
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    const resolveListeningServer = (): void => {
       const address = server.address();
       if (address === null || typeof address === "string") {
         reject(new Error("The dashboard server did not bind a port."));
         return;
       }
 
+      if (port === 0 && fetchForbiddenPorts.has(address.port)) {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          server.listen(0, host, resolveListeningServer);
+        });
+        return;
+      }
+
       resolve({
         port: address.port,
-        origin: `http://127.0.0.1:${address.port}`,
+        origin: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${address.port}`,
         close: () =>
           new Promise<void>((done, fail) => {
             server.close((error) => (error ? fail(error) : done()));
           }),
       });
-    });
+    };
+    server.listen(port, host, resolveListeningServer);
   });
 }

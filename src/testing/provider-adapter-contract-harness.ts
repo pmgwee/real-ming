@@ -34,6 +34,10 @@ import { legacyTaskSourceDefinitions, type LegacyTaskSource } from "../migration
 
 import { createAzureKeyVaultReader } from "../providers/azure-key-vault-reader.js";
 import {
+  createAzureBlobBackupUploader,
+  type AzureBlobBackupUploader,
+} from "../providers/azure-blob-backup-uploader.js";
+import {
   createGoogleAccessTokens,
   type GoogleAccessTokens,
 } from "../runtime/google-access-token.js";
@@ -1303,5 +1307,68 @@ export function createGoogleAccessTokenContractHarness(
     advance: (ms) => {
       clock += ms;
     },
+  };
+}
+
+export interface AzureBlobBackupContractHarness {
+  readonly uploader: AzureBlobBackupUploader;
+  tokenRequestCount(): number;
+  uploads(): readonly {
+    readonly url: string;
+    readonly authorization: string;
+    readonly blobType: string;
+    readonly content: string;
+  }[];
+}
+
+export function createAzureBlobBackupContractHarness(
+  scenario: {
+    readonly tokenStatus?: number;
+    readonly uploadStatus?: number;
+    readonly errorBody?: string;
+  } = {},
+): AzureBlobBackupContractHarness {
+  let tokenRequests = 0;
+  const uploads: {
+    url: string;
+    authorization: string;
+    blobType: string;
+    content: string;
+  }[] = [];
+  const controlledFetch = (async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const url = String(input);
+    if (url.includes("169.254.169.254")) {
+      tokenRequests += 1;
+      const status = scenario.tokenStatus ?? 200;
+      return status === 200
+        ? Response.json({ access_token: harnessBearerToken })
+        : new Response(scenario.errorBody ?? "", { status });
+    }
+    const content =
+      init?.body instanceof Blob
+        ? await init.body.text()
+        : new TextDecoder().decode(init?.body as Uint8Array);
+    uploads.push({
+      url,
+      authorization: new Headers(init?.headers).get("authorization") ?? "",
+      blobType: new Headers(init?.headers).get("x-ms-blob-type") ?? "",
+      content,
+    });
+    const status = scenario.uploadStatus ?? 201;
+    return new Response(scenario.errorBody ?? "", { status });
+  }) as typeof fetch;
+
+  return {
+    uploader: createAzureBlobBackupUploader({
+      accountName: "realmingbackup",
+      containerName: "state",
+      fetch: controlledFetch,
+      now: () => "Sun, 31 Aug 2026 00:00:00 GMT",
+    }),
+    tokenRequestCount: () => tokenRequests,
+    uploads: () => [...uploads],
   };
 }

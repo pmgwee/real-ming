@@ -13,8 +13,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 | | |
 | --- | --- |
 | Phase 3 tickets closed | **16 of 44** |
-| Startable by an agent right now | **RM-15 (#16)** — in progress, no CEO action needed |
-| Waiting on you | **One optional item: the Azure budget alert** |
+| Startable by an agent right now | **RM-15 (#16)** — implementation ready; live proof is next |
+| Waiting on you | **After the RM-15 commit is pushed: approve Step 6A and provide the VM SSH target/key path; optional: Azure budget alert** |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
@@ -38,43 +38,24 @@ Cost Management → Budgets → Add → subscription scope → RM250 → alerts 
 to your email. It is the only thing that tells you when the $200 credit stops
 absorbing the bill. It does not block RM-15.
 
-**RM-15 is now agent work.** Built and pushed: credential resolution
-(`src/runtime/credential-resolver.ts`, environment first so the vault stays
-optional and day 31 is a redeploy), the Key Vault reader via the VM's managed
-identity (`src/providers/azure-key-vault-reader.ts`), the durable Telegram
-ingress cursor, the two-loop supervisor, and the Google access-token exchange.
+**RM-15 implementation is ready for its live deployment gate.** The production
+composition root, non-root container, systemd service, managed-disk SQLite
+state, transactionally consistent backup, daily timer, managed-identity Azure
+Blob upload and opt-in smoke probe are implemented locally. Automated
+production-composition tests are green. The exact live actions are in
+[RM-15 — Put Real-Ming on Azure](RM-15-azure-deployment-runbook.md#step-6--deploy-and-prove-the-service-agent-after-explicit-ceo-approval).
 
-Remaining: the production composition root, the deployment artefacts
-(container, systemd unit, state on the managed disk, daily backup), and the
-opt-in live smoke test.
-
-⚠️ **A scoping finding that belongs in the RM-15 close-out.** No production
-composition root exists yet; only `src/config/notion-master-tasks-cutover-cli.ts`
-wires real adapters, and it uses refusing `ControlledWorker` / `EffectVerifier`
-/ `QuestionResponder` implementations. The control plane follows that pattern,
-because the Lenovo private worker is **RM-21**, which is blocked by RM-16. So
+⚠️ **A scoping finding that belongs in the RM-15 close-out.** The new production
+composition root deliberately uses refusing `ControlledWorker` /
+`EffectVerifier` / `QuestionResponder` implementations, following the proven
+cutover composition pattern. The Lenovo private worker is **RM-21**, which is
+blocked by RM-16. So
 capture, review, approvals, the brief, the roll-up and Telegram all work, but
 the deployed service cannot yet *execute* a Work Item autonomously. That will be
 stated plainly when #16 closes rather than left to look complete.
 
---- | --- |
-| Phase 3 tickets closed | **16 of 44** |
-| Startable by an agent right now | **Nothing — RM-15 needs your host choice** |
-| Waiting on you | **Azure: budget alert, VM, Key Vault, ten secrets** |
-
-**RM-11 through RM-14 are complete.** Master Tasks is your single writable task system, Google Calendar is the calendar Source of Record, the 07:30 Morning Brief and 21:30 Executive Roll-Up are built, and do-not-disturb, weekend rhythm and error grouping all work.
-
-**RM-15 is the first ticket that needs money and a vendor, so it stops here.** Gate 1 let you defer this and said "by RM-15 at the latest". This is RM-15.
-
-Everything that does not depend on the answer is already built and pushed — the scheduler runs the 07:00 held-notice sweep, the 07:30 brief and the 21:30 roll-up, each claiming its slot durably so a restart cannot double-send. Three of the five acceptance criteria are met. The other two cannot be, because there is nowhere for a timer to live.
-
-**You chose Azure.** Follow [RM-15 — Put Real-Ming on Azure](RM-15-azure-deployment-runbook.md): five steps, and **Step 1 is the budget alert** because your $200 expires in 30 days and then bills your card silently. Steps 2–5 are yours because they spend money and hold credentials; Step 6 is mine.
-
-⚠️ **Unbinding the card on day 31 stops Real-Ming, not just the billing.** The runbook now names that plainly and gives you three honest answers — keep paying (about **RM450-540/month as built**, or about RM50 if resized to a `B1s`, which is all this workload ever needed), migrate to GCP on the RM1,318 you already hold, or accept it only runs when the Lenovo is awake. Your plan is to migrate to Fly.io, Railway, ReadyServer or Hostinger at that point, so the deployment is built portable: a container image, environment variables as the only secret interface, and a tested backup that *is* the migration. ⚠️ When you subscribe, buy a **VPS** plan — shared hosting cannot run a long-lived process or hold SQLite.
-
-That runbook also records why a VM rather than an Azure agent PaaS, and where Azure AI Foundry genuinely does belong later: Real-Ming makes **no model calls at all**, its Executive Roles are governance roles rather than hosted agents, and its append-only guarantees rest on 15 SQLite triggers that want a real local disk.
-
---- | --- |
+| RM-11 cutover evidence | Result |
+| --- | --- |
 | Legacy databases renamed `ARCHIVED EVIDENCE` and locked | **5 of 5** |
 | Linked views over Master Tasks, familiar names kept | **5** |
 | Sample edits proven to reach the canonical Work Item, then restored | **5** |
@@ -92,6 +73,8 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
 | Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Settled: Azure**, East Asia (Southeast Asia refused every small size for this subscription). Chosen for the résumé value on the one cloud you have not used, with the credit difference largely illusory since both expire. | ✅ Decided |
+| Prepare RM-15 candidate | Build one exact reviewed commit, create the private backup container, securely transfer the two canonical SQLite stores, and install inactive units. | **Approve Step 6A after the local commit is pushed.** It produces the immutable hashes needed for a separate activation decision. | ⏳ Awaiting exact commit |
+| Activate RM-15 candidate | Start only the exact image/database/unit hashes returned by Step 6A, then run the Telegram/restart/dashboard/backup proofs. | **Approve Step 6B only when every hash and storage scope matches.** | blocked by Step 6A |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
@@ -103,8 +86,13 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 
 ## ✅ What needs you
 
-**Nothing is blocking agent work.** The only item left for you is the Azure
-budget alert described in the status board above, and RM-15 proceeds without it.
+**The local RM-15 implementation is complete; the live acceptance gate now
+needs you.** After the reviewed local commit is pushed, approve the exact Step
+6A sentence in the deployment runbook and provide the VM public IP plus the
+local path to its SSH private key. Step 6A cannot start the service; it returns
+the immutable evidence for a separate Step 6B activation approval. Do not send
+any application credential. The Azure budget alert remains recommended but
+does not block deployment.
 
 `RM11-CUTOVER-3` was approved and executed on 29 Aug 2026: 30 pages imported,
 all five legacy databases retired to read-only evidence, exactly one writable

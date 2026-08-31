@@ -1,0 +1,16 @@
+[Unit]
+Description=Back up Real-Ming durable state
+After=docker.service network-online.target
+After=real-ming.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/real-ming/backup.env
+EnvironmentFile=/etc/real-ming/release.env
+ExecStartPre=/usr/bin/install -d -o 1000 -g 1000 -m 0700 /var/lib/real-ming/backups
+ExecStart=/usr/local/libexec/real-ming-backup
+
+[Install]
+WantedBy=multi-user.target

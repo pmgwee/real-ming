@@ -7,6 +7,7 @@ import type {
   WorkItemState,
 } from "../operations/contracts.js";
 import type { OperationsState } from "../operations/operations-state.js";
+import type { ControlPlaneHealth } from "../operations/operations-state.js";
 import {
   schedulerHealth,
   type SchedulerJobHealth,
@@ -74,6 +75,7 @@ export interface DashboardOverview {
   readonly auditEvents: readonly DashboardAuditView[];
   readonly executives: readonly DashboardExecutiveView[];
   readonly scheduler: readonly SchedulerJobHealth[];
+  readonly controlPlane: readonly ControlPlaneHealth[];
 }
 
 const executiveRoles: readonly ExecutiveRole[] = [
@@ -249,5 +251,6 @@ export function buildDashboardOverview(
     auditEvents,
     executives,
     scheduler: schedulerHealth(state, session.now ?? new Date().toISOString()),
+    controlPlane: state.controlPlaneHealth(),
   };
 }

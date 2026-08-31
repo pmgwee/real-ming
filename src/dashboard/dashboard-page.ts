@@ -59,6 +59,18 @@ export function renderDashboardPage(overview: DashboardOverview): string {
     )
     .join("");
 
+  const controlPlaneRows = overview.controlPlane
+    .map(
+      (component) =>
+        `<tr data-control-plane-component="${escapeHtml(component.component)}">` +
+        `<td data-field="lastOutcome">${escapeHtml(component.lastOutcome)}</td>` +
+        `<td data-field="lastCheckedAt">${escapeHtml(component.lastCheckedAt)}</td>` +
+        `<td data-field="consecutiveFailures">${component.consecutiveFailures}</td>` +
+        `<td data-field="lastRecoveredAt">${escapeHtml(component.lastRecoveredAt ?? "")}</td>` +
+        "</tr>",
+    )
+    .join("");
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -90,6 +102,11 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <section aria-labelledby="audit-title">
 <h2 id="audit-title">Audit</h2>
 <table id="audit-events"><tbody>${auditRows}</tbody></table>
+</section>
+
+<section aria-labelledby="control-plane-title">
+<h2 id="control-plane-title">Control Plane Health and Recovery</h2>
+<table id="control-plane-health"><tbody>${controlPlaneRows}</tbody></table>
 </section>
 </main>
 </body>

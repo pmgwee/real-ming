@@ -171,6 +171,19 @@ export interface TelegramPendingDelivery {
   readonly payloadDigest: string;
 }
 
+export type ControlPlaneHealthComponent =
+  | "telegram-ingress"
+  | "daily-scheduler"
+  | "state-backup";
+
+export interface ControlPlaneHealth {
+  readonly component: ControlPlaneHealthComponent;
+  readonly lastOutcome: "healthy" | "failed";
+  readonly lastCheckedAt: string;
+  readonly consecutiveFailures: number;
+  readonly lastRecoveredAt: string | null;
+}
+
 interface TableColumnRow {
   name: string;
 }
@@ -503,6 +516,14 @@ export class OperationsState {
         completed_at TEXT,
         outcome TEXT,
         PRIMARY KEY (job, occurrence_date)
+      );
+
+      CREATE TABLE IF NOT EXISTS control_plane_health (
+        component TEXT PRIMARY KEY,
+        last_outcome TEXT NOT NULL,
+        last_checked_at TEXT NOT NULL,
+        consecutive_failures INTEGER NOT NULL,
+        last_recovered_at TEXT
       );
 
       CREATE TABLE IF NOT EXISTS telegram_ingress_cursor (
@@ -1562,6 +1583,79 @@ export class OperationsState {
       startedAt: row.started_at,
       completedAt: row.completed_at,
       outcome: row.outcome,
+    }));
+  }
+
+  /**
+   * Persist a payload-free operational snapshot. Failure causes never enter
+   * this table because provider exceptions can contain credential-bearing URLs.
+   */
+  recordControlPlaneHealth(record: {
+    readonly component: ControlPlaneHealthComponent;
+    readonly outcome: "healthy" | "failed";
+    readonly checkedAt: string;
+  }): void {
+    const previous = this.#database
+      .prepare(
+        `SELECT last_outcome, consecutive_failures, last_recovered_at
+         FROM control_plane_health WHERE component = ?`,
+      )
+      .get(record.component) as
+      | {
+          readonly last_outcome: "healthy" | "failed";
+          readonly consecutive_failures: number;
+          readonly last_recovered_at: string | null;
+        }
+      | undefined;
+    const consecutiveFailures =
+      record.outcome === "failed"
+        ? (previous?.consecutive_failures ?? 0) + 1
+        : 0;
+    const lastRecoveredAt =
+      record.outcome === "healthy" && previous?.last_outcome === "failed"
+        ? record.checkedAt
+        : (previous?.last_recovered_at ?? null);
+    this.#database
+      .prepare(
+        `INSERT INTO control_plane_health
+           (component, last_outcome, last_checked_at, consecutive_failures, last_recovered_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(component) DO UPDATE SET
+           last_outcome = excluded.last_outcome,
+           last_checked_at = excluded.last_checked_at,
+           consecutive_failures = excluded.consecutive_failures,
+           last_recovered_at = excluded.last_recovered_at`,
+      )
+      .run(
+        record.component,
+        record.outcome,
+        record.checkedAt,
+        consecutiveFailures,
+        lastRecoveredAt,
+      );
+  }
+
+  controlPlaneHealth(): readonly ControlPlaneHealth[] {
+    return (
+      this.#database
+        .prepare(
+          `SELECT component, last_outcome, last_checked_at,
+                  consecutive_failures, last_recovered_at
+           FROM control_plane_health ORDER BY component ASC`,
+        )
+        .all() as unknown as readonly {
+        readonly component: ControlPlaneHealthComponent;
+        readonly last_outcome: "healthy" | "failed";
+        readonly last_checked_at: string;
+        readonly consecutive_failures: number;
+        readonly last_recovered_at: string | null;
+      }[]
+    ).map((row) => ({
+      component: row.component,
+      lastOutcome: row.last_outcome,
+      lastCheckedAt: row.last_checked_at,
+      consecutiveFailures: row.consecutive_failures,
+      lastRecoveredAt: row.last_recovered_at,
     }));
   }
 

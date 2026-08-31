@@ -2,6 +2,10 @@ import {
   createControlPlaneSupervisor,
   type ControlPlaneSupervisor,
 } from "../runtime/control-plane-supervisor.js";
+import {
+  type DailyOperationsControlPlane,
+} from "../runtime/daily-operations-control-plane.js";
+import { createProductionControlPlane } from "../runtime/production-control-plane.js";
 
 import {
   pollTelegramUpdates as pollUpdates,
@@ -15,6 +19,14 @@ import {
   type VaultReadResult,
   type VaultSecretReader,
 } from "../runtime/credential-resolver.js";
+import { tracerCredentials } from "../config/tracer-secrets.js";
+import { backupSqliteState } from "../runtime/sqlite-state-backup.js";
+import { backupAndUploadControlPlaneState } from "../runtime/control-plane-backup.js";
+import { verifyControlPlaneDeployment } from "../runtime/control-plane-deployment-preflight.js";
+import {
+  verifyControlPlaneDashboard,
+  type ControlPlaneSmokeResult,
+} from "../runtime/control-plane-smoke.js";
 
 import type {
   Approval,
@@ -406,6 +418,7 @@ export interface RealMingSystemHarness {
   superviseControlPlane(overrides: {
     readonly pollTelegram?: () => Promise<unknown>;
     readonly tickSchedule?: () => Promise<unknown>;
+    readonly wait?: () => Promise<void>;
   }): ControlPlaneSupervisor;
   publishTelegramReviewControls(
     request: PublishTelegramReviewControlsRequest,
@@ -1001,6 +1014,7 @@ export function createRealMingSystemHarness(options: {
             })),
         tickSchedule: overrides.tickSchedule ?? (() => dailyOperations.tick()),
         now: options.now ?? (() => new Date().toISOString()),
+        ...(overrides.wait === undefined ? {} : { wait: overrides.wait }),
       }),
     publishTelegramReviewControls: (request) =>
       telegramFrontDoor.publishReviewControls(request),
@@ -1010,6 +1024,167 @@ export function createRealMingSystemHarness(options: {
     telegramMessages: () => telegramTransport.messages(),
     telegramAuditTrail: () => state.telegramAuditTrail(),
     close: () => state.close(),
+  };
+}
+
+export interface ControlPlaneSystemHarness {
+  queueTelegramUpdate(update: {
+    readonly updateId: number;
+    readonly senderId: string;
+    readonly chatId: string;
+    readonly text: string;
+  }): void;
+  failNextTelegramPoll(): void;
+  runCycle(): ReturnType<DailyOperationsControlPlane["runCycle"]>;
+  dashboardOverview(): Promise<DashboardOverview>;
+  telegramMessages(): readonly TelegramOutboundMessage[];
+  backup(destinationPath: string): Promise<void>;
+  backupSet(
+    destinationDirectory: string,
+    options?: { readonly failUpload?: boolean },
+  ): Promise<{
+    readonly statePath: string;
+    readonly notionLedgerPath: string;
+    readonly manifest: {
+      readonly files: readonly {
+        readonly role: "operations-state" | "notion-write-ledger";
+        readonly sha256: string;
+      }[];
+    };
+  }>;
+  smoke(): Promise<ControlPlaneSmokeResult>;
+  deploymentPreflight(repositoryRoot: string): Promise<{
+    readonly kind: "passed" | "failed";
+    readonly failures: readonly string[];
+  }>;
+  close(): Promise<void>;
+}
+
+/**
+ * The production composition exercised with provider-controlled edges. Tests
+ * still enter through the Real-Ming System Harness, while the module under test
+ * is the exact composition used by the deployed process.
+ */
+export async function createControlPlaneSystemHarness(options: {
+  readonly statePath: string;
+  readonly notionLedgerPath?: string;
+  readonly now?: () => string;
+  readonly telegramSendFailures?: number;
+}): Promise<ControlPlaneSystemHarness> {
+  const now = options.now ?? (() => new Date().toISOString());
+  const dashboardToken = "controlled-dashboard-access-token";
+  const updates: unknown[] = [];
+  const messages: TelegramOutboundMessage[] = [];
+  let telegramSendFailures = options.telegramSendFailures ?? 0;
+  let telegramPollFailures = 0;
+  const controlledFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.includes("api.telegram.org") && url.endsWith("/getUpdates")) {
+      if (telegramPollFailures > 0) {
+        telegramPollFailures -= 1;
+        return Response.json(
+          { ok: false, error_code: 503, description: "controlled failure" },
+          { status: 503 },
+        );
+      }
+      return Response.json({ ok: true, result: updates.splice(0) });
+    }
+    if (url.includes("api.telegram.org") && url.endsWith("/sendMessage")) {
+      if (telegramSendFailures > 0) {
+        telegramSendFailures -= 1;
+        return Response.json(
+          { ok: false, error_code: 503, description: "controlled failure" },
+          { status: 503 },
+        );
+      }
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      messages.push({
+        chatId: String(body["chat_id"] ?? ""),
+        text: String(body["text"] ?? ""),
+      });
+      return Response.json({ ok: true, result: { message_id: messages.length } });
+    }
+    if (url.includes("api.notion.com/v1/data_sources/") && url.endsWith("/query")) {
+      return Response.json({ object: "list", results: [], has_more: false, next_cursor: null });
+    }
+    if (url.endsWith("api.notion.com/v1/pages")) {
+      return Response.json({ object: "page", id: `controlled-page-${messages.length}` });
+    }
+    throw new Error(`Controlled production edge received an unexpected request: ${new URL(url).host}.`);
+  }) as typeof fetch;
+  const environment = Object.fromEntries(
+    tracerCredentials.map((credential) => [
+      credential.name,
+      credential.name === "REAL_MING_TELEGRAM_CEO_ID"
+        ? "100000001"
+        : credential.name === "REAL_MING_DASHBOARD_TOKEN"
+          ? dashboardToken
+          : `controlled-${credential.name.toLowerCase()}`,
+    ]),
+  );
+  const controlPlane = await createProductionControlPlane({
+    environment,
+    statePath: options.statePath,
+    notionLedgerPath:
+      options.notionLedgerPath ?? `${options.statePath}.notion-ledger`,
+    fetch: controlledFetch,
+    dashboardPort: 0,
+    now,
+  });
+
+  return {
+    queueTelegramUpdate: (update) => {
+      updates.push({
+        update_id: update.updateId,
+        message: {
+          message_id: update.updateId,
+          from: { id: Number(update.senderId) },
+          chat: { id: Number(update.chatId), type: "private" },
+          text: update.text,
+          date: Math.floor(Date.parse(now()) / 1_000),
+        },
+      });
+    },
+    failNextTelegramPoll: () => {
+      telegramPollFailures += 1;
+    },
+    runCycle: () => controlPlane.runCycle(),
+    dashboardOverview: async () => {
+      const response = await fetch(`${controlPlane.dashboardOrigin}/api/overview`, {
+        headers: { Authorization: `Bearer ${dashboardToken}` },
+      });
+      if (!response.ok) throw new Error("Controlled dashboard read failed.");
+      return response.json() as Promise<DashboardOverview>;
+    },
+    telegramMessages: () => [...messages],
+    backup: (destinationPath) =>
+      backupSqliteState({
+        sourcePath: options.statePath,
+        destinationPath,
+      }),
+    backupSet: (destinationDirectory, backupOptions) =>
+      backupAndUploadControlPlaneState({
+        statePath: options.statePath,
+        notionLedgerPath:
+          options.notionLedgerPath ?? `${options.statePath}.notion-ledger`,
+        destinationDirectory,
+        backupId: now().replaceAll(":", "-"),
+        createdAt: now(),
+        uploader: {
+          upload: async () =>
+            backupOptions?.failUpload === true
+              ? { kind: "failed", reason: "unavailable" }
+              : { kind: "ok" },
+        },
+      }),
+    smoke: () =>
+      verifyControlPlaneDashboard({
+        origin: controlPlane.dashboardOrigin,
+        dashboardToken,
+      }),
+    deploymentPreflight: (repositoryRoot) =>
+      verifyControlPlaneDeployment(repositoryRoot),
+    close: () => controlPlane.close(),
   };
 }
 

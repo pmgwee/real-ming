@@ -11,6 +11,7 @@ export interface ControlPlaneCycle {
 
 export interface ControlPlaneSupervisor {
   runCycle(): Promise<ControlPlaneCycle>;
+  run(): Promise<void>;
   running(): boolean;
   stop(): void;
 }
@@ -33,8 +34,13 @@ export function createControlPlaneSupervisor(options: {
   readonly pollTelegram: () => Promise<unknown>;
   readonly tickSchedule: () => Promise<unknown>;
   readonly now: () => string;
+  readonly wait?: () => Promise<void>;
+  readonly onCycle?: (cycle: ControlPlaneCycle) => void;
 }): ControlPlaneSupervisor {
   let stopped = false;
+  const wait = options.wait ?? (() => new Promise<void>((resolve) => {
+    setTimeout(resolve, 1_000);
+  }));
 
   async function attempt(work: () => Promise<unknown>): Promise<CycleOutcome> {
     if (stopped) return { kind: "stopped" };
@@ -46,15 +52,24 @@ export function createControlPlaneSupervisor(options: {
     }
   }
 
-  return {
+  const supervisor: ControlPlaneSupervisor = {
     async runCycle(): Promise<ControlPlaneCycle> {
       const telegram = await attempt(options.pollTelegram);
       const schedule = await attempt(options.tickSchedule);
-      return { at: options.now(), telegram, schedule };
+      const cycle = { at: options.now(), telegram, schedule };
+      options.onCycle?.(cycle);
+      return cycle;
+    },
+    async run(): Promise<void> {
+      while (!stopped) {
+        await supervisor.runCycle();
+        if (!stopped) await wait();
+      }
     },
     running: () => !stopped,
     stop: () => {
       stopped = true;
     },
   };
+  return supervisor;
 }

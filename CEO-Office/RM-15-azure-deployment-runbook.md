@@ -1,9 +1,9 @@
 # RM-15 — Put Real-Ming on Azure
 
-> **TL;DR — you create the account resources and paste ten secrets; I do the
-> rest.** One `D2as_v5` virtual machine in East Asia, a Key Vault holding the
-> credentials, and a systemd service that keeps Real-Ming running while your
-> Lenovo is shut.
+> **TL;DR — the VM, Key Vault, managed identity and ten secrets are complete.**
+> The application and deployment package are ready locally. The remaining gate
+> is an explicitly approved live deployment, followed by the restart, backup,
+> dashboard and Lenovo-off Telegram proofs below.
 
 > **✅ Chosen, 30 Aug 2026:** `Standard_D2as_v5` (2 dedicated vCPU, 8 GiB, AMD
 > x86-64), **East Asia**, Ubuntu Server 24.04 LTS Gen2, 128 GiB Premium SSD LRS,
@@ -24,9 +24,10 @@ your behalf. Everything after that is engineering and I own it.
 
 - [x] Azure account, active — `126042693@student.newinti.edu.my`
 - [x] The Daily Operations scheduler, committed in `dcd00ea`
-- [ ] Azure CLI installed locally (`az --version`)
+- [x] Azure VM, managed identity, Key Vault and ten secrets provisioned
 - [ ] A budget alert (Step 1)
-- [ ] The ten credentials from `CREDENTIAL-INVENTORY.md`, still in your `.env`
+- [ ] A Blob Storage account/container for off-machine backups (created during
+      the approved deployment; it contains SQLite state and must stay private)
 
 ---
 
@@ -419,18 +420,89 @@ For each name in `CREDENTIAL-INVENTORY.md`, Key Vault → **Secrets** →
 Paste values from your `.env`. Do not send them to me, and do not put them in a
 GitHub issue.
 
-### Step 6 · Everything else (me)
+### Step 6 · Deploy and prove the service (agent, after explicit CEO approval)
 
-Once Steps 1–5 are done I will:
+The repository now contains the exact package: `Dockerfile`,
+`deploy/systemd/real-ming.service`, `real-ming-backup.service`, and
+`real-ming-backup.timer`. The application runs as the non-root `node` user,
+mounts `/var/lib/real-ming`, reads secrets from Key Vault through the VM managed
+identity, and binds the authenticated dashboard to localhost only. The daily
+backup briefly quiesces the control-plane service, snapshots both SQLite stores
+as one checksummed set, uploads the completeness manifest last, and restarts
+the service even if backup fails. This prevents cross-store snapshots from two
+different logical moments.
 
-- containerise the service so day 31 is a migration, not a rewrite
-- write the systemd unit that runs the scheduler and the Telegram front door
-- read credentials from environment variables, with a small optional Key Vault
-  loader for Azure, so no other host needs that loader at all
-- put the SQLite state on the managed disk and add a **daily backup** to Azure
-  Storage — your 30 migrated Work Items live in that one file
-- add the deployment scripts and an opt-in live smoke test to the repository
-- prove the acceptance criteria and close the ticket
+The live gate is deliberately split in two so CEO approval can bind an exact
+artifact rather than a movable branch or Docker tag.
+
+#### Step 6A — prepare a candidate (first explicit approval)
+
+The live session will perform these bounded preparation actions, stopping
+immediately on drift:
+
+1. Connect to the named VM with the CEO-provided SSH key and verify host identity.
+2. Install Docker only if absent; clone and detach at the exact reviewed commit
+   SHA named in the approval. Build `real-ming:tracer-1` on the VM, then record
+   its immutable `sha256:` image ID. The tag is never used by systemd.
+   Run `bash deploy/verify-deployment.sh`, which repeats all repository gates, builds
+   and smoke-runs the container, and syntax-validates all units with
+   `systemd-analyze verify`.
+3. Create one private Azure Storage account/container in the existing
+   `real-ming` resource group, grant only **Storage Blob Data Contributor** to
+   the VM managed identity at the container/storage scope, and write the two
+   non-secret names to `/etc/real-ming/backup.env`.
+4. Create a checksummed local recovery set from the existing canonical
+   `.real-ming-operations.sqlite` (30 Work Items, 58 audit events) and
+   `.real-ming-notion-ledger.sqlite` (35 idempotency receipts), then securely
+   copy both exact databases to `/var/lib/real-ming/`. They are never committed.
+5. Install—but do not start—the three systemd units. Install the reviewed
+   backup helper root-owned at `/usr/local/libexec/real-ming-backup` with mode
+   `0755`; the unit never executes the mutable checkout. Write the immutable
+   image ID to root-owned `/etc/real-ming/release.env` as
+   `REAL_MING_IMAGE=sha256:...`.
+6. Report the commit SHA, image ID, both database SHA-256 hashes, storage scope,
+   and one SHA-256 binding the three unit files plus the installed backup helper.
+   Stop for the final activation approval. The backup unit is explicitly ordered
+   after `real-ming.service`, so a persistent missed timer cannot race service
+   activation at boot.
+
+**Required Step 6A approval sentence:**
+
+> I approve preparation of the RM-15 deployment candidate from reviewed commit
+> `<COMMIT_SHA>` on the existing `real-ming-control-plane` Azure VM, including
+> creation of one private Azure Storage backup account/container in the
+> existing `real-ming` resource group, the narrowly scoped managed-identity
+> role assignment, secure transfer of the two named canonical SQLite databases,
+> image build, and installation of inactive systemd units. Do not start the
+> service or send Telegram messages. Stop on any drift and return the exact
+> artifact hashes for separate activation approval.
+
+#### Step 6B — activate the exact candidate (second explicit approval)
+
+Only after the CEO approves the reported commit, immutable image ID, database
+hashes, storage scope and unit hashes will the agent:
+
+1. Enable and start `real-ming.service` and `real-ming-backup.timer` using the
+   exact `REAL_MING_IMAGE=sha256:...` binding.
+2. Run `npm run control-plane:smoke -- --live` on the VM. The same command
+   without `--live` must report `skipped` and contact nothing.
+3. Prove restart durability, one non-duplicated scheduler occurrence, the
+   authenticated dashboard over an SSH tunnel, a local and remote backup, and
+   Telegram reachability while the Lenovo application process is off.
+
+No credential value is written to disk, copied into a command, printed to a
+log, or sent to GitHub. The backup contains personal operational state, so its
+container remains private. The agent will report the storage resource name and
+role scope before creation, then the exact proof results after deployment.
+
+**Required Step 6B approval sentence (filled with Step 6A evidence):**
+
+> I approve activation of RM-15 commit `<COMMIT_SHA>`, immutable image
+> `<IMAGE_SHA256>`, operations state `<STATE_SHA256>`, Notion ledger
+> `<LEDGER_SHA256>`, and systemd unit/helper set `<UNIT_SET_SHA256>` on
+> `real-ming-control-plane`, with backup scope `<STORAGE_SCOPE>`. Start only
+> those exact artifacts, send one documented Telegram smoke reply, perform the
+> restart/dashboard/backup verification, and stop on any drift.
 
 ---
 
@@ -444,7 +516,7 @@ Once Steps 1–5 are done I will:
 | Open the dashboard | Scheduler health shows last and next run, no secret |
 | `journalctl -u real-ming \| grep -i token` | Nothing |
 | Run the live smoke test without its flag | Skips rather than contacting a provider |
-| Delete the VM and restore from backup | State returns to the last backup |
+| Delete the VM and restore from backup | Work/audit state and Notion idempotency receipts return from the same manifest-bound set |
 
 ---
 
