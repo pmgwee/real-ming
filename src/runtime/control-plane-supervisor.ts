@@ -57,7 +57,17 @@ export function createControlPlaneSupervisor(options: {
       const telegram = await attempt(options.pollTelegram);
       const schedule = await attempt(options.tickSchedule);
       const cycle = { at: options.now(), telegram, schedule };
-      options.onCycle?.(cycle);
+      // Bookkeeping about the loops must not be able to kill the loops. This
+      // call was outside the isolation above, so a throw from the health write
+      // -- a full disk, SQLITE_BUSY, a corrupt page -- propagated out of run()
+      // and exited the process, even though both loops had just succeeded.
+      // systemd restarts, so the cost was a crash loop rather than an outage,
+      // but it contradicted the guarantee this comment makes.
+      try {
+        options.onCycle?.(cycle);
+      } catch {
+        // Nothing to escalate to: the recorder is what failed.
+      }
       return cycle;
     },
     async run(): Promise<void> {

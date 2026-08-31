@@ -415,10 +415,16 @@ export interface RealMingSystemHarness {
     updates: readonly TelegramUpdate[],
   ): Promise<TelegramPollResult>;
   telegramIngressCursor(): number;
+  recordControlPlaneHealth(record: {
+    readonly component: "telegram-ingress" | "daily-scheduler" | "state-backup";
+    readonly outcome: "healthy" | "failed";
+    readonly checkedAt: string;
+  }): void;
   superviseControlPlane(overrides: {
     readonly pollTelegram?: () => Promise<unknown>;
     readonly tickSchedule?: () => Promise<unknown>;
     readonly wait?: () => Promise<void>;
+    readonly onCycle?: () => void;
   }): ControlPlaneSupervisor;
   publishTelegramReviewControls(
     request: PublishTelegramReviewControlsRequest,
@@ -994,6 +1000,7 @@ export function createRealMingSystemHarness(options: {
         },
       }),
     telegramIngressCursor: () => state.telegramIngressCursor(),
+    recordControlPlaneHealth: (record) => state.recordControlPlaneHealth(record),
     superviseControlPlane: (overrides) =>
       createControlPlaneSupervisor({
         pollTelegram:
@@ -1015,6 +1022,9 @@ export function createRealMingSystemHarness(options: {
         tickSchedule: overrides.tickSchedule ?? (() => dailyOperations.tick()),
         now: options.now ?? (() => new Date().toISOString()),
         ...(overrides.wait === undefined ? {} : { wait: overrides.wait }),
+        ...(overrides.onCycle === undefined
+          ? {}
+          : { onCycle: overrides.onCycle }),
       }),
     publishTelegramReviewControls: (request) =>
       telegramFrontDoor.publishReviewControls(request),

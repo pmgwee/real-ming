@@ -43,6 +43,19 @@ describe("RM-08 dashboard browser view", () => {
       now: () => "2026-08-27T09:00:00.000Z",
     });
     harnesses.push(harness);
+    // Seed both health components, so the rendered-section assertion compares
+    // real rows. Without a row the comparison is [] against [], which passes
+    // even when the section is deleted from the page.
+    harness.recordControlPlaneHealth({
+      component: "telegram-ingress",
+      outcome: "healthy",
+      checkedAt: "2026-08-27T09:00:00.000Z",
+    });
+    harness.recordControlPlaneHealth({
+      component: "daily-scheduler",
+      outcome: "failed",
+      checkedAt: "2026-08-27T09:00:00.000Z",
+    });
     const server = await harness.startDashboard(credentials);
     servers.push(server);
     return { harness, server };
@@ -157,6 +170,15 @@ describe("RM-08 dashboard browser view", () => {
             blockers: read(row, "blockers"),
             outcomeReportRevision: read(row, "outcomeReportRevision"),
           })),
+          controlPlane: [
+            ...document.querySelectorAll(
+              "#control-plane-health tr[data-control-plane-component]",
+            ),
+          ].map((row) => ({
+            component: row.getAttribute("data-control-plane-component") ?? "",
+            lastOutcome: read(row, "lastOutcome"),
+            consecutiveFailures: read(row, "consecutiveFailures"),
+          })),
           approvals: [
             ...document.querySelectorAll(
               "#pending-approvals tr[data-approval-id]",
@@ -210,6 +232,16 @@ describe("RM-08 dashboard browser view", () => {
           executive: executive.executive,
           accountableWorkItems: String(executive.accountableWorkItems),
           readyForCeoReview: String(executive.readyForCeoReview),
+        })),
+      );
+      // Criterion 4 asks for health visible in the dashboard. The JSON API was
+      // proven; the rendered page was not, so the whole section could have been
+      // deleted with every test still passing.
+      expect(rendered.controlPlane).toEqual(
+        overview.controlPlane.map((component) => ({
+          component: component.component,
+          lastOutcome: component.lastOutcome,
+          consecutiveFailures: String(component.consecutiveFailures),
         })),
       );
       expect(rendered.auditCount).toBe(overview.auditEvents.length);

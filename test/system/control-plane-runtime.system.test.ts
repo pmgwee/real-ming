@@ -854,3 +854,40 @@ describe("RM-15 health writes are cheap without being late", () => {
     expect(failed?.lastOutcome).toBe("failed");
   });
 });
+
+describe("RM-15 bookkeeping must not kill the loops", () => {
+  const directories: string[] = [];
+  const harnesses: RealMingSystemHarness[] = [];
+
+  afterEach(() => {
+    for (const harness of harnesses.splice(0)) harness.close();
+    for (const directory of directories.splice(0)) {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("survives a failing health write when both loops succeeded", async () => {
+    // The health record is written outside the per-loop isolation. A full disk
+    // or a SQLITE_BUSY there used to propagate out of run() and exit the
+    // process -- taking down a control plane whose loops had both just worked.
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-book-"));
+    directories.push(directory);
+    const harness = createRealMingSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      telegram: { ceoTelegramId: "100000001" },
+    });
+    harnesses.push(harness);
+
+    const supervisor = harness.superviseControlPlane({
+      onCycle: () => {
+        throw new Error("The health recorder failed.");
+      },
+    });
+
+    const cycle = await supervisor.runCycle();
+
+    expect(cycle.telegram.kind).toBe("ran");
+    expect(cycle.schedule.kind).toBe("ran");
+    expect(supervisor.running()).toBe(true);
+  });
+});
