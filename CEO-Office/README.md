@@ -12,8 +12,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **24 of 44** *(RM-22 closed; RM-23 next)* |
-| Startable by an agent right now | **RM-23 (#24)** — Monitor Scheduler Heartbeats and exceptions |
+| Phase 3 tickets closed | **25 of 44** *(RM-23 closed; RM-25 next)* |
+| Startable by an agent right now | **RM-25 (#26)** — Show DuitSini GitHub and Git lineage |
 | Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
@@ -129,6 +129,17 @@ evidence, with one governed recovery notice. The authenticated dashboard now
 renders provider-observation history separately from binary control-plane
 health, and the Notion, Google Calendar and Telegram provider edges use the
 same coordinator.
+
+**RM-23 is complete.** The scheduler inventory now records provider, cadence,
+criticality, accountable executive, heartbeat, success, next run, duration,
+failure streak, evidence, and durable attempt-numbered failure history. Critical
+misses and failures notify on the first occurrence; routine jobs notify after
+two consecutive failures. Cold starts, crashed claims, stale current runs, and
+timed-out runners are detected without permitting late side effects to race a
+retry. Repeated notices group and recover once, while the dashboard and
+Executive Roll-Up retain noncritical scheduler history. Future Vercel, GitHub
+Actions, application-scheduler, and Knowledge Compiler jobs can register through
+the inventory extension point.
 
 **RM-17’s CEO selection is recorded and the bounded Personal Context ingestion
 boundary is implemented and proven in the controlled harness.** The eventual
