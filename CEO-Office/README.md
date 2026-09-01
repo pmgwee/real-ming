@@ -12,8 +12,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **23 of 44** *(RM-21 closed; RM-22 next)* |
-| Startable by an agent right now | **RM-22 (#23)** — Surface provider degradation and recovery |
+| Phase 3 tickets closed | **24 of 44** *(RM-22 closed; RM-23 next)* |
+| Startable by an agent right now | **RM-23 (#24)** — Monitor Scheduler Heartbeats and exceptions |
 | Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
@@ -119,6 +119,16 @@ The deployed Azure service still supplies neither a live Lenovo transport nor a
 worker adapter, so it remains refusal-only for Local-Only execution until that
 separate connection and activation are approved. A green controlled tracer is
 not live worker execution.
+
+**RM-22 is complete.** Provider observations are durable, secret-safe and
+idempotent, with explicit healthy/stale/unavailable/missing-permission/
+rate-limited/unsupported/invalid-data states. Identical events group without
+erasing distinct failures; retry attempts are bounded and classified; provider
+recovery is linked to the affected Work Item, observation identity and audit
+evidence, with one governed recovery notice. The authenticated dashboard now
+renders provider-observation history separately from binary control-plane
+health, and the Notion, Google Calendar and Telegram provider edges use the
+same coordinator.
 
 **RM-17’s CEO selection is recorded and the bounded Personal Context ingestion
 boundary is implemented and proven in the controlled harness.** The eventual

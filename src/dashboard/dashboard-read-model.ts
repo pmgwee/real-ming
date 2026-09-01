@@ -7,7 +7,10 @@ import type {
   WorkItemState,
 } from "../operations/contracts.js";
 import type { OperationsState } from "../operations/operations-state.js";
-import type { ControlPlaneHealth } from "../operations/operations-state.js";
+import type {
+  ControlPlaneHealth,
+  ProviderObservation,
+} from "../operations/operations-state.js";
 import {
   schedulerHealth,
   type SchedulerJobHealth,
@@ -107,6 +110,8 @@ export interface DashboardOverview {
   readonly projectPortfolio: readonly DashboardPortfolioProjectView[];
   readonly scheduler: readonly SchedulerJobHealth[];
   readonly controlPlane: readonly ControlPlaneHealth[];
+  /** Provider degradation is separate from binary process health. */
+  readonly providerObservations: readonly ProviderObservation[];
 }
 
 const executiveRoles: readonly ExecutiveRole[] = [
@@ -311,5 +316,6 @@ export function buildDashboardOverview(
     projectPortfolio,
     scheduler: schedulerHealth(state, session.now ?? new Date().toISOString()),
     controlPlane: state.controlPlaneHealth(),
+    providerObservations: state.providerObservations(),
   };
 }

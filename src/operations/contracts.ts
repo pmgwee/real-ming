@@ -413,6 +413,8 @@ export interface AuditEvent {
     | "approval.granted"
     | "approval.invalidated"
     | "standing-authority.granted"
+    | "provider.observed"
+    | "provider.recovered"
     | "project-evidence.bound"
     | "project-evidence.served"
     | "project-evidence.candidate-captured"

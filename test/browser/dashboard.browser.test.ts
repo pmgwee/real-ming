@@ -56,6 +56,16 @@ describe("RM-08 dashboard browser view", () => {
       outcome: "failed",
       checkedAt: "2026-08-27T09:00:00.000Z",
     });
+    await harness.recordProviderObservation({
+      provider: "notion",
+      accountReference: "notion:real-ming",
+      sourceReference: "master-tasks:browser",
+      status: "unavailable",
+      failureClass: "unavailable",
+      retryable: true,
+      observedAt: "2026-08-27T09:00:00.000Z",
+      idempotencyKey: "browser:provider-observation:1",
+    });
     const server = await harness.startDashboard(credentials);
     servers.push(server);
     return { harness, server };
@@ -179,6 +189,16 @@ describe("RM-08 dashboard browser view", () => {
             lastOutcome: read(row, "lastOutcome"),
             consecutiveFailures: read(row, "consecutiveFailures"),
           })),
+          providerObservations: [
+            ...document.querySelectorAll(
+              "#provider-observations tr[data-provider-observation-id]",
+            ),
+          ].map((row) => ({
+            id: row.getAttribute("data-provider-observation-id") ?? "",
+            provider: read(row, "provider"),
+            sourceReference: read(row, "sourceReference"),
+            status: read(row, "status"),
+          })),
           approvals: [
             ...document.querySelectorAll(
               "#pending-approvals tr[data-approval-id]",
@@ -242,6 +262,14 @@ describe("RM-08 dashboard browser view", () => {
           component: component.component,
           lastOutcome: component.lastOutcome,
           consecutiveFailures: String(component.consecutiveFailures),
+        })),
+      );
+      expect(rendered.providerObservations).toEqual(
+        overview.providerObservations.map((observation) => ({
+          id: observation.observationId,
+          provider: observation.provider,
+          sourceReference: observation.sourceReference,
+          status: observation.status,
         })),
       );
       expect(rendered.auditCount).toBe(overview.auditEvents.length);

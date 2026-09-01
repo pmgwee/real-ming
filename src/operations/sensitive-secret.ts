@@ -19,7 +19,9 @@ const sensitiveValuePatterns: readonly RegExp[] = [
   /\bgh[pousr]_[A-Za-z0-9]{16,}\b/,
   /\bsk-[A-Za-z0-9-]{16,}\b/,
   /\bxox[abposr]-[A-Za-z0-9-]{10,}\b/,
-  /\d{5,12}:[A-Za-z0-9_-]{20,}\b/,
+  // Telegram tokens occur as `.../bot<digits>:<token>` in URLs. The `bot`
+  // prefix means a word-boundary-before-digits pattern misses the secret.
+  /(?:\bbot)?\d{5,12}:[A-Za-z0-9_-]{20,}\b/,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
   /\b(?:\d[ -]?){13,19}\b/,
 ];

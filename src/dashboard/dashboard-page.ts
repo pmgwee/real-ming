@@ -71,6 +71,23 @@ export function renderDashboardPage(overview: DashboardOverview): string {
     )
     .join("");
 
+  const providerObservationRows = overview.providerObservations
+    .map(
+      (observation) =>
+        `<tr data-provider-observation-id="${escapeHtml(observation.observationId)}">` +
+        `<td data-field="provider">${escapeHtml(observation.provider)}</td>` +
+        `<td data-field="sourceReference">${escapeHtml(observation.sourceReference)}</td>` +
+        `<td data-field="status">${escapeHtml(observation.status)}</td>` +
+        `<td data-field="failureClass">${escapeHtml(observation.failureClass ?? "")}</td>` +
+        `<td data-field="attemptCount">${observation.attemptCount}</td>` +
+        `<td data-field="lastObservedAt">${escapeHtml(observation.lastObservedAt)}</td>` +
+        `<td data-field="recoveredAt">${escapeHtml(observation.recoveredAt ?? "active")}</td>` +
+        `<td data-field="workItemId">${escapeHtml(observation.workItemId ?? "")}</td>` +
+        `<td data-field="auditSequence">${escapeHtml(String(observation.auditSequence ?? ""))}</td>` +
+        "</tr>",
+    )
+    .join("");
+
   const portfolioRows = overview.projectPortfolio
     .map(
       (project) =>
@@ -126,6 +143,11 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <section aria-labelledby="control-plane-title">
 <h2 id="control-plane-title">Control Plane Health and Recovery</h2>
 <table id="control-plane-health"><tbody>${controlPlaneRows}</tbody></table>
+</section>
+
+<section aria-labelledby="provider-observations-title">
+<h2 id="provider-observations-title">Provider Observations</h2>
+<table id="provider-observations"><tbody>${providerObservationRows}</tbody></table>
 </section>
 </main>
 </body>

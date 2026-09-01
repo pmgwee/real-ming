@@ -104,7 +104,13 @@ export interface HeldRelease {
 
 export interface ExceptionNoticeRhythm {
   admit(notice: ExceptionNotice): Promise<ExceptionNoticeAdmission>;
-  recordRecovery(signature: string): Promise<ExceptionNoticeAdmission>;
+  recordRecovery(
+    signature: string,
+    details?: {
+      readonly text?: string;
+      readonly idempotencyKey?: string;
+    },
+  ): Promise<ExceptionNoticeAdmission>;
   releaseHeld(): Promise<HeldRelease>;
 }
 
@@ -274,7 +280,10 @@ export function createExceptionNoticeRhythm(options: {
       return { released, failed };
     },
 
-    async recordRecovery(signature): Promise<ExceptionNoticeAdmission> {
+    async recordRecovery(
+      signature,
+      details,
+    ): Promise<ExceptionNoticeAdmission> {
       const now = options.now();
       const recovery = options.state.recordExceptionNoticeRecovery(
         signature,
@@ -319,10 +328,13 @@ export function createExceptionNoticeRhythm(options: {
       // Recovery is one notice, whatever the failure count was.
       return this.admit({
         kind: "recovery-notice",
-        text: `Recovered: ${signature} after ${recovery.occurrences} occurrence${
-          recovery.occurrences === 1 ? "" : "s"
-        }.`,
-        idempotencyKey: `recovery:${signature}:${now}`,
+        text:
+          details?.text ??
+          `Recovered: ${signature} after ${recovery.occurrences} occurrence${
+            recovery.occurrences === 1 ? "" : "s"
+          }.`,
+        idempotencyKey:
+          details?.idempotencyKey ?? `recovery:${signature}:${now}`,
       });
     },
   };

@@ -59,6 +59,10 @@ import {
   type MaterialBlockerReason,
 } from "../operations/operations-gateway.js";
 import { OperationsState } from "../operations/operations-state.js";
+import type {
+  ProviderObservation,
+  ProviderObservationTransition,
+} from "../operations/operations-state.js";
 import { createCommandClassifier } from "../operations/command-classifier.js";
 import {
   createDashboardServer,
@@ -88,6 +92,7 @@ import type {
   ProviderFailure,
   ProviderReadResult,
 } from "../providers/adapter-contract.js";
+import type { ProviderObservationInput } from "../providers/provider-health.js";
 import type { Workstream } from "../operations/contracts.js";
 import {
   MasterTasksProjection,
@@ -171,6 +176,7 @@ import {
   type ExceptionNoticeRhythm,
   type HeldRelease,
 } from "../operations/exception-notice-rhythm.js";
+import { createProviderObservationCoordinator } from "../operations/provider-observation-coordinator.js";
 import {
   createPrivateWorker,
   createPrivateWorkerVerifier,
@@ -444,6 +450,10 @@ export interface RealMingSystemHarness {
     readonly actorId: string;
     readonly workspaceId: string;
   }): DashboardOverview;
+  recordProviderObservation(
+    record: ProviderObservationInput,
+  ): Promise<ProviderObservationTransition>;
+  providerObservations(): readonly ProviderObservation[];
   ingestPersonalContext(
     entry: PersonalContextManifestEntry,
   ): Promise<PersonalContextIngestionResult>;
@@ -1137,6 +1147,10 @@ export function createRealMingSystemHarness(options: {
       throw error;
     }
   };
+  const providerObservationCoordinator = createProviderObservationCoordinator({
+    state,
+    notices: exceptionNoticeRhythm,
+  });
   const releaseHeldTracked = async (): Promise<HeldRelease> => {
     const result = await exceptionNoticeRhythm.releaseHeld();
     if (result.failed > 0) {
@@ -1335,6 +1349,9 @@ export function createRealMingSystemHarness(options: {
     standingAuthorities: () => state.standingAuthorities(),
     dashboardOverview: (session) =>
       buildDashboardOverview(state, { ...session, now: clock() }, portfolio),
+    recordProviderObservation: (record) =>
+      providerObservationCoordinator.observe(record),
+    providerObservations: () => state.providerObservations(),
     ingestPersonalContext: async (entry) => {
       if (personalContext === undefined) {
         throw new Error("This harness was not configured for Personal Context.");

@@ -1,5 +1,10 @@
 import type { CalendarEvent, CalendarWindow } from "../providers/google-calendar-adapter.js";
 import type { ProviderReadResult } from "../providers/adapter-contract.js";
+import {
+  providerObservationFromRead,
+  statusForFailure,
+  type ProviderObservationInput,
+} from "../providers/provider-health.js";
 import type { TelegramProviderAdapter } from "../providers/telegram-provider-adapter.js";
 import { createTelegramTransport } from "../providers/telegram-provider-adapter.js";
 import type { MasterTasksStore } from "../master-tasks/master-tasks.js";
@@ -19,6 +24,7 @@ import {
   releaseHeldJobName,
 } from "../operations/daily-operations-scheduler.js";
 import { createExceptionNoticeRhythm } from "../operations/exception-notice-rhythm.js";
+import { createProviderObservationCoordinator } from "../operations/provider-observation-coordinator.js";
 import { createExecutiveRollUpRunner } from "../operations/executive-roll-up.js";
 import { createMorningBriefRunner } from "../operations/morning-brief.js";
 import {
@@ -138,6 +144,9 @@ export async function createDailyOperationsControlPlane(options: {
     | ((workItem: WorkItem, reason: MaterialBlockerReason) => Promise<void>)
     | undefined;
   let recoverMaterialBlocker: ((workItem: WorkItem) => Promise<void>) | undefined;
+  let observeProvider:
+    | ((input: ProviderObservationInput) => Promise<void>)
+    | undefined;
   const gateway = createOperationsGateway({
     state,
     worker: options.privateWorker ?? refusingWorker,
@@ -150,6 +159,14 @@ export async function createDailyOperationsControlPlane(options: {
     commandClassifier: createCommandClassifier(),
     workItemChanged: async (workItem) => {
       await projection.sync(workItem);
+      await observeProvider?.({
+        provider: "notion",
+        accountReference: "notion:real-ming",
+        sourceReference: `master-tasks:${workItem.id}`,
+        workItemId: workItem.id,
+        status: "healthy",
+        observedAt: now(),
+      });
       state.recordControlPlaneHealth({
         component: "master-tasks-projection",
         outcome: "healthy",
@@ -161,7 +178,17 @@ export async function createDailyOperationsControlPlane(options: {
       error !== null &&
       "retryable" in error &&
       (error as { readonly retryable?: unknown }).retryable === true,
-    workItemProjectionFailed: async () => {
+    workItemProjectionFailed: async (workItem) => {
+      await observeProvider?.({
+        provider: "notion",
+        accountReference: "notion:real-ming",
+        sourceReference: `master-tasks:${workItem.id}`,
+        workItemId: workItem.id,
+        status: "unavailable",
+        failureClass: "unavailable",
+        retryable: true,
+        observedAt: now(),
+      });
       state.recordControlPlaneHealth({
         component: "master-tasks-projection",
         outcome: "failed",
@@ -236,6 +263,15 @@ export async function createDailyOperationsControlPlane(options: {
       throw error;
     }
   };
+  const providerObservationCoordinator = createProviderObservationCoordinator({
+    state,
+    notices,
+  });
+  observeProvider = (input) =>
+    // Provider health is durable before a notice is attempted. Normal
+    // notification failures are typed admissions; persistence or validation
+    // failures are allowed to surface instead of being mislabeled healthy.
+    providerObservationCoordinator.observe(input).then(() => undefined);
   raiseMaterialBlocker = async (workItem, reason) => {
     // Signed by the Work Item, so the same item failing repeatedly groups into
     // one interruption and a recovery reopens it. The text carries the id and
@@ -256,7 +292,23 @@ export async function createDailyOperationsControlPlane(options: {
   };
   const morningBrief = createMorningBriefRunner({
     state,
-    listEvents: options.listCalendarEvents,
+    listEvents: async (window) => {
+      const result = await options.listCalendarEvents(window);
+      await observeProvider?.(
+        providerObservationFromRead(
+          {
+            provider: "google-calendar",
+            accountReference: "google-calendar:real-ming",
+          },
+          // The observation identifies the calendar, not the brief's query
+          // window, so an outage is grouped across daily scheduler runs.
+          "calendar:primary",
+          result,
+          now(),
+        ),
+      );
+      return result;
+    },
     admit: admitTracked,
     now,
   });
@@ -332,8 +384,25 @@ export async function createDailyOperationsControlPlane(options: {
       const cursor = state.telegramIngressCursor();
       const read = await options.telegram.read({ reference: `offset:${cursor + 1}` });
       if (read.kind === "failed") {
+        await observeProvider?.({
+          provider: "telegram",
+          accountReference: "telegram:real-ming",
+          sourceReference: "telegram:long-poll",
+          status: statusForFailure(read.failure.class),
+          failureClass: read.failure.class,
+          retryable: read.failure.retryable,
+          ...(read.failure.retryAfterMs === undefined ? {} : { retryAfterMs: read.failure.retryAfterMs }),
+          observedAt: now(),
+        });
         throw new Error("Telegram polling failed.");
       }
+      await observeProvider?.({
+        provider: "telegram",
+        accountReference: "telegram:real-ming",
+        sourceReference: "telegram:long-poll",
+        status: "healthy",
+        observedAt: now(),
+      });
       const polled = await pollTelegramUpdates({
         updates: read.value,
         cursor: () => state.telegramIngressCursor(),

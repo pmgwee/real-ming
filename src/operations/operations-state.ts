@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 import type {
@@ -30,6 +30,13 @@ import type {
   TelegramReviewDecision,
 } from "../telegram/contracts.js";
 import type { ProviderFailure } from "../providers/adapter-contract.js";
+import {
+  providerObservationIsFailure,
+  statusForFailure,
+  type ProviderObservationInput,
+  type ProviderObservationStatus,
+} from "../providers/provider-health.js";
+import { detectSensitiveFields } from "./sensitive-secret.js";
 
 const clearedPriorityLedgerValue = "cleared";
 
@@ -186,6 +193,55 @@ export interface ControlPlaneHealth {
   readonly lastRecoveredAt: string | null;
 }
 
+export interface ProviderObservation {
+  readonly observationId: string;
+  readonly signature: string;
+  readonly provider: string;
+  readonly accountReference: string;
+  readonly sourceReference: string;
+  readonly workItemId: string | null;
+  readonly affectedWorkItemIds: readonly string[];
+  readonly status: ProviderObservationStatus;
+  readonly failureClass: ProviderFailure["class"] | null;
+  readonly retryable: boolean;
+  readonly attemptCount: number;
+  readonly retryAfterMs: number | null;
+  readonly firstObservedAt: string;
+  readonly lastObservedAt: string;
+  readonly recoveredAt: string | null;
+  readonly lastIdempotencyKey: string;
+  readonly auditSequence: number | null;
+  readonly auditSequences: readonly number[];
+}
+
+export interface ProviderObservationTransition {
+  readonly observation: ProviderObservation;
+  readonly isNewObservation: boolean;
+  readonly incidentStarted: boolean;
+  readonly recovered: readonly ProviderObservation[];
+}
+
+interface ProviderObservationGroupRow {
+  observation_id: string;
+  signature: string;
+  provider: string;
+  account_reference: string;
+  source_reference: string;
+  work_item_id: string | null;
+  work_item_ids_json: string;
+  status: ProviderObservationStatus;
+  failure_class: ProviderFailure["class"] | null;
+  retryable: number;
+  attempt_count: number;
+  retry_after_ms: number | null;
+  first_observed_at: string;
+  last_observed_at: string;
+  recovered_at: string | null;
+  last_idempotency_key: string;
+  audit_sequence: number | null;
+  audit_sequences_json: string;
+}
+
 interface TableColumnRow {
   name: string;
 }
@@ -291,6 +347,47 @@ function mapTelegramReviewControl(
     usedAt: row.used_at,
     claimedUpdateId: row.claimed_update_id,
     state: row.state,
+  };
+}
+
+function providerObservationSignature(record: ProviderObservationInput): string {
+  return [
+    record.provider,
+    record.accountReference,
+    record.sourceReference,
+    record.status,
+    record.failureClass ?? "none",
+  ].join("\u001f");
+}
+
+function providerObservationId(signature: string): string {
+  return `provider-observation:${createHash("sha256")
+    .update(signature)
+    .digest("hex")}`;
+}
+
+function mapProviderObservation(
+  row: ProviderObservationGroupRow,
+): ProviderObservation {
+  return {
+    observationId: row.observation_id,
+    signature: row.signature,
+    provider: row.provider,
+    accountReference: row.account_reference,
+    sourceReference: row.source_reference,
+    workItemId: row.work_item_id,
+    affectedWorkItemIds: parseJson<readonly string[]>(row.work_item_ids_json),
+    status: row.status,
+    failureClass: row.failure_class,
+    retryable: row.retryable === 1,
+    attemptCount: row.attempt_count,
+    retryAfterMs: row.retry_after_ms,
+    firstObservedAt: row.first_observed_at,
+    lastObservedAt: row.last_observed_at,
+    recoveredAt: row.recovered_at,
+    lastIdempotencyKey: row.last_idempotency_key,
+    auditSequence: row.audit_sequence,
+    auditSequences: parseJson<readonly number[]>(row.audit_sequences_json),
   };
 }
 
@@ -527,6 +624,62 @@ export class OperationsState {
         consecutive_failures INTEGER NOT NULL,
         last_recovered_at TEXT
       );
+
+      /*
+       * Provider events are append-only receipts keyed by the caller's stable
+       * idempotency key.  The group table is the CEO-facing current/history
+       * projection: identical failures increment one group, while a changed
+       * failure class or status gets its own row and therefore cannot be hidden.
+       */
+      CREATE TABLE IF NOT EXISTS provider_observation_events (
+        idempotency_key TEXT PRIMARY KEY,
+        observation_id TEXT NOT NULL,
+        signature TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        account_reference TEXT NOT NULL,
+        source_reference TEXT NOT NULL,
+        work_item_id TEXT,
+        status TEXT NOT NULL,
+        failure_class TEXT,
+        retryable INTEGER NOT NULL,
+        attempt_count INTEGER NOT NULL,
+        retry_after_ms INTEGER,
+        observed_at TEXT NOT NULL,
+        audit_sequence INTEGER
+      );
+
+      CREATE TABLE IF NOT EXISTS provider_observation_groups (
+        observation_id TEXT PRIMARY KEY,
+        signature TEXT NOT NULL UNIQUE,
+        provider TEXT NOT NULL,
+        account_reference TEXT NOT NULL,
+        source_reference TEXT NOT NULL,
+        work_item_id TEXT,
+        work_item_ids_json TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL,
+        failure_class TEXT,
+        retryable INTEGER NOT NULL,
+        attempt_count INTEGER NOT NULL,
+        retry_after_ms INTEGER,
+        first_observed_at TEXT NOT NULL,
+        last_observed_at TEXT NOT NULL,
+        recovered_at TEXT,
+        last_idempotency_key TEXT NOT NULL,
+        audit_sequence INTEGER,
+        audit_sequences_json TEXT NOT NULL DEFAULT '[]'
+      );
+
+      CREATE TRIGGER IF NOT EXISTS provider_observation_events_reject_update
+      BEFORE UPDATE ON provider_observation_events
+      BEGIN
+        SELECT RAISE(ABORT, 'provider_observation_events are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS provider_observation_events_reject_delete
+      BEFORE DELETE ON provider_observation_events
+      BEGIN
+        SELECT RAISE(ABORT, 'provider_observation_events are append-only');
+      END;
 
       CREATE TABLE IF NOT EXISTS telegram_ingress_cursor (
         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -1666,6 +1819,331 @@ export class OperationsState {
   }
 
   /**
+   * Record one provider observation without retaining provider error text.
+   * Events are idempotent; the group projection increments only once for a
+   * new event and keeps distinct failure classes/statuses side by side.
+   */
+  recordProviderObservation(
+    record: ProviderObservationInput,
+  ): ProviderObservationTransition {
+    const values = {
+      provider: record.provider,
+      accountReference: record.accountReference,
+      sourceReference: record.sourceReference,
+      ...(record.workItemId === undefined ? {} : { workItemId: record.workItemId }),
+      ...(record.idempotencyKey === undefined
+        ? {}
+        : { idempotencyKey: record.idempotencyKey }),
+    };
+    if (Object.values(values).some((value) => value.trim().length === 0)) {
+      throw new Error("Provider observations require non-empty identities and references.");
+    }
+    if (detectSensitiveFields(values).length > 0) {
+      throw new Error("Provider observations cannot contain Sensitive Secrets.");
+    }
+    const attempt = record.attempt ?? 1;
+    if (!Number.isSafeInteger(attempt) || attempt < 1 || attempt > 3) {
+      throw new Error("Provider observation attempts must be between 1 and 3.");
+    }
+    if (
+      record.retryAfterMs !== undefined &&
+      (!Number.isSafeInteger(record.retryAfterMs) || record.retryAfterMs < 0)
+    ) {
+      throw new Error("Provider retry delay must be a non-negative safe integer.");
+    }
+    if (
+      (record.status === "healthy" || record.status === "stale") &&
+      record.failureClass !== undefined
+    ) {
+      throw new Error("Healthy and stale provider observations cannot carry a failure class.");
+    }
+    if (
+      providerObservationIsFailure(record.status) &&
+      (record.failureClass === undefined ||
+        statusForFailure(record.failureClass) !== record.status)
+    ) {
+      throw new Error("Provider failure class does not match its operational status.");
+    }
+    if (providerObservationIsFailure(record.status) && record.retryable === undefined) {
+      throw new Error("Provider failures must declare retryability.");
+    }
+
+    const signature = providerObservationSignature(record);
+    const observationId = providerObservationId(signature);
+    const idempotencyKey =
+      record.idempotencyKey ??
+      `provider-event:${observationId}:${record.observedAt}`;
+    if (detectSensitiveFields({ idempotencyKey }).length > 0) {
+      throw new Error("Provider observation idempotency keys cannot contain Sensitive Secrets.");
+    }
+    // A third attempt is terminal even if the adapter called it retryable.
+    const retryable = record.retryable === true && attempt < 3;
+    this.#database.exec("BEGIN IMMEDIATE;");
+    try {
+      const priorEvent = this.#database
+        .prepare(
+          `SELECT observation_id, signature, work_item_id FROM provider_observation_events
+           WHERE idempotency_key = ?`,
+        )
+        .get(idempotencyKey) as
+        | { observation_id: string; signature: string; work_item_id: string | null }
+        | undefined;
+      if (priorEvent !== undefined) {
+        if (
+          priorEvent.signature !== signature ||
+          priorEvent.work_item_id !== (record.workItemId ?? null)
+        ) {
+          throw new Error("Provider observation idempotency key conflicts with a different event.");
+        }
+        const existing = this.#database
+          .prepare(
+            `SELECT * FROM provider_observation_groups
+             WHERE observation_id = ?`,
+          )
+          .get(priorEvent.observation_id) as unknown as ProviderObservationGroupRow;
+        this.#database.exec("COMMIT;");
+        return {
+          observation: mapProviderObservation(existing),
+          isNewObservation: false,
+          incidentStarted: false,
+          recovered: [],
+        };
+      }
+
+      const existingGroup = this.#database
+        .prepare(
+          `SELECT * FROM provider_observation_groups
+           WHERE observation_id = ?`,
+        )
+        .get(observationId) as unknown as ProviderObservationGroupRow | undefined;
+      const latestGroup = this.#database
+        .prepare(
+          `SELECT * FROM provider_observation_groups
+           WHERE provider = ? AND account_reference = ? AND source_reference = ?
+           ORDER BY last_observed_at DESC, observation_id DESC LIMIT 1`,
+        )
+        .get(
+          record.provider,
+          record.accountReference,
+          record.sourceReference,
+        ) as unknown as ProviderObservationGroupRow | undefined;
+      // Events may arrive after a retry queue or provider reconnect. They are
+      // still retained in the append-only event table, but an older receipt
+      // must never move the CEO-facing projection backwards or reopen an
+      // incident that was already recovered by a newer observation.
+      const delayedAgainstGroup =
+        existingGroup !== undefined &&
+        (record.observedAt < existingGroup.last_observed_at ||
+          (existingGroup.recovered_at !== null &&
+            record.observedAt <= existingGroup.recovered_at));
+      const delayedAgainstSource =
+        latestGroup !== undefined &&
+        (record.observedAt < latestGroup.last_observed_at ||
+          (latestGroup.recovered_at !== null &&
+            record.observedAt <= latestGroup.recovered_at));
+      const delayed = delayedAgainstGroup || delayedAgainstSource;
+      let auditSequence: number | null = null;
+      const recovered: ProviderObservation[] = [];
+      let incidentStarted = false;
+
+      if (record.status === "healthy" && !delayedAgainstSource) {
+        const activeFailures = this.#database
+          .prepare(
+            `SELECT * FROM provider_observation_groups
+             WHERE provider = ? AND account_reference = ?
+               AND source_reference = ? AND status <> 'healthy'
+               AND recovered_at IS NULL AND last_observed_at <= ?`,
+          )
+          .all(
+            record.provider,
+            record.accountReference,
+            record.sourceReference,
+            record.observedAt,
+          ) as unknown as ProviderObservationGroupRow[];
+        for (const failure of activeFailures) {
+          this.#database
+            .prepare(
+              `UPDATE provider_observation_groups
+               SET recovered_at = ? WHERE observation_id = ? AND recovered_at IS NULL`,
+            )
+            .run(record.observedAt, failure.observation_id);
+          recovered.push(
+            mapProviderObservation({ ...failure, recovered_at: record.observedAt }),
+          );
+        }
+      } else if (
+        !delayed &&
+        existingGroup !== undefined &&
+        existingGroup.recovered_at !== null
+      ) {
+        incidentStarted = true;
+      } else if (existingGroup === undefined && !delayed) {
+        incidentStarted = true;
+      }
+
+      if (record.workItemId !== undefined && !delayed) {
+        auditSequence = this.#appendAudit(
+          record.workItemId,
+          record.status === "healthy" && recovered.length > 0
+            ? "provider.recovered"
+            : "provider.observed",
+          record.observedAt,
+          {
+            provider: record.provider,
+            accountReference: record.accountReference,
+            sourceReference: record.sourceReference,
+            status: record.status,
+            ...(record.failureClass === undefined
+              ? {}
+              : { failureClass: record.failureClass }),
+            retryable,
+            attempt,
+          },
+        );
+      }
+      const linkedWorkItemIds = existingGroup
+        ? [...parseJson<readonly string[]>(existingGroup.work_item_ids_json)]
+        : [];
+      if (
+        record.workItemId !== undefined &&
+        !linkedWorkItemIds.includes(record.workItemId)
+      ) {
+        linkedWorkItemIds.push(record.workItemId);
+      }
+      const linkedAuditSequences = existingGroup
+        ? [...parseJson<readonly number[]>(existingGroup.audit_sequences_json)]
+        : [];
+      if (auditSequence !== null && !linkedAuditSequences.includes(auditSequence)) {
+        linkedAuditSequences.push(auditSequence);
+      }
+      this.#database
+        .prepare(
+          `INSERT INTO provider_observation_events (
+             idempotency_key, observation_id, signature, provider,
+             account_reference, source_reference, work_item_id, status,
+             failure_class, retryable, attempt_count, retry_after_ms,
+             observed_at, audit_sequence
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          idempotencyKey,
+          observationId,
+          signature,
+          record.provider,
+          record.accountReference,
+          record.sourceReference,
+          record.workItemId ?? null,
+          record.status,
+          record.failureClass ?? null,
+          retryable ? 1 : 0,
+          attempt,
+          record.retryAfterMs ?? null,
+          record.observedAt,
+          auditSequence,
+        );
+
+      if (existingGroup === undefined && !delayed) {
+        this.#database
+          .prepare(
+            `INSERT INTO provider_observation_groups (
+               observation_id, signature, provider, account_reference,
+               source_reference, work_item_id, work_item_ids_json, status, failure_class,
+               retryable, attempt_count, retry_after_ms, first_observed_at,
+               last_observed_at, recovered_at, last_idempotency_key,
+               audit_sequence, audit_sequences_json
+             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+          )
+          .run(
+            observationId,
+            signature,
+            record.provider,
+            record.accountReference,
+            record.sourceReference,
+            record.workItemId ?? null,
+            JSON.stringify(linkedWorkItemIds),
+            record.status,
+            record.failureClass ?? null,
+            retryable ? 1 : 0,
+            attempt,
+            record.retryAfterMs ?? null,
+            record.observedAt,
+            record.observedAt,
+            idempotencyKey,
+            auditSequence,
+            JSON.stringify(linkedAuditSequences),
+          );
+      } else if (existingGroup !== undefined && !delayed) {
+        this.#database
+          .prepare(
+            `UPDATE provider_observation_groups
+             SET provider = ?, account_reference = ?, source_reference = ?,
+                 work_item_id = COALESCE(?, work_item_id),
+                 work_item_ids_json = ?, status = ?,
+                 failure_class = ?, retryable = ?,
+                 attempt_count = MAX(attempt_count, ?), retry_after_ms = ?,
+                 last_observed_at = ?, recovered_at = ?,
+                 last_idempotency_key = ?, audit_sequence = ?,
+                 audit_sequences_json = ?
+             WHERE observation_id = ?`,
+          )
+          .run(
+            record.provider,
+            record.accountReference,
+            record.sourceReference,
+            record.workItemId ?? null,
+            JSON.stringify(linkedWorkItemIds),
+            record.status,
+            record.failureClass ?? null,
+            retryable ? 1 : 0,
+            attempt,
+            record.retryAfterMs ?? null,
+            record.observedAt,
+            // Any new non-healthy event starts the group again after a prior
+            // recovery; leaving the timestamp would make the dashboard report
+            // an active incident as permanently recovered.
+            null,
+            idempotencyKey,
+            auditSequence,
+            JSON.stringify(linkedAuditSequences),
+            observationId,
+          );
+      }
+
+      const current = this.#database
+        .prepare(
+          `SELECT * FROM provider_observation_groups
+           WHERE observation_id = ?`,
+        )
+        .get(observationId) as unknown as ProviderObservationGroupRow | undefined;
+      const currentOrLatest = current ?? latestGroup;
+      if (currentOrLatest === undefined) {
+        throw new Error("Provider observation did not produce a durable group.");
+      }
+      this.#database.exec("COMMIT;");
+      return {
+        observation: mapProviderObservation(currentOrLatest),
+        isNewObservation: true,
+        incidentStarted,
+        recovered,
+      };
+    } catch (error) {
+      this.#database.exec("ROLLBACK;");
+      throw error;
+    }
+  }
+
+  providerObservations(): readonly ProviderObservation[] {
+    return (
+      this.#database
+        .prepare(
+          `SELECT * FROM provider_observation_groups
+           ORDER BY last_observed_at ASC, observation_id ASC`,
+        )
+        .all() as unknown as ProviderObservationGroupRow[]
+    ).map(mapProviderObservation);
+  }
+
+  /**
    * Persist a payload-free operational snapshot. Failure causes never enter
    * this table because provider exceptions can contain credential-bearing URLs.
    */
@@ -2577,14 +3055,15 @@ export class OperationsState {
     type: AuditEvent["type"],
     occurredAt: string,
     details: Readonly<Record<string, unknown>>,
-  ): void {
-    this.#database
+  ): number {
+    const result = this.#database
       .prepare(
         `INSERT INTO audit_events (
           work_item_id, event_type, occurred_at, details_json
         ) VALUES (?, ?, ?, ?)`,
       )
       .run(workItemId, type, occurredAt, JSON.stringify(details));
+    return Number(result.lastInsertRowid);
   }
 
   #ensureTelegramAuditSchema(): void {
