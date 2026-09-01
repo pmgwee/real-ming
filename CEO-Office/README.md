@@ -12,8 +12,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **17 of 44** |
-| Startable by an agent right now | **RM-16 (#17)** — in progress, tree clean and green |
+| Phase 3 tickets closed | **18 of 44** |
+| Startable by an agent right now | **RM-17 (#18)** — next tracer node |
 | Waiting on you | Nothing blocking. Optional: the Azure budget alert. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
@@ -104,15 +104,14 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 
 ## ✅ What needs you
 
-**The local RM-15 implementation is complete and pushed at
-`a37804bb78ef96c2b9fe97245f902ca733c87cde`; the live
-acceptance gate now needs you.** Approve the exact Step 6A sentence in the
-deployment runbook. The VM target (`20.2.89.43`) and the SSH key path
-(`C:\Users\quekm\Desktop\projects\(key Value)\real-ming-control-plane_key.pem`)
-have been recovered locally without reading or printing the key. Step 6A cannot
-start the service; it returns immutable evidence for a separate Step 6B
-activation approval. Do not send any application credential. The Azure budget
-alert remains recommended but does not block deployment.
+**RM-16 is complete and locally proven.** RM-15 remains closed and live from
+the reviewed `5016918` candidate. The RM-16 tracer is a controlled system
+harness proof; it required no deployment, Telegram message, or Notion mutation.
+
+The deployed control plane can capture, review, approve, brief, and roll up a
+Work Item, but it cannot execute one autonomously until RM-21 supplies the
+Lenovo private worker (RM-21 is downstream of RM-16). This remains an explicit
+production limitation; a green controlled tracer is not live worker execution.
 
 `RM11-CUTOVER-3` was approved and executed on 29 Aug 2026: 30 pages imported,
 all five legacy databases retired to read-only evidence, exactly one writable
@@ -162,7 +161,7 @@ Master Tasks     rehearsal        again         brief     roll-up   env        P
 
 After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM-16 is the milestone worth aiming for.**
 
-✅ **Tracer 1 is one ticket from proven.** RM-07 through RM-14 are closed, RM-15 is in progress with Azure provisioned, and RM-16 proves the loop end to end.
+✅ **Tracer 1 is proven.** RM-07 through RM-16 are closed. RM-16 proves the governed loop end to end with controlled workers while recording the RM-21 production-execution boundary.
 
 ---
 
@@ -190,8 +189,8 @@ One long-lived branch would grow into a 44-ticket, 100-plus-file pull request no
 | # | Branch | Contents | Review checkpoint | Status |
 | --- | --- | --- | --- | --- |
 | 1 | `docs/final-architecture-v1` | RM-01…RM-05, RM-08, RM-41 + tooling | foundation | ✅ **merged** |
-| 2 | `feat/tracer-1-daily-operations` | RM-07 … RM-16 | Tracer 1 proven | ⬅️ **next** |
-| 3 | `feat/context-and-portfolio` | RM-17 … RM-23, RM-42 | Context Vault + portfolio live | waiting |
+| 2 | `feat/tracer-1-daily-operations` | RM-07 … RM-16 | Tracer 1 proven | ✅ **ready for review** |
+| 3 | `feat/context-and-portfolio` | RM-17 … RM-23, RM-42 | Context Vault + portfolio live | next |
 | 4 | `feat/microsaas-loop` | RM-25 … RM-28, RM-34 | DuitSini promotion proven | waiting |
 | 5 | `feat/domain-loops` | remainder → RM-40 | Full v1.1 readiness | waiting |
 

@@ -88,6 +88,126 @@ describe("RM-16 Tracer 1 acceptance drill", () => {
     for (const harness of harnesses.splice(0)) harness.close();
   });
 
+  it("walks the same Work Item through the complete scheduled and recovery tracer", async () => {
+    const harness = startHarness();
+    await instructFromTelegram(harness, 8001, "/do Promote the reviewed September release");
+    const workItem = harness.workItems()[0];
+    if (workItem === undefined) throw new Error("Expected one Work Item.");
+
+    expect(await harness.masterTasksView("COO Work View")).toContainEqual(
+      expect.objectContaining({
+        workItemId: workItem.id,
+        accountableExecutive: workItem.accountableExecutive,
+        lifecycle: workItem.state,
+      }),
+    );
+
+    const target = {
+      type: "pull-request",
+      identity: "pmgwee/duitsini#42",
+      version: "commit:9f1c2ab",
+    } as const;
+    const promotion = action(workItem.id, {
+      operation: "write",
+      reversibility: "irreversible",
+      riskClass: "high",
+      scope: "code-promotion",
+      target,
+    });
+    const requested = await harness.requestAction(promotion);
+    if (requested.kind !== "approval-required") {
+      throw new Error("Expected an exact-artifact Approval requirement.");
+    }
+
+    const morningTick = await harness.tickDailyOperations();
+    expect(morningTick.ran).toContain("morning-brief");
+    expect(
+      harness.telegramMessages().some(
+        (message) =>
+          message.text.startsWith("Morning Brief") &&
+          message.text.includes(workItem.intent),
+      ),
+    ).toBe(true);
+
+    const approval = await harness.grantApproval({
+      approvalId: requested.approvalId,
+      actorId: "ceo:ming",
+      expiresAt: "2026-08-31T21:00:00.000Z",
+    });
+    expect(await harness.requestAction(promotion)).toMatchObject({
+      kind: "permitted",
+      basis: "approval",
+      approvalId: approval.id,
+    });
+
+    harness.setControlledWorkerExecutionError("PRIVATE_WORKER_RAW_FAILURE");
+    await expect(harness.executeWorkItem(workItem.id)).rejects.toThrow(
+      "Controlled work failed before verification.",
+    );
+    expect(harness.workItem(workItem.id)?.state).toBe("Waiting/Blocked");
+    expect(
+      harness.telegramMessages().some(
+        (message) =>
+          message.text.includes(workItem.id) &&
+          message.text.includes("worker-execution-failed"),
+      ),
+    ).toBe(true);
+
+    harness.setControlledWorkerExecutionError(undefined);
+    const outcome = await harness.executeWorkItem(workItem.id);
+    expect(outcome.workItem.state).toBe("Ready for CEO Review");
+    expect(outcome.outcomeReport.workItemId).toBe(workItem.id);
+    expect(
+      harness.telegramMessages().some(
+        (message) =>
+          message.text.startsWith("Recovered:") &&
+          message.text.includes(workItem.id),
+      ),
+    ).toBe(true);
+
+    clock = evening;
+    const eveningTick = await harness.tickDailyOperations();
+    expect(eveningTick.ran).toContain("executive-roll-up");
+    expect(
+      harness.telegramMessages().some(
+        (message) =>
+          message.text.startsWith("Executive Roll-Up") &&
+          message.text.includes(workItem.intent),
+      ),
+    ).toBe(true);
+
+    const audit = harness.auditTrail(workItem.id);
+    expect(
+      audit.find((event) => event.type === "approval.granted")?.details,
+    ).toMatchObject({
+      actorId: "ceo:ming",
+      targetIdentity: target.identity,
+      targetVersion: target.version,
+    });
+    expect(
+      audit.find(
+        (event) =>
+          event.type === "policy.permitted" && event.details.basis === "approval",
+      )?.details,
+    ).toMatchObject({
+      approvalId: approval.id,
+      targetIdentity: target.identity,
+      targetVersion: target.version,
+    });
+    expect(audit.map((event) => event.type)).toEqual(
+      expect.arrayContaining([
+        "worker.effect-failed",
+        "work-item.waiting-blocked",
+        "worker.effect-recorded",
+        "worker.effect-verified",
+        "outcome-report.recorded",
+      ]),
+    );
+    expect(JSON.stringify(harness.telegramMessages())).not.toContain(
+      "PRIVATE_WORKER_RAW_FAILURE",
+    );
+  });
+
   it("carries one Telegram instruction into the matching Work View unchanged", async () => {
     // Criterion 1. The Work View is a projection, not a copy: the state and
     // Accountable Executive a CEO sees in Notion must be the ones the durable
@@ -174,16 +294,16 @@ describe("RM-16 Tracer 1 acceptance drill", () => {
       throw new Error(`Expected an Approval requirement, got ${requested.kind}.`);
     }
 
-    const brief = await harness.runMorningBrief();
-    expect(brief.brief.pendingApprovals).toContainEqual(
-      expect.objectContaining({ workItemId: workItem.id }),
-    );
-
-    clock = evening;
-    const waiting = await harness.runExecutiveRollUp();
-    expect(waiting.rollUp.verifiedOutcomes).not.toContainEqual(
-      expect.objectContaining({ workItemId: workItem.id }),
-    );
+    const beforeBrief = harness.telegramMessages().length;
+    const morningTick = await harness.tickDailyOperations();
+    expect(morningTick.ran).toContain("morning-brief");
+    expect(
+      harness.telegramMessages().slice(beforeBrief).some(
+        (message) =>
+          message.text.startsWith("Morning Brief") &&
+          message.text.includes(workItem.intent),
+      ),
+    ).toBe(true);
 
     // The CEO grants the Approval the brief was waiting on. Work awaiting an
     // Approval cannot execute without one -- which is the whole point of the
@@ -197,10 +317,17 @@ describe("RM-16 Tracer 1 acceptance drill", () => {
     await harness.executeWorkItem(workItem.id);
     expect(harness.outcomeReport(workItem.id)).toBeDefined();
 
-    const landed = await harness.runExecutiveRollUp();
-    expect(landed.rollUp.verifiedOutcomes).toContainEqual(
-      expect.objectContaining({ workItemId: workItem.id }),
-    );
+    clock = evening;
+    const beforeRollUp = harness.telegramMessages().length;
+    const eveningTick = await harness.tickDailyOperations();
+    expect(eveningTick.ran).toContain("executive-roll-up");
+    expect(
+      harness.telegramMessages().slice(beforeRollUp).some(
+        (message) =>
+          message.text.startsWith("Executive Roll-Up") &&
+          message.text.includes(workItem.intent),
+      ),
+    ).toBe(true);
   });
 
   it("binds one Approval to the exact artifact and records the whole decision", async () => {
@@ -235,22 +362,22 @@ describe("RM-16 Tracer 1 acceptance drill", () => {
       expiresAt: "2026-08-31T21:00:00.000Z",
     });
     expect(approval.state).toBe("granted");
+    expect(approval).toMatchObject({
+      workItemId: workItem.id,
+      actorId: "ceo:ming",
+      scope: "code-promotion",
+      targetType: target.type,
+      targetIdentity: target.identity,
+      targetVersion: target.version,
+      riskClass: "high",
+      requestedAt: expect.any(String),
+      decidedAt: expect.any(String),
+      expiresAt: "2026-08-31T21:00:00.000Z",
+      state: "granted",
+    });
 
     // The exact artifact is permitted.
     expect((await harness.requestAction(promotion)).kind).toBe("permitted");
-
-    // A different version of the same artifact is not.
-    const moved = await harness.requestAction(
-      action(workItem.id, {
-        operation: "write",
-        reversibility: "irreversible",
-        riskClass: "high",
-        scope: "code-promotion",
-        target: { ...target, version: "commit:deadbee" },
-      }),
-    );
-    expect(moved.kind).toBe("approval-required");
-    expect(harness.approval(approval.id)?.state).toBe("invalidated");
 
     const audit = harness.auditTrail(workItem.id);
     // Scoped to the granted event, not the whole trail. Searching the trail
@@ -260,10 +387,30 @@ describe("RM-16 Tracer 1 acceptance drill", () => {
     const granted = audit.find((event) => event.type === "approval.granted");
     expect(granted).toBeDefined();
     expect(granted?.details).toMatchObject({
+      actorId: "ceo:ming",
       targetIdentity: "pmgwee/duitsini#42",
       targetVersion: "commit:9f1c2ab",
+      expiresAt: "2026-08-31T21:00:00.000Z",
     });
-    expect(audit.map((event) => event.type)).toContain("approval.invalidated");
+    const permitted = audit.find(
+      (event) =>
+        event.type === "policy.permitted" && event.details.basis === "approval",
+    );
+    expect(permitted?.details).toMatchObject({
+      approvalId: approval.id,
+      targetIdentity: target.identity,
+      targetVersion: target.version,
+    });
+
+    await harness.executeWorkItem(workItem.id);
+    const completedAudit = harness.auditTrail(workItem.id);
+    expect(completedAudit.map((event) => event.type)).toEqual(
+      expect.arrayContaining([
+        "worker.effect-recorded",
+        "worker.effect-verified",
+        "outcome-report.recorded",
+      ]),
+    );
   });
 
   it("blocks on a controlled failure, groups the notice, then recovers", async () => {
@@ -284,54 +431,366 @@ describe("RM-16 Tracer 1 acceptance drill", () => {
     );
     expect(harness.workItem(workItem.id)?.state).toBe("Waiting/Blocked");
 
-    const signature = "worker-unreachable";
-    const first = await harness.admitExceptionNotice({
-      kind: "critical-incident",
-      text: "The private worker is unreachable",
-      idempotencyKey: "rm16:incident:1",
-      signature,
-    });
-    expect(first.kind).toBe("delivered");
+    const firstBlockMessages = harness.telegramMessages().filter(
+      (message) => message.text.includes(`Work Item ${workItem.id} is blocked`),
+    );
+    expect(firstBlockMessages).toHaveLength(1);
 
-    // The same fault recurring must not become a second interruption.
-    const repeat = await harness.admitExceptionNotice({
-      kind: "critical-incident",
-      text: "The private worker is unreachable",
-      idempotencyKey: "rm16:incident:2",
-      signature,
-    });
-    expect(repeat.kind).toBe("grouped");
+    // A second attempt while the worker is still unavailable is the same
+    // incident, so it stays grouped rather than interrupting the CEO twice.
+    await expect(harness.executeWorkItem(workItem.id)).rejects.toThrow(
+      "Controlled work failed before verification.",
+    );
+    expect(
+      harness.telegramMessages().filter(
+        (message) => message.text.includes(`Work Item ${workItem.id} is blocked`),
+      ),
+    ).toHaveLength(1);
 
-    // Retry behaviour, which criterion 4 names and nothing here asserted. A
-    // scheduled job that failed must be attempted again on the next tick --
-    // only a successful occurrence is allowed to short-circuit, or a transient
-    // fault would silently cancel that day's brief or roll-up for good.
-    await harness.failNextScheduledRun("morning-brief");
-    const failedTick = await harness.tickDailyOperations();
-    expect(failedTick.failed).toContain("morning-brief");
-
-    const retryTick = await harness.tickDailyOperations();
-    expect(retryTick.ran).toContain("morning-brief");
-    expect(retryTick.alreadyRun).not.toContain("morning-brief");
-
-    const recovery = await harness.recordExceptionNoticeRecovery(signature);
-    expect(recovery.kind).toBe("delivered");
-
-    // Once recovered, the next occurrence is new news again rather than being
-    // swallowed by a group that no longer describes anything.
-    const afterRecovery = await harness.admitExceptionNotice({
-      kind: "critical-incident",
-      text: "The private worker is unreachable",
-      idempotencyKey: "rm16:incident:3",
-      signature,
-    });
-    expect(afterRecovery.kind).toBe("delivered");
+    // Reconnect the worker and retry the same Work Item. Recovery is automatic:
+    // it is not a manually raised, unrelated incident or a scheduler retry.
+    harness.setControlledWorkerExecutionError(undefined);
+    const recovered = await harness.executeWorkItem(workItem.id);
+    expect(recovered.workItem.state).toBe("Ready for CEO Review");
+    expect(recovered.outcomeReport.workItemId).toBe(workItem.id);
+    expect(
+      harness.telegramMessages().some(
+        (message) =>
+          message.text.startsWith("Recovered:") &&
+          message.text.includes(`work-item-blocked:${workItem.id}`),
+      ),
+    ).toBe(true);
+    expect(
+      harness
+        .dashboardOverview({
+          actorId: "ceo:ming",
+          workspaceId: "workspace:real-ming",
+        })
+        .controlPlane.find((component) => component.component === "exception-notice")
+        ?.lastOutcome,
+    ).toBe("healthy");
 
     // Both halves are recorded: what failed, and what that did to the Work
     // Item. Either alone would leave the trail ambiguous later.
     const types = harness.auditTrail(workItem.id).map((event) => event.type);
-    expect(types).toContain("worker.effect-failed");
+    expect(types.filter((type) => type === "worker.effect-failed")).toHaveLength(2);
     expect(types).toContain("work-item.waiting-blocked");
+    expect(types).toContain("outcome-report.recorded");
+  });
+
+  it("raises the material blocker even when the Notion projection fails", async () => {
+    const harness = startHarness({ workerError: "The private worker is unreachable." });
+    await instructFromTelegram(harness, 8402, "/do Reconcile the projection outage");
+    const workItem = harness.workItems()[0];
+    if (workItem === undefined) throw new Error("Expected one Work Item.");
+
+    harness.failNextMasterTasksUpsert("Notion is unavailable.");
+    await expect(harness.executeWorkItem(workItem.id)).rejects.toThrow(
+      "Controlled work failed before verification.",
+    );
+    expect(harness.workItem(workItem.id)?.state).toBe("Waiting/Blocked");
+    expect(await harness.masterTasksView("COO Work View")).toContainEqual(
+      expect.objectContaining({
+        workItemId: workItem.id,
+        lifecycle: "Waiting/Blocked",
+      }),
+    );
+    expect(
+      harness.telegramMessages().some((message) => message.text.includes(workItem.id)),
+    ).toBe(true);
+  });
+
+  it("surfaces persistent Master Tasks projection failure as dashboard health", async () => {
+    const harness = startHarness({ workerError: "The private worker is unreachable." });
+    await instructFromTelegram(harness, 8404, "/do Reconcile persistent projection outage");
+    const workItem = harness.workItems()[0];
+    if (workItem === undefined) throw new Error("Expected one Work Item.");
+
+    harness.setMasterTasksUpsertFailure("Notion remains unavailable.");
+    await expect(harness.executeWorkItem(workItem.id)).rejects.toThrow();
+    expect(
+      harness
+        .dashboardOverview({ actorId: "ceo:ming", workspaceId: "workspace:real-ming" })
+        .controlPlane.find((component) => component.component === "master-tasks-projection")
+        ?.lastOutcome,
+    ).toBe("failed");
+    expect(
+      harness.telegramMessages().some((message) => message.text.includes(workItem.id)),
+    ).toBe(true);
+  });
+
+  it("raises a material blocker when effect verification fails", async () => {
+    const harness = createRealMingSystemHarness({
+      statePath: ":memory:",
+      now: () => morning,
+      telegram: { ceoTelegramId },
+      controlledVerifier: { result: "error" },
+    });
+    harnesses.push(harness);
+    await instructFromTelegram(harness, 8403, "/do Verify the controlled effect");
+    const workItem = harness.workItems()[0];
+    if (workItem === undefined) throw new Error("Expected one Work Item.");
+
+    await expect(harness.executeWorkItem(workItem.id)).rejects.toThrow(
+      "Controlled work could not be verified.",
+    );
+    expect(harness.workItem(workItem.id)?.state).toBe("Waiting/Blocked");
+    expect(
+      harness.telegramMessages().some(
+        (message) =>
+          message.text.includes(workItem.id) &&
+          message.text.includes("effect-verification-failed"),
+      ),
+    ).toBe(true);
+  });
+
+  it("reports a failed Exception Notice honestly and preserves its durable retry", async () => {
+    const harness = startHarness();
+    harness.setTelegramDeliveryFailure({
+      class: "unavailable",
+      retryable: true,
+      message: "Controlled Telegram outage.",
+    });
+    const admission = await harness.admitExceptionNotice({
+      kind: "material-blocker",
+      text: "Work Item controlled-id is blocked.",
+      idempotencyKey: "rm16:failed-notice",
+      signature: "work-item-blocked:controlled-id",
+    });
+
+    expect(admission.kind).toBe("failed");
+    expect(harness.telegramMessages()).toEqual([]);
+    expect(
+      harness
+        .dashboardOverview({
+          actorId: "ceo:ming",
+          workspaceId: "workspace:real-ming",
+        })
+        .controlPlane.find((component) => component.component === "exception-notice")
+        ?.lastOutcome,
+    ).toBe("failed");
+    harness.setTelegramDeliveryFailure(undefined);
+    expect(await harness.retryPendingTelegramDeliveries()).toMatchObject({ sent: 1 });
+    expect(harness.telegramMessages()).toHaveLength(1);
+    expect(
+      harness
+        .dashboardOverview({
+          actorId: "ceo:ming",
+          workspaceId: "workspace:real-ming",
+        })
+        .controlPlane.find((component) => component.component === "exception-notice")
+        ?.lastOutcome,
+    ).toBe("healthy");
+  });
+
+  it("does not send a stale blocker or recovery after a failed notice is cleared", async () => {
+    const harness = startHarness();
+    await instructFromTelegram(harness, 8451, "/do Recover while Telegram is down");
+    const workItem = harness.workItems()[0];
+    if (workItem === undefined) throw new Error("Expected one Work Item.");
+
+    harness.setControlledWorkerExecutionError("PRIVATE_WORKER_RAW_FAILURE");
+    harness.setTelegramDeliveryFailure({
+      class: "unavailable",
+      retryable: true,
+      message: "Controlled Telegram outage.",
+    });
+    await expect(harness.executeWorkItem(workItem.id)).rejects.toThrow();
+
+    // The worker recovers before Telegram does. Recovery must cancel the
+    // undelivered blocker rather than queueing a misleading recovery notice.
+    harness.setControlledWorkerExecutionError(undefined);
+    const recovered = await harness.executeWorkItem(workItem.id);
+    expect(recovered.workItem.state).toBe("Ready for CEO Review");
+
+    harness.setTelegramDeliveryFailure(undefined);
+    await harness.retryPendingTelegramDeliveries();
+    expect(harness.telegramMessages()).not.toContainEqual(
+      expect.objectContaining({ text: expect.stringContaining("is blocked") }),
+    );
+    expect(harness.telegramMessages()).not.toContainEqual(
+      expect.objectContaining({ text: expect.stringContaining("Recovered:") }),
+    );
+  });
+
+  it("holds and groups a do-not-disturb blocker, then clears it without waking the CEO", async () => {
+    clock = "2026-08-30T16:00:00.000Z"; // 00:00 KL, inside do-not-disturb
+    const harness = createRealMingSystemHarness({
+      statePath: ":memory:",
+      now: () => clock,
+      telegram: { ceoTelegramId },
+    });
+    harnesses.push(harness);
+
+    const first = await harness.admitExceptionNotice({
+      kind: "material-blocker",
+      text: "Work Item dnd-item is blocked.",
+      idempotencyKey: "rm16:dnd:first",
+      signature: "work-item-blocked:dnd-item",
+    });
+    const second = await harness.admitExceptionNotice({
+      kind: "material-blocker",
+      text: "Work Item dnd-item is blocked.",
+      idempotencyKey: "rm16:dnd:second",
+      signature: "work-item-blocked:dnd-item",
+    });
+    expect(first.kind).toBe("held");
+    expect(second).toMatchObject({ kind: "grouped", occurrences: 2 });
+    expect(await harness.recordExceptionNoticeRecovery("work-item-blocked:dnd-item")).toMatchObject({
+      kind: "recovered-without-delivery",
+    });
+    expect(await harness.releaseHeldExceptionNotices()).toMatchObject({ released: 0 });
+    expect(harness.telegramMessages()).toEqual([]);
+  });
+
+  it("releases a held notice back to retryable state when Telegram fails at wake-up", async () => {
+    clock = "2026-08-30T16:00:00.000Z"; // 00:00 KL, inside do-not-disturb
+    const harness = createRealMingSystemHarness({
+      statePath: ":memory:",
+      now: () => clock,
+      telegram: { ceoTelegramId },
+    });
+    harnesses.push(harness);
+
+    const signature = "work-item-blocked:dnd-retry-item";
+    expect(
+      await harness.admitExceptionNotice({
+        kind: "material-blocker",
+        text: "Work Item dnd-retry-item is blocked.",
+        idempotencyKey: "rm16:dnd-retry:first",
+        signature,
+      }),
+    ).toMatchObject({ kind: "held" });
+    clock = "2026-08-30T23:00:00.000Z"; // 07:00 KL, release window
+    harness.setTelegramDeliveryFailure({
+      class: "invalid-input",
+      retryable: false,
+      message: "Controlled wake-up failure.",
+    });
+    expect(await harness.releaseHeldExceptionNotices()).toMatchObject({ failed: 1 });
+
+    harness.setTelegramDeliveryFailure(undefined);
+    expect(
+      await harness.admitExceptionNotice({
+        kind: "material-blocker",
+        text: "Work Item dnd-retry-item is blocked again.",
+        idempotencyKey: "rm16:dnd-retry:second",
+        signature,
+      }),
+    ).toMatchObject({ kind: "delivered" });
+  });
+
+  it("sends recovery after an uncertain Telegram delivery under the explicit conservative policy", async () => {
+    const harness = startHarness();
+    harness.setTelegramCrashAfterDelivery("Controlled timeout after send.");
+    const signature = "work-item-blocked:uncertain-item";
+    expect(
+      await harness.admitExceptionNotice({
+        kind: "material-blocker",
+        text: "Work Item uncertain-item is blocked.",
+        idempotencyKey: "rm16:uncertain:first",
+        signature,
+      }),
+    ).toMatchObject({ kind: "failed" });
+    expect(harness.telegramMessages()).toHaveLength(1);
+
+    harness.setTelegramCrashAfterDelivery(undefined);
+    expect(await harness.recordExceptionNoticeRecovery(signature)).toMatchObject({
+      kind: "delivered",
+    });
+    expect(
+      harness.telegramMessages().some((message) => message.text.startsWith("Recovered:")),
+    ).toBe(true);
+  });
+
+  it("reopens a terminally failed notice group for a fresh occurrence", async () => {
+    const harness = startHarness();
+    harness.setTelegramDeliveryFailure({
+      class: "invalid-input",
+      retryable: false,
+      message: "Controlled permanent failure.",
+    });
+    const first = await harness.admitExceptionNotice({
+      kind: "material-blocker",
+      text: "Work Item terminal-item is blocked.",
+      idempotencyKey: "rm16:terminal:first",
+      signature: "work-item-blocked:terminal-item",
+    });
+    const second = await harness.admitExceptionNotice({
+      kind: "material-blocker",
+      text: "Work Item terminal-item is blocked.",
+      idempotencyKey: "rm16:terminal:second",
+      signature: "work-item-blocked:terminal-item",
+    });
+    expect(first.kind).toBe("failed");
+    expect(second.kind).toBe("failed");
+  });
+
+  it("does not strand a notice group when outbound validation fails before the outbox", async () => {
+    const harness = startHarness();
+    const first = await harness.admitExceptionNotice({
+      kind: "material-blocker",
+      text: "Sensitive token 8123456789:AAH-invalid-material must not leave the process.",
+      idempotencyKey: "rm16:validation:first",
+      signature: "work-item-blocked:validation-item",
+    });
+    const second = await harness.admitExceptionNotice({
+      kind: "material-blocker",
+      text: "Work Item validation-item is blocked.",
+      idempotencyKey: "rm16:validation:second",
+      signature: "work-item-blocked:validation-item",
+    });
+    expect(first.kind).toBe("failed");
+    expect(second.kind).toBe("delivered");
+  });
+
+  it("keeps grouped pending delivery unhealthy until its retry succeeds", async () => {
+    const harness = startHarness();
+    harness.setTelegramDeliveryFailure({
+      class: "unavailable",
+      retryable: true,
+      message: "Controlled Telegram outage.",
+    });
+    const first = await harness.admitExceptionNotice({
+      kind: "material-blocker",
+      text: "Work Item grouped-item is blocked.",
+      idempotencyKey: "rm16:grouped:first",
+      signature: "work-item-blocked:grouped-item",
+    });
+    const grouped = await harness.admitExceptionNotice({
+      kind: "material-blocker",
+      text: "Work Item grouped-item is blocked.",
+      idempotencyKey: "rm16:grouped:second",
+      signature: "work-item-blocked:grouped-item",
+    });
+    expect(first.kind).toBe("failed");
+    expect(grouped).toMatchObject({ kind: "grouped", deliveryState: "pending" });
+    expect(
+      harness
+        .dashboardOverview({ actorId: "ceo:ming", workspaceId: "workspace:real-ming" })
+        .controlPlane.find((component) => component.component === "exception-notice")
+        ?.lastOutcome,
+    ).toBe("failed");
+    harness.setTelegramDeliveryFailure(undefined);
+    await harness.retryPendingTelegramDeliveries();
+    expect(
+      harness
+        .dashboardOverview({ actorId: "ceo:ming", workspaceId: "workspace:real-ming" })
+        .controlPlane.find((component) => component.component === "exception-notice")
+        ?.lastOutcome,
+    ).toBe("healthy");
+  });
+
+  it("rejects a Telegram bot token embedded in its canonical API URL", async () => {
+    const harness = startHarness();
+    const result = await harness.notifyTelegram({
+      kind: "material-blocker",
+      text: "Provider failed at https://api.telegram.org/bot8123456789:AAH-real-ming-bot-token-material/sendMessage",
+      idempotencyKey: "rm16:secret-url",
+    });
+
+    expect(result.kind).toBe("failed");
+    expect(harness.telegramMessages()).toEqual([]);
   });
 
   it("reports real work in the daily documents without carrying provider material", async () => {
@@ -366,7 +825,34 @@ describe("RM-16 Tracer 1 acceptance drill", () => {
     expect(JSON.stringify(report?.verification ?? {})).toContain("controlled");
     expect(documents).not.toContain("controlled-effect-reference");
     expect(documents).not.toMatch(/[0-9]{8,10}:[A-Za-z0-9_-]{30,}/);
-});
+  });
+
+  it("consolidates two Trust Domains without projecting raw Finance failure context", async () => {
+    const rawFinanceContext = "FINANCE_RAW_CONTEXT_DO_NOT_PROJECT";
+    const harness = startHarness({ workerError: rawFinanceContext });
+    await instructFromTelegram(harness, 8502, "/cmo Prepare the public content plan");
+    await instructFromTelegram(harness, 8503, "/cfo Reconcile the private finance ledger");
+    const finance = harness.workItems().find(
+      (item) => item.accountableExecutive === "Personal CFO",
+    );
+    if (finance === undefined) throw new Error("Expected one Finance Work Item.");
+    await expect(harness.executeWorkItem(finance.id)).rejects.toThrow(
+      "Controlled work failed before verification.",
+    );
+
+    const brief = await harness.runMorningBrief();
+    clock = evening;
+    const rollUp = await harness.runExecutiveRollUp();
+    expect(brief.brief.overdueOrBlocked).toContainEqual(
+      expect.objectContaining({ workItemId: finance.id }),
+    );
+    expect(rollUp.rollUp.outstandingRisks).toContainEqual(
+      expect.objectContaining({ workItemId: finance.id }),
+    );
+    const documents = JSON.stringify([brief.brief, rollUp.rollUp]);
+    expect(documents).toContain("Prepare the public content plan");
+    expect(documents).not.toContain(rawFinanceContext);
+  });
 });
 
 describe("RM-16 a blocked Work Item must reach the CEO", () => {

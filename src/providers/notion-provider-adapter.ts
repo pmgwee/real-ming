@@ -1029,7 +1029,14 @@ export function createNotionMasterTasksStore(options: {
         record,
       });
       if (result.kind === "failed") {
-        throw new Error(`Master Tasks write failed (${result.failure.class}): ${result.failure.message}`);
+        const error = new Error(
+          `Master Tasks write failed (${result.failure.class}): ${result.failure.message}`,
+        );
+        Object.assign(error, {
+          class: result.failure.class,
+          retryable: result.failure.retryable,
+        });
+        throw error;
       }
       return record;
     },

@@ -42,6 +42,11 @@ const reviewTargetStates = {
   Record<CeoReviewRequest["decision"], WorkItemState>
 >;
 
+export type MaterialBlockerReason =
+  | "collaborator-execution-failed"
+  | "effect-verification-failed"
+  | "worker-execution-failed";
+
 export interface OperationsGateway {
   acknowledgeCeoAction(
     action: NormalizedCeoAction,
@@ -74,6 +79,10 @@ export function createOperationsGateway(options: {
   readonly commandClassifier: CommandClassifier;
   readonly now?: () => string;
   readonly workItemChanged?: (workItem: WorkItem) => Promise<void>;
+  /** Identifies provider failures safe for one idempotent projection retry. */
+  readonly workItemProjectionRetryable?: (error: unknown) => boolean;
+  /** Called after a bounded projection retry also fails. */
+  readonly workItemProjectionFailed?: (workItem: WorkItem) => Promise<void>;
   /**
    * Raised when a Work Item is blocked by a failure it cannot recover from on
    * its own. CONTEXT.md counts a material blocker among the four things that
@@ -87,8 +96,9 @@ export function createOperationsGateway(options: {
    */
   readonly materialBlocker?: (
     workItem: WorkItem,
-    reason: string,
+    reason: MaterialBlockerReason,
   ) => Promise<void>;
+  readonly materialBlockerRecovered?: (workItem: WorkItem) => Promise<void>;
 }): OperationsGateway {
   const now = options.now ?? (() => new Date().toISOString());
 
@@ -101,7 +111,25 @@ export function createOperationsGateway(options: {
   };
 
   const publish = async (workItem: WorkItem): Promise<WorkItem> => {
-    await options.workItemChanged?.(workItem);
+    if (options.workItemChanged !== undefined) {
+      try {
+        await options.workItemChanged(workItem);
+      } catch (firstError) {
+        if (options.workItemProjectionRetryable?.(firstError) !== true) {
+          await options.workItemProjectionFailed?.(workItem).catch(() => undefined);
+          throw firstError;
+        }
+        // Master Tasks upsert is idempotent. A single bounded retry closes the
+        // transient provider outage without allowing projection drift to be
+        // silently accepted forever.
+        try {
+          await options.workItemChanged(workItem);
+        } catch (secondError) {
+          await options.workItemProjectionFailed?.(workItem).catch(() => undefined);
+          throw secondError instanceof Error ? secondError : firstError;
+        }
+      }
+    }
     return workItem;
   };
 
@@ -135,17 +163,21 @@ export function createOperationsGateway(options: {
 
   const blockAfterWorkerFailure = async (
     workItemId: string,
-    reason: "collaborator-execution-failed" | "worker-execution-failed",
+    reason: Exclude<MaterialBlockerReason, "effect-verification-failed">,
     message: string,
   ): Promise<never> => {
     options.state.recordWorkerFailure(workItemId, now());
-    const blocked = options.state.transition(workItemId, "Waiting/Blocked", now(), { reason });
-    await publish(blocked);
+    const blocked = options.state.transition(workItemId, "Waiting/Blocked", now(), {
+      reason,
+    });
     // Raised after the block is durable, so the CEO is never told about a
     // state the database does not already hold. A failure to notify must not
     // undo the block or mask the original fault, so it is swallowed here and
     // remains visible in the Work Item's own state and audit trail.
     await options.materialBlocker?.(blocked, reason).catch(() => undefined);
+    // Projection failure is correlated with worker/provider failure and must
+    // not prevent the direct blocker notice or replace the original error.
+    await publish(blocked).catch(() => undefined);
     throw new Error(message);
   };
 
@@ -256,7 +288,10 @@ export function createOperationsGateway(options: {
       const blocked = options.state.transition(workItem.id, "Waiting/Blocked", now(), {
         reason: "effect-verification-failed",
       });
-      await publish(blocked);
+      await options.materialBlocker
+        ?.(blocked, "effect-verification-failed")
+        .catch(() => undefined);
+      await publish(blocked).catch(() => undefined);
       throw new Error("Controlled work could not be verified.");
     }
     const verification = {
@@ -274,6 +309,9 @@ export function createOperationsGateway(options: {
       verification,
       now(),
     );
+    if (entryWorkItem.state === "Waiting/Blocked") {
+      await options.materialBlockerRecovered?.(result.workItem).catch(() => undefined);
+    }
     await publish(result.workItem);
     return result;
   };
@@ -433,6 +471,10 @@ export function createOperationsGateway(options: {
           basis: "approval",
           operation: action.operation,
           approvalId: outcome.approval.id,
+          scope: outcome.approval.scope,
+          targetType: outcome.approval.targetType,
+          targetIdentity: outcome.approval.targetIdentity,
+          targetVersion: outcome.approval.targetVersion,
         },
         now(),
       );

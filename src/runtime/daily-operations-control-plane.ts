@@ -21,7 +21,10 @@ import {
 import { createExceptionNoticeRhythm } from "../operations/exception-notice-rhythm.js";
 import { createExecutiveRollUpRunner } from "../operations/executive-roll-up.js";
 import { createMorningBriefRunner } from "../operations/morning-brief.js";
-import { createOperationsGateway } from "../operations/operations-gateway.js";
+import {
+  createOperationsGateway,
+  type MaterialBlockerReason,
+} from "../operations/operations-gateway.js";
 import { OperationsState } from "../operations/operations-state.js";
 import type { DashboardServer } from "../dashboard/dashboard-server.js";
 import { createDashboardServer } from "../dashboard/dashboard-server.js";
@@ -104,17 +107,40 @@ export async function createDailyOperationsControlPlane(options: {
   // exist yet. Bound late rather than reordered, because the gateway must not
   // depend on the Exception Notice rhythm in either direction.
   let raiseMaterialBlocker:
-    | ((workItem: WorkItem, reason: string) => Promise<void>)
+    | ((workItem: WorkItem, reason: MaterialBlockerReason) => Promise<void>)
     | undefined;
+  let recoverMaterialBlocker: ((workItem: WorkItem) => Promise<void>) | undefined;
   const gateway = createOperationsGateway({
     state,
     worker: refusingWorker,
     verifier: refusingVerifier,
     questionResponder: refusingResponder,
     commandClassifier: createCommandClassifier(),
-    workItemChanged: (workItem) => projection.sync(workItem).then(() => undefined),
+    workItemChanged: async (workItem) => {
+      await projection.sync(workItem);
+      state.recordControlPlaneHealth({
+        component: "master-tasks-projection",
+        outcome: "healthy",
+        checkedAt: now(),
+      });
+    },
+    workItemProjectionRetryable: (error) =>
+      typeof error === "object" &&
+      error !== null &&
+      "retryable" in error &&
+      (error as { readonly retryable?: unknown }).retryable === true,
+    workItemProjectionFailed: async () => {
+      state.recordControlPlaneHealth({
+        component: "master-tasks-projection",
+        outcome: "failed",
+        checkedAt: now(),
+      });
+    },
     materialBlocker: async (workItem, reason) => {
       await raiseMaterialBlocker?.(workItem, reason);
+    },
+    materialBlockerRecovered: async (workItem) => {
+      await recoverMaterialBlocker?.(workItem);
     },
     now,
   });
@@ -132,35 +158,87 @@ export async function createDailyOperationsControlPlane(options: {
     notify: (notification) => frontDoor.notify(notification),
     now,
   });
+  const recordExceptionNoticeHealth = (
+    admission: Awaited<ReturnType<typeof notices.admit>> | undefined,
+    failedBeforeAdmission = false,
+  ): void => {
+    try {
+      state.recordControlPlaneHealth({
+        component: "exception-notice",
+        outcome:
+          failedBeforeAdmission ||
+          admission?.kind === "failed" ||
+          (admission?.kind === "grouped" && admission.deliveryState === "pending")
+            ? "failed"
+            : "healthy",
+        checkedAt: now(),
+      });
+    } catch {
+      // Health bookkeeping cannot undo or mask a durable notice attempt.
+    }
+  };
+  const recordExceptionNoticeHealthOutcome = (outcome: "healthy" | "failed") => {
+    recordExceptionNoticeHealth(
+      outcome === "failed"
+        ? undefined
+        : { kind: "delivered", delivery: { kind: "sent", notificationKind: "material-blocker" } },
+      outcome === "failed",
+    );
+  };
+  const releaseHeldTracked = async () => {
+    const result = await notices.releaseHeld();
+    if (result.failed > 0) {
+      recordExceptionNoticeHealthOutcome("failed");
+    } else if (result.released > 0) {
+      recordExceptionNoticeHealthOutcome("healthy");
+    }
+    return result;
+  };
+  const admitTracked: typeof notices.admit = async (notice) => {
+    try {
+      const admission = await notices.admit(notice);
+      recordExceptionNoticeHealth(admission);
+      return admission;
+    } catch (error) {
+      recordExceptionNoticeHealth(undefined, true);
+      throw error;
+    }
+  };
   raiseMaterialBlocker = async (workItem, reason) => {
     // Signed by the Work Item, so the same item failing repeatedly groups into
     // one interruption and a recovery reopens it. The text carries the id and
     // the reason code only: a provider's message could hold a request URL, and
     // this goes straight to the CEO's phone.
-    await notices.admit({
+    await admitTracked({
       kind: "material-blocker",
       text: `Work Item ${workItem.id} is blocked (${reason}).`,
       idempotencyKey: `material-blocker:${workItem.id}:${now()}`,
       signature: `work-item-blocked:${workItem.id}`,
     });
   };
+  recoverMaterialBlocker = async (workItem) => {
+    const admission = await notices.recordRecovery(
+      `work-item-blocked:${workItem.id}`,
+    );
+    recordExceptionNoticeHealth(admission);
+  };
   const morningBrief = createMorningBriefRunner({
     state,
     listEvents: options.listCalendarEvents,
-    admit: (notice) => notices.admit(notice),
+    admit: admitTracked,
     now,
   });
   const rollUp = createExecutiveRollUpRunner({
     state,
     workspaceId,
-    admit: (notice) => notices.admit(notice),
+    admit: admitTracked,
     now,
   });
   const scheduler = createDailyOperationsScheduler({
     state,
     now,
     runners: {
-      [releaseHeldJobName]: () => notices.releaseHeld(),
+      [releaseHeldJobName]: () => releaseHeldTracked(),
       [morningBriefJobName]: () => morningBrief.run(),
       [executiveRollUpJobName]: () => rollUp.run(),
     },
@@ -212,6 +290,11 @@ export async function createDailyOperationsControlPlane(options: {
   const supervisor = createControlPlaneSupervisor({
     pollTelegram: async () => {
       const recovery = await frontDoor.retryPendingDeliveries();
+      if (recovery.failed > 0 || recovery.uncertain > 0) {
+        recordExceptionNoticeHealthOutcome("failed");
+      } else if (recovery.sent > 0) {
+        recordExceptionNoticeHealthOutcome("healthy");
+      }
       const cursor = state.telegramIngressCursor();
       const read = await options.telegram.read({ reference: `offset:${cursor + 1}` });
       if (read.kind === "failed") {

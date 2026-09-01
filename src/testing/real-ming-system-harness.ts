@@ -53,7 +53,10 @@ import type {
   WorkItemAcknowledgement,
   VerifierResult,
 } from "../operations/contracts.js";
-import { createOperationsGateway } from "../operations/operations-gateway.js";
+import {
+  createOperationsGateway,
+  type MaterialBlockerReason,
+} from "../operations/operations-gateway.js";
 import { OperationsState } from "../operations/operations-state.js";
 import { createCommandClassifier } from "../operations/command-classifier.js";
 import {
@@ -350,6 +353,11 @@ export interface RealMingSystemHarness {
   releaseHeldExceptionNotices(): Promise<HeldRelease>;
   tickDailyOperations(): Promise<DailyOperationsTick>;
   failNextScheduledRun(job: string): Promise<void>;
+  failNextMasterTasksUpsert(message: string): void;
+  setMasterTasksUpsertFailure(message?: string): void;
+  setControlledWorkerExecutionError(message?: string): void;
+  setTelegramDeliveryFailure(failure?: ProviderFailure): void;
+  setTelegramCrashAfterDelivery(message?: string): void;
   acknowledgeCeoAction(
     action: NormalizedCeoAction,
   ): Promise<WorkItemAcknowledgement>;
@@ -416,7 +424,12 @@ export interface RealMingSystemHarness {
   ): Promise<TelegramPollResult>;
   telegramIngressCursor(): number;
   recordControlPlaneHealth(record: {
-    readonly component: "telegram-ingress" | "daily-scheduler" | "state-backup";
+    readonly component:
+      | "telegram-ingress"
+      | "daily-scheduler"
+      | "exception-notice"
+      | "master-tasks-projection"
+      | "state-backup";
     readonly outcome: "healthy" | "failed";
     readonly checkedAt: string;
   }): void;
@@ -442,9 +455,17 @@ class ControlledTelegramTransport implements TelegramTransport {
   readonly #messages = new Map<string, TelegramOutboundMessage>();
 
   constructor(
-    private readonly failure?: ProviderFailure,
-    private readonly crashAfterSendError?: string,
+    private failure?: ProviderFailure,
+    private crashAfterSendError?: string,
   ) {}
+
+  setFailure(failure?: ProviderFailure): void {
+    this.failure = failure;
+  }
+
+  setCrashAfterDelivery(message?: string): void {
+    this.crashAfterSendError = message;
+  }
 
   async send(message: TelegramSendRequest) {
     if (this.failure !== undefined) {
@@ -528,15 +549,23 @@ class ControlledEffectLedger {
 }
 
 class InMemoryControlledWorker implements ControlledWorker {
+  #executionError: string | undefined;
+
   constructor(
     private readonly ledger: ControlledEffectLedger,
-    private readonly executionError?: string,
+    executionError?: string,
     private readonly receiptEvidence?: Readonly<Record<string, string>>,
-  ) {}
+  ) {
+    this.#executionError = executionError;
+  }
+
+  setExecutionError(message?: string): void {
+    this.#executionError = message;
+  }
 
   async execute(effect: WorkerEffect): Promise<WorkerReceipt> {
-    if (this.executionError !== undefined) {
-      throw new Error(this.executionError);
+    if (this.#executionError !== undefined) {
+      throw new Error(this.#executionError);
     }
 
     const receipt: WorkerReceipt = {
@@ -626,9 +655,19 @@ export function createRealMingSystemHarness(options: {
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
   const masterTaskRecords = new Map<string, MasterTaskRecord>();
+  let nextMasterTasksUpsertError: string | undefined;
+  let masterTasksUpsertFailure: string | undefined;
   const masterTasksStore: MasterTasksStore = {
     records: async () => [...masterTaskRecords.values()],
     upsert: async (record) => {
+      if (masterTasksUpsertFailure !== undefined) {
+        throw new Error(masterTasksUpsertFailure);
+      }
+      if (nextMasterTasksUpsertError !== undefined) {
+        const message = nextMasterTasksUpsertError;
+        nextMasterTasksUpsertError = undefined;
+        throw new Error(message);
+      }
       masterTaskRecords.set(record.workItemId, record);
       return record;
     },
@@ -661,17 +700,36 @@ export function createRealMingSystemHarness(options: {
   // so it cannot exist yet. Bound late rather than reordered, because the
   // gateway must not depend on the rhythm in either direction.
   let raiseMaterialBlocker:
-    | ((workItem: WorkItem, reason: string) => Promise<void>)
+    | ((workItem: WorkItem, reason: MaterialBlockerReason) => Promise<void>)
     | undefined;
+  let recoverMaterialBlocker: ((workItem: WorkItem) => Promise<void>) | undefined;
   const gateway = createOperationsGateway({
     state,
     worker,
     verifier,
     questionResponder,
     commandClassifier,
-    workItemChanged: (workItem) => masterTasks.sync(workItem).then(() => undefined),
+    workItemChanged: async (workItem) => {
+      await masterTasks.sync(workItem);
+      state.recordControlPlaneHealth({
+        component: "master-tasks-projection",
+        outcome: "healthy",
+        checkedAt: clock(),
+      });
+    },
+    workItemProjectionRetryable: () => true,
+    workItemProjectionFailed: async () => {
+      state.recordControlPlaneHealth({
+        component: "master-tasks-projection",
+        outcome: "failed",
+        checkedAt: clock(),
+      });
+    },
     materialBlocker: async (workItem, reason) => {
       await raiseMaterialBlocker?.(workItem, reason);
+    },
+    materialBlockerRecovered: async (workItem) => {
+      await recoverMaterialBlocker?.(workItem);
     },
     ...(options.now === undefined ? {} : { now: options.now }),
   });
@@ -822,17 +880,71 @@ export function createRealMingSystemHarness(options: {
     notify: (notification) => telegramFrontDoor.notify(notification),
     now: clock,
   });
+  const recordExceptionNoticeHealth = (
+    admission: ExceptionNoticeAdmission | undefined,
+    failedBeforeAdmission = false,
+  ): void => {
+    try {
+      state.recordControlPlaneHealth({
+        component: "exception-notice",
+        outcome:
+          failedBeforeAdmission || admission?.kind === "failed"
+            ? "failed"
+            : admission?.kind === "grouped" && admission.deliveryState === "pending"
+              ? "failed"
+              : "healthy",
+        checkedAt: clock(),
+      });
+    } catch {
+      // Health bookkeeping cannot undo or mask a durable notice attempt.
+    }
+  };
+  const recordExceptionNoticeHealthOutcome = (outcome: "healthy" | "failed") => {
+    recordExceptionNoticeHealth(
+      outcome === "failed"
+        ? undefined
+        : { kind: "delivered", delivery: { kind: "sent", notificationKind: "material-blocker" } },
+      outcome === "failed",
+    );
+  };
+  const admitTracked = async (
+    notice: ExceptionNotice,
+  ): Promise<ExceptionNoticeAdmission> => {
+    try {
+      const admission = await exceptionNoticeRhythm.admit(notice);
+      recordExceptionNoticeHealth(admission);
+      return admission;
+    } catch (error) {
+      recordExceptionNoticeHealth(undefined, true);
+      throw error;
+    }
+  };
+  const releaseHeldTracked = async (): Promise<HeldRelease> => {
+    const result = await exceptionNoticeRhythm.releaseHeld();
+    if (result.failed > 0) {
+      recordExceptionNoticeHealthOutcome("failed");
+    } else if (result.released > 0) {
+      recordExceptionNoticeHealthOutcome("healthy");
+    }
+    return result;
+  };
   raiseMaterialBlocker = async (workItem, reason) => {
     // Signed by the Work Item, so the same item failing repeatedly groups into
     // one interruption and a recovery reopens it. The text carries the item's
     // own id and the reason code only: a provider's message could hold a
     // request URL, and this goes straight to the CEO's phone.
-    await exceptionNoticeRhythm.admit({
+    await admitTracked({
       kind: "material-blocker",
       text: `Work Item ${workItem.id} is blocked (${reason}).`,
       idempotencyKey: `material-blocker:${workItem.id}:${clock()}`,
       signature: `work-item-blocked:${workItem.id}`,
     });
+  };
+  recoverMaterialBlocker = async (workItem) => {
+    const admission = await exceptionNoticeRhythm.recordRecovery(
+      `work-item-blocked:${workItem.id}`,
+    );
+    recordExceptionNoticeHealth(admission);
   };
   // Controlled failure injection, so a scheduler tick can be observed handling
   // one job failing without stranding the others.
@@ -840,7 +952,7 @@ export function createRealMingSystemHarness(options: {
   const executiveRollUp: ExecutiveRollUpRunner = createExecutiveRollUpRunner({
     state,
     workspaceId: "workspace:real-ming",
-    admit: (notification) => exceptionNoticeRhythm.admit(notification),
+    admit: admitTracked,
     ...(options.now === undefined ? {} : { now: options.now }),
   });
   const morningBrief: MorningBriefRunner | undefined =
@@ -850,7 +962,7 @@ export function createRealMingSystemHarness(options: {
           state,
           listEvents: (window) =>
             calendarAdapter.listEvents(calendarId, window),
-          admit: (notice) => exceptionNoticeRhythm.admit(notice),
+          admit: admitTracked,
           ...(options.now === undefined ? {} : { now: options.now }),
         });
 
@@ -866,7 +978,7 @@ export function createRealMingSystemHarness(options: {
       now: clock,
       runners: {
         [releaseHeldJobName]: guarded(releaseHeldJobName, () =>
-          exceptionNoticeRhythm.releaseHeld(),
+          releaseHeldTracked(),
         ),
         [morningBriefJobName]: guarded(morningBriefJobName, () => {
           if (morningBrief === undefined) {
@@ -944,13 +1056,31 @@ export function createRealMingSystemHarness(options: {
       return morningBrief.run();
     },
     runExecutiveRollUp: () => executiveRollUp.run(),
-    admitExceptionNotice: (notification) => exceptionNoticeRhythm.admit(notification),
-    recordExceptionNoticeRecovery: (signature) =>
-      exceptionNoticeRhythm.recordRecovery(signature),
-    releaseHeldExceptionNotices: () => exceptionNoticeRhythm.releaseHeld(),
+    admitExceptionNotice: admitTracked,
+    recordExceptionNoticeRecovery: async (signature) => {
+      const admission = await exceptionNoticeRhythm.recordRecovery(signature);
+      recordExceptionNoticeHealth(admission);
+      return admission;
+    },
+    releaseHeldExceptionNotices: () => releaseHeldTracked(),
     tickDailyOperations: () => dailyOperations.tick(),
     failNextScheduledRun: async (job) => {
       forcedFailures.add(job);
+    },
+    failNextMasterTasksUpsert: (message) => {
+      nextMasterTasksUpsertError = message;
+    },
+    setMasterTasksUpsertFailure: (message) => {
+      masterTasksUpsertFailure = message;
+    },
+    setControlledWorkerExecutionError: (message) => {
+      worker.setExecutionError(message);
+    },
+    setTelegramDeliveryFailure: (failure) => {
+      telegramTransport.setFailure(failure);
+    },
+    setTelegramCrashAfterDelivery: (message) => {
+      telegramTransport.setCrashAfterDelivery(message);
     },
     buildCutoverPlanFromEvidence: (evidence) => buildCutoverPlan(evidence),
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
@@ -1050,8 +1180,15 @@ export function createRealMingSystemHarness(options: {
     publishTelegramReviewControls: (request) =>
       telegramFrontDoor.publishReviewControls(request),
     notifyTelegram: (notification) => telegramFrontDoor.notify(notification),
-    retryPendingTelegramDeliveries: () =>
-      telegramFrontDoor.retryPendingDeliveries(),
+    retryPendingTelegramDeliveries: async () => {
+      const result = await telegramFrontDoor.retryPendingDeliveries();
+      if (result.failed > 0 || result.uncertain > 0) {
+        recordExceptionNoticeHealthOutcome("failed");
+      } else if (result.sent > 0) {
+        recordExceptionNoticeHealthOutcome("healthy");
+      }
+      return result;
+    },
     telegramMessages: () => telegramTransport.messages(),
     telegramAuditTrail: () => state.telegramAuditTrail(),
     close: () => state.close(),

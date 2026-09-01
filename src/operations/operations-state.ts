@@ -148,7 +148,7 @@ interface TelegramDeliveryOutboxRow {
   chat_id: string;
   payload_json: string;
   payload_digest: string;
-  state: "in-flight" | "sent" | "failed" | "uncertain";
+  state: "in-flight" | "sent" | "failed" | "uncertain" | "cancelled";
   attempt_count: number;
   failure_class: ProviderFailure["class"] | null;
   failure_retryable: number | null;
@@ -174,6 +174,8 @@ export interface TelegramPendingDelivery {
 export type ControlPlaneHealthComponent =
   | "telegram-ingress"
   | "daily-scheduler"
+  | "exception-notice"
+  | "master-tasks-projection"
   | "state-backup";
 
 export interface ControlPlaneHealth {
@@ -547,6 +549,13 @@ export class OperationsState {
         last_seen TEXT NOT NULL,
         occurrences INTEGER NOT NULL,
         recovered_at TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS exception_notice_deliveries (
+        signature TEXT PRIMARY KEY,
+        idempotency_key TEXT NOT NULL,
+        state TEXT NOT NULL,
+        updated_at TEXT NOT NULL
       );
 
       CREATE TRIGGER IF NOT EXISTS work_items_require_outcome_on_insert
@@ -1473,6 +1482,66 @@ export class OperationsState {
     return { kind: "grouped", occurrences };
   }
 
+  exceptionNoticeDelivery(signature: string): {
+    readonly idempotencyKey: string;
+    readonly state: "held" | "pending" | "delivered" | "cancelled";
+  } | undefined {
+    const row = this.#database
+      .prepare(
+        "SELECT idempotency_key, state FROM exception_notice_deliveries WHERE signature = ?",
+      )
+      .get(signature) as unknown as
+      | {
+          readonly idempotency_key: string;
+          readonly state: "held" | "pending" | "delivered" | "cancelled";
+        }
+      | undefined;
+    return row === undefined
+      ? undefined
+      : { idempotencyKey: row.idempotency_key, state: row.state };
+  }
+
+  recordExceptionNoticeDelivery(
+    signature: string,
+    idempotencyKey: string,
+    state: "held" | "pending" | "delivered" | "cancelled",
+    occurredAt: string,
+  ): void {
+    this.#database
+      .prepare(
+        `INSERT INTO exception_notice_deliveries
+           (signature, idempotency_key, state, updated_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(signature) DO UPDATE SET
+           idempotency_key = excluded.idempotency_key,
+           state = excluded.state,
+           updated_at = excluded.updated_at`,
+      )
+      .run(signature, idempotencyKey, state, occurredAt);
+  }
+
+  markExceptionNoticeDeliveryByIdempotency(
+    idempotencyKey: string,
+    state: "pending" | "delivered" | "cancelled",
+    occurredAt: string,
+  ): void {
+    this.#database
+      .prepare(
+        `UPDATE exception_notice_deliveries
+         SET state = ?, updated_at = ?
+         WHERE idempotency_key = ?`,
+      )
+      .run(state, occurredAt, idempotencyKey);
+  }
+
+  releaseExceptionNoticeGroup(signature: string, occurredAt: string): void {
+    this.#database
+      .prepare(
+        "UPDATE exception_notice_groups SET recovered_at = ? WHERE signature = ?",
+      )
+      .run(occurredAt, signature);
+  }
+
   /**
    * A scheduled occurrence claims its slot before it runs, so a restart, a
    * second process, or a rapid tick cannot execute the same occurrence twice.
@@ -1721,24 +1790,93 @@ export class OperationsState {
         "UPDATE held_exception_notices SET released_at = ? WHERE idempotency_key = ? AND released_at IS NULL",
       )
       .run(releasedAt, idempotencyKey);
+    this.markExceptionNoticeDeliveryByIdempotency(
+      idempotencyKey,
+      "delivered",
+      releasedAt,
+    );
+  }
+
+  cancelHeldExceptionNotice(idempotencyKey: string, cancelledAt: string): void {
+    this.#database
+      .prepare(
+        "UPDATE held_exception_notices SET released_at = ? WHERE idempotency_key = ? AND released_at IS NULL",
+      )
+      .run(cancelledAt, idempotencyKey);
+  }
+
+  telegramDeliveryStatus(
+    idempotencyKey: string,
+  ): "missing" | "sent" | "pending" | "terminal" | "uncertain" | "in-flight" | "cancelled" {
+    const row = this.#database
+      .prepare(
+        "SELECT state, failure_retryable, attempt_count FROM telegram_delivery_outbox WHERE idempotency_key = ?",
+      )
+      .get(idempotencyKey) as unknown as
+      | {
+          readonly state: string;
+          readonly failure_retryable: number | null;
+          readonly attempt_count: number;
+        }
+      | undefined;
+    if (row === undefined) return "missing";
+    if (row.state === "sent") return "sent";
+    if (row.state === "uncertain") return "uncertain";
+    if (row.state === "in-flight") return "in-flight";
+    if (row.state === "cancelled") return "cancelled";
+    return row.failure_retryable === 1 && row.attempt_count < 3
+      ? "pending"
+      : "terminal";
+  }
+
+  cancelTelegramDelivery(idempotencyKey: string, cancelledAt: string): void {
+    this.#database
+      .prepare(
+        `UPDATE telegram_delivery_outbox
+         SET state = 'cancelled', updated_at = ?
+         WHERE idempotency_key = ? AND state IN ('failed', 'in-flight')`,
+      )
+      .run(cancelledAt, idempotencyKey);
+    this.markExceptionNoticeDeliveryByIdempotency(
+      idempotencyKey,
+      "cancelled",
+      cancelledAt,
+    );
   }
 
   recordExceptionNoticeRecovery(
     signature: string,
     occurredAt: string,
-  ): { readonly kind: "recovered" | "already-recovered"; readonly occurrences: number } {
+  ): {
+    readonly kind: "recovered" | "already-recovered";
+    readonly occurrences: number;
+    readonly delivery?: {
+      readonly idempotencyKey: string;
+      readonly state: "held" | "pending" | "delivered" | "cancelled";
+    };
+  } {
     const row = this.#database
       .prepare("SELECT occurrences, recovered_at FROM exception_notice_groups WHERE signature = ?")
       .get(signature) as unknown as
       | { readonly occurrences: number; readonly recovered_at: string | null }
       | undefined;
     if (row === undefined || row.recovered_at !== null) {
-      return { kind: "already-recovered", occurrences: row?.occurrences ?? 0 };
+      const delivery = this.exceptionNoticeDelivery(signature);
+      return {
+        kind: "already-recovered",
+        occurrences: row?.occurrences ?? 0,
+        ...(delivery === undefined ? {} : { delivery }),
+      };
     }
     this.#database
       .prepare("UPDATE exception_notice_groups SET recovered_at = ? WHERE signature = ?")
       .run(occurredAt, signature);
-    return { kind: "recovered", occurrences: row.occurrences };
+    const delivery = this.exceptionNoticeDelivery(signature);
+    return {
+      kind: "recovered",
+      occurrences: row.occurrences,
+      ...(delivery === undefined ? {} : { delivery }),
+    };
   }
 
   recordPriority(

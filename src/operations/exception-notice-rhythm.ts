@@ -28,10 +28,23 @@ export interface ExceptionNotice extends TelegramNotification {
 }
 
 export type ExceptionNoticeAdmission =
-  | { readonly kind: "delivered"; readonly delivery: TelegramNotificationResult }
+  | {
+      readonly kind: "delivered";
+      readonly delivery: {
+        readonly kind: "sent";
+        readonly notificationKind: TelegramNotificationKind;
+      };
+    }
+  | { readonly kind: "failed"; readonly delivery: Extract<TelegramNotificationResult, { readonly kind: "failed" }> }
   | { readonly kind: "held"; readonly releaseAt: string; readonly reason: string }
   | { readonly kind: "suppressed"; readonly reason: string }
-  | { readonly kind: "grouped"; readonly occurrences: number }
+  | {
+      readonly kind: "grouped";
+      readonly occurrences: number;
+      /** Whether the first occurrence reached the CEO or remains retryable. */
+      readonly deliveryState?: "delivered" | "pending";
+    }
+  | { readonly kind: "recovered-without-delivery"; readonly reason: string }
   | { readonly kind: "already-recovered" };
 
 /**
@@ -113,9 +126,16 @@ export function createExceptionNoticeRhythm(options: {
     const delivery = await options.notify(outbound);
     // The front door may still stand a kind down. Reporting "delivered" for a
     // notice it suppressed would misstate what reached Ming.
-    return delivery.kind === "suppressed"
-      ? { kind: "suppressed", reason: "front-door-policy" }
-      : { kind: "delivered", delivery };
+    if (delivery.kind === "failed") {
+      return { kind: "failed", delivery };
+    }
+    if (delivery.kind === "suppressed") {
+      return { kind: "suppressed", reason: "front-door-policy" };
+    }
+    return {
+      kind: "delivered",
+      delivery: { kind: "sent", notificationKind: delivery.notificationKind },
+    };
   };
 
   return {
@@ -129,6 +149,44 @@ export function createExceptionNoticeRhythm(options: {
         weekendSuppressed.includes(notice.kind)
       ) {
         return { kind: "suppressed", reason: "weekend-rhythm" };
+      }
+
+      let claimedSignature: string | undefined;
+      if (notice.signature !== undefined) {
+        let group = options.state.claimExceptionNoticeGroup(
+          notice.signature,
+          now,
+        );
+        if (group.kind === "grouped") {
+          const prior = options.state.exceptionNoticeDelivery(notice.signature);
+          if (
+            prior !== undefined &&
+            prior.state !== "held" &&
+            prior.state !== "delivered" &&
+            ["missing", "terminal", "cancelled"].includes(
+              options.state.telegramDeliveryStatus(prior.idempotencyKey),
+            )
+          ) {
+            // A non-retryable or exhausted outbox cannot ever reach the CEO.
+            // Reopen the incident so the next occurrence gets a fresh attempt.
+            options.state.releaseExceptionNoticeGroup(notice.signature, now);
+            group = options.state.claimExceptionNoticeGroup(
+              notice.signature,
+              now,
+            );
+          }
+        }
+        if (group.kind === "grouped") {
+          const prior = options.state.exceptionNoticeDelivery(notice.signature);
+          return {
+            kind: "grouped",
+            occurrences: group.occurrences,
+            ...(prior?.state === "delivered"
+              ? { deliveryState: "delivered" as const }
+              : { deliveryState: "pending" as const }),
+          };
+        }
+        claimedSignature = notice.signature;
       }
 
       if (isDoNotDisturb(now)) {
@@ -146,21 +204,36 @@ export function createExceptionNoticeRhythm(options: {
             heldAt: now,
             releaseAt,
           });
+          if (claimedSignature !== undefined) {
+            options.state.recordExceptionNoticeDelivery(
+              claimedSignature,
+              notice.idempotencyKey,
+              "held",
+              now,
+            );
+          }
           return { kind: "held", releaseAt, reason: "do-not-disturb" };
         }
       }
 
-      if (notice.signature !== undefined) {
-        const group = options.state.claimExceptionNoticeGroup(
-          notice.signature,
+      const admission = await deliver(notice);
+      if (claimedSignature !== undefined) {
+        const deliveryState =
+          admission.kind === "delivered"
+            ? "delivered"
+            : admission.kind === "failed"
+              ? admission.delivery.failure.retryable
+                ? "pending"
+                : "cancelled"
+              : "cancelled";
+        options.state.recordExceptionNoticeDelivery(
+          claimedSignature,
+          notice.idempotencyKey,
+          deliveryState,
           now,
         );
-        if (group.kind === "grouped") {
-          return { kind: "grouped", occurrences: group.occurrences };
-        }
       }
-
-      return deliver(notice);
+      return admission;
     },
 
     async releaseHeld(): Promise<HeldRelease> {
@@ -174,11 +247,23 @@ export function createExceptionNoticeRhythm(options: {
           // The original idempotency key is preserved, so a crash between the
           // send and the mark is deduplicated by the delivery ledger rather
           // than delivered twice.
-          await options.notify({
+          const delivery = await options.notify({
             kind: narrowNotificationKind(held.kind),
             text: held.text,
             idempotencyKey: held.idempotencyKey,
           });
+          if (delivery.kind === "failed") {
+            // Keep the group retryable, but do not leave it marked held: a
+            // later occurrence must be able to reopen it after retry policy
+            // exhaustion or a permanent provider failure.
+            options.state.markExceptionNoticeDeliveryByIdempotency(
+              held.idempotencyKey,
+              "pending",
+              now,
+            );
+            failed += 1;
+            continue;
+          }
           options.state.markHeldExceptionNoticeReleased(held.idempotencyKey, now);
           released += 1;
         } catch {
@@ -198,8 +283,41 @@ export function createExceptionNoticeRhythm(options: {
       if (recovery.kind === "already-recovered") {
         return { kind: "already-recovered" };
       }
+      const delivery = recovery.delivery;
+      if (delivery !== undefined) {
+        const status = options.state.telegramDeliveryStatus(delivery.idempotencyKey);
+        // An in-flight/uncertain send may already have reached the CEO. Treat
+        // it as delivered for recovery purposes rather than silently omitting
+        // the required recovery notice; the outbox itself remains uncertain
+        // and is reconciled by its own retry policy.
+        const delivered =
+          delivery.state === "delivered" ||
+          status === "sent" ||
+          status === "in-flight" ||
+          status === "uncertain";
+        if (!delivered) {
+          options.state.cancelTelegramDelivery(delivery.idempotencyKey, now);
+          options.state.cancelHeldExceptionNotice(delivery.idempotencyKey, now);
+          options.state.recordExceptionNoticeDelivery(
+            signature,
+            delivery.idempotencyKey,
+            "cancelled",
+            now,
+          );
+          return {
+            kind: "recovered-without-delivery",
+            reason: "The blocker cleared before its Exception Notice reached the CEO.",
+          };
+        }
+        options.state.recordExceptionNoticeDelivery(
+          signature,
+          delivery.idempotencyKey,
+          "delivered",
+          now,
+        );
+      }
       // Recovery is one notice, whatever the failure count was.
-      return deliver({
+      return this.admit({
         kind: "recovery-notice",
         text: `Recovered: ${signature} after ${recovery.occurrences} occurrence${
           recovery.occurrences === 1 ? "" : "s"
