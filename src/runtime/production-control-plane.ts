@@ -23,6 +23,10 @@ import type { GitHubRepositoryAdapter } from "../providers/github-repository-ada
 import type { GitLineageAdapter } from "../providers/git-lineage-adapter.js";
 import type { VercelDeploymentAdapter } from "../providers/vercel-deployment-adapter.js";
 import { buildRepositoryCenterView, type RepositoryCenterView } from "../portfolio/repository-center.js";
+import {
+  deploymentCandidateStatePath,
+  SqliteDeploymentCandidateStore,
+} from "../portfolio/deployment-candidate.js";
 import { resolveControlPlaneCredentials } from "./credential-resolver.js";
 import {
   createDailyOperationsControlPlane,
@@ -130,6 +134,9 @@ export async function createProductionControlPlane(options: {
   });
   const calendarId =
     optional(options.environment["REAL_MING_GOOGLE_CALENDAR_ID"]) ?? "primary";
+  const deploymentCandidateStore = new SqliteDeploymentCandidateStore(
+    deploymentCandidateStatePath(options.statePath),
+  );
 
   try {
     for (const project of options.portfolioProjects ?? []) {
@@ -168,6 +175,7 @@ export async function createProductionControlPlane(options: {
       statePath: options.statePath,
       masterTasks,
       portfolio,
+      deploymentCandidateStore,
       ...(options.repositoryCenterAdapters === undefined
         ? {}
         : { refreshRepositoryCenters }),
@@ -224,6 +232,9 @@ export async function createProductionControlPlane(options: {
       projectEvidence: controlPlane.projectEvidence,
       bindPortfolioProject: (request: ProjectEvidenceBindingRequest) =>
         controlPlane.bindPortfolioProject(request),
+      prepareDeploymentCandidate: (input) =>
+        controlPlane.prepareDeploymentCandidate(input),
+      deploymentCandidate: (id) => controlPlane.deploymentCandidate(id),
       runCycle: () => controlPlane.runCycle(),
       run: () => controlPlane.run(),
       stop: () => controlPlane.stop(),
@@ -238,6 +249,7 @@ export async function createProductionControlPlane(options: {
     };
   } catch (error) {
     portfolio.close();
+    deploymentCandidateStore.close();
     notionLedger.close();
     throw error;
   }

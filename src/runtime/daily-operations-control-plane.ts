@@ -38,6 +38,13 @@ import { createDashboardServer } from "../dashboard/dashboard-server.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 import {
+  buildDeploymentCandidate,
+  type DeploymentCandidate,
+  type DeploymentCandidateBuildInput,
+  type DeploymentCandidateBuildResult,
+  type DeploymentCandidateStore,
+} from "../portfolio/deployment-candidate.js";
+import {
   createProjectEvidenceBroker,
   type AgentBrainEvidenceProvider,
   type ProjectEvidenceBindingRequest,
@@ -90,6 +97,8 @@ export interface DailyOperationsControlPlane {
   readonly projectPortfolio: ProjectPortfolio | undefined;
   readonly projectEvidence: ProjectEvidenceBroker | undefined;
   bindPortfolioProject(request: ProjectEvidenceBindingRequest): void;
+  prepareDeploymentCandidate(input: DeploymentCandidateBuildInput): DeploymentCandidateBuildResult;
+  deploymentCandidate(id: string): DeploymentCandidate | undefined;
   runCycle(): Promise<ControlPlaneCycle>;
   run(): Promise<void>;
   stop(): void;
@@ -110,6 +119,8 @@ export async function createDailyOperationsControlPlane(options: {
   readonly repositoryCenters?: ReadonlyMap<string, RepositoryCenterView>;
   /** Refreshes repository observations at the dashboard read boundary. */
   readonly refreshRepositoryCenters?: () => Promise<ReadonlyMap<string, RepositoryCenterView>>;
+  /** Durable local record for review-ready candidates; no provider write is implied. */
+  readonly deploymentCandidateStore?: DeploymentCandidateStore;
   readonly evidenceProvider?: AgentBrainEvidenceProvider;
   /** Optional Lenovo/private-worker adapter for Local-Only Work. */
   readonly privateWorker?: ControlledWorker;
@@ -466,6 +477,15 @@ export async function createDailyOperationsControlPlane(options: {
       }
       projectEvidence.bind(request);
     },
+    prepareDeploymentCandidate(input) {
+      const result = buildDeploymentCandidate(input);
+      if (result.kind !== "candidate" || options.deploymentCandidateStore === undefined) return result;
+      return {
+        kind: "candidate",
+        candidate: options.deploymentCandidateStore.save(result.candidate),
+      };
+    },
+    deploymentCandidate: (id) => options.deploymentCandidateStore?.candidate(id),
     runCycle: () => supervisor.runCycle(),
     run: () => supervisor.run(),
     stop: () => supervisor.stop(),
@@ -474,6 +494,7 @@ export async function createDailyOperationsControlPlane(options: {
       closed = true;
       supervisor.stop();
       await dashboard.close();
+      options.deploymentCandidateStore?.close();
       state.close();
     },
   };

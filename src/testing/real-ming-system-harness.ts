@@ -128,6 +128,14 @@ import {
   type CutoverPlanBuildResult,
   type CutoverTitleMatchCounts,
 } from "../migration/cutover-plan-builder.js";
+import {
+  buildDeploymentCandidate,
+  deploymentCandidateStatePath,
+  SqliteDeploymentCandidateStore,
+  type DeploymentCandidate,
+  type DeploymentCandidateBuildInput,
+  type DeploymentCandidateBuildResult,
+} from "../portfolio/deployment-candidate.js";
 import type { CutoverBindings } from "../migration/master-tasks-cutover.js";
 
 import {
@@ -431,6 +439,10 @@ export interface RealMingSystemHarness {
     readonly bindings: CutoverBindings;
     readonly expectedTitleMatches: CutoverTitleMatchCounts;
   }): CutoverPlanBuildResult;
+  buildDeploymentCandidate(
+    input: DeploymentCandidateBuildInput,
+  ): DeploymentCandidateBuildResult;
+  deploymentCandidate(id: string): DeploymentCandidate | undefined;
   editMasterTaskThroughView(
     request: EditMasterTaskThroughViewRequest,
   ): Promise<MasterTaskRecord>;
@@ -769,6 +781,9 @@ export function createRealMingSystemHarness(options: {
   };
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
+  const deploymentCandidateStore = new SqliteDeploymentCandidateStore(
+    deploymentCandidateStatePath(options.statePath),
+  );
   const portfolio = new ProjectPortfolio(
     options.statePath,
     options.now,
@@ -872,6 +887,7 @@ export function createRealMingSystemHarness(options: {
           });
   } catch (error) {
     portfolio.close();
+    deploymentCandidateStore.close();
     state.close();
     throw error;
   }
@@ -1376,6 +1392,13 @@ export function createRealMingSystemHarness(options: {
       telegramTransport.setCrashAfterDelivery(message);
     },
     buildCutoverPlanFromEvidence: (evidence) => buildCutoverPlan(evidence),
+    buildDeploymentCandidate: (input) => {
+      const result = buildDeploymentCandidate(input);
+      return result.kind === "candidate"
+        ? { kind: "candidate", candidate: deploymentCandidateStore.save(result.candidate) }
+        : result;
+    },
+    deploymentCandidate: (id) => deploymentCandidateStore.candidate(id),
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
     listCalendarEvents: ({ calendarId }) =>
       calendarAdapter.listEvents(calendarId),
@@ -1598,6 +1621,7 @@ export function createRealMingSystemHarness(options: {
       personalContext?.close();
       privateWorker?.close();
       portfolio.close();
+      deploymentCandidateStore.close();
       state.close();
     },
   };
