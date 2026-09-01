@@ -14,7 +14,7 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 | --- | --- |
 | Phase 3 tickets closed | **18 of 44** |
 | Startable by an agent right now | **RM-17 (#18)** — next tracer node |
-| Waiting on you | Nothing blocking. Optional: the Azure budget alert. |
+| Waiting on you | **RM-17 first Personal Context item** — choose one item using the runbook below. Optional: the Azure budget alert. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
@@ -93,6 +93,7 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 | Prepare RM-15 candidate | Rebuilt from `5016918` after two blocking defects were found in the earlier candidate. | Approved and executed 31 Aug. | ✅ Done |
 | Activate RM-15 candidate | Started image `sha256:0ed353723aa4…`; Telegram proven from a phone with the Lenovo shut. | Approved and executed 31 Aug. | ✅ Done |
 | Off-host backup | An Azure Storage account and a narrowly scoped role assignment, so the 33 Work Items survive losing the VM. | **Not yet.** Local backup meets every acceptance criterion, and a storage account is Azure-specific against your day-31 plan. Worth revisiting before teardown. | ⏳ Open |
+| Select RM-17 Personal Context item | One bounded file or allowlisted Notion page plus source metadata for the first Candidate Envelope. | **Choose exactly one item using the runbook.** | ⏳ Waiting on CEO |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
@@ -112,6 +113,12 @@ The deployed control plane can capture, review, approve, brief, and roll up a
 Work Item, but it cannot execute one autonomously until RM-21 supplies the
 Lenovo private worker (RM-21 is downstream of RM-16). This remains an explicit
 production limitation; a green controlled tracer is not live worker execution.
+
+⚠️ **RM-17 is waiting on one CEO selection.** Choose the first bounded Personal
+Context file or allowlisted Notion page and provide its source metadata using
+[RM-17 Personal Context selection](RM-17-personal-context-selection-runbook.md).
+Until that exact item is named, no personal data will be ingested and the graph
+loop stops at RM-17.
 
 `RM11-CUTOVER-3` was approved and executed on 29 Aug 2026: 30 pages imported,
 all five legacy databases retired to read-only evidence, exactly one writable
@@ -179,6 +186,7 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [RM-11-cutover-approval-packet.md](RM-11-cutover-approval-packet.md) | Historical Version 2 Phase A packet and approval evidence; do not reuse |
 | [RM-11-phase-b-approval-packet.md](RM-11-phase-b-approval-packet.md) | Current exact Phase B continuation, evidence bindings, commit point, and approval sentence |
 | [CREDENTIAL-INVENTORY.md](CREDENTIAL-INVENTORY.md) | All ten credentials: owner, purpose, environment, revocation — **no values** |
+| [RM-17-personal-context-selection-runbook.md](RM-17-personal-context-selection-runbook.md) | CEO-only choice of the first bounded Personal Context item |
 
 ---
 
