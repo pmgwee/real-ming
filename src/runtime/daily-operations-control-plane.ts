@@ -36,6 +36,7 @@ import { OperationsState } from "../operations/operations-state.js";
 import type { DashboardServer } from "../dashboard/dashboard-server.js";
 import { createDashboardServer } from "../dashboard/dashboard-server.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
+import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 import {
   createProjectEvidenceBroker,
   type AgentBrainEvidenceProvider,
@@ -105,6 +106,10 @@ export async function createDailyOperationsControlPlane(options: {
   readonly statePath: string;
   readonly masterTasks: MasterTasksStore;
   readonly portfolio?: ProjectPortfolio;
+  /** Read-only repository observations prepared by the composition root. */
+  readonly repositoryCenters?: ReadonlyMap<string, RepositoryCenterView>;
+  /** Refreshes repository observations at the dashboard read boundary. */
+  readonly refreshRepositoryCenters?: () => Promise<ReadonlyMap<string, RepositoryCenterView>>;
   readonly evidenceProvider?: AgentBrainEvidenceProvider;
   /** Optional Lenovo/private-worker adapter for Local-Only Work. */
   readonly privateWorker?: ControlledWorker;
@@ -337,6 +342,8 @@ export async function createDailyOperationsControlPlane(options: {
     state,
     gateway,
     ...(options.portfolio === undefined ? {} : { portfolio: options.portfolio }),
+    ...(options.repositoryCenters === undefined ? {} : { repositoryCenters: options.repositoryCenters }),
+    ...(options.refreshRepositoryCenters === undefined ? {} : { refreshRepositoryCenters: options.refreshRepositoryCenters }),
     ...(projectEvidence === undefined ? {} : { projectEvidence }),
     credentials: [
       {

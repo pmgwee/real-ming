@@ -71,6 +71,7 @@ import {
 } from "../dashboard/dashboard-server.js";
 import { buildDashboardOverview } from "../dashboard/dashboard-read-model.js";
 import type { DashboardOverview } from "../dashboard/dashboard-read-model.js";
+import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 import {
   createTelegramFrontDoor,
   type TelegramFrontDoor,
@@ -483,6 +484,8 @@ export interface RealMingSystemHarness {
   portfolioProject(id: string): PortfolioProject | undefined;
   portfolioProjects(): readonly PortfolioProject[];
   portfolioReconciliation(id: string): PortfolioReconciliation;
+  setRepositoryCenterView(projectId: string, view: RepositoryCenterView): void;
+  repositoryCenterView(projectId: string): RepositoryCenterView | undefined;
   bindPortfolioProject(workItemId: string, projectId: string): void;
   serveProjectEvidence(request: ProjectEvidenceRequest): Promise<ProjectEvidenceResult>;
   captureProjectEvidenceCandidate(
@@ -770,6 +773,7 @@ export function createRealMingSystemHarness(options: {
     options.statePath,
     options.now,
   );
+  const repositoryCenters = new Map<string, RepositoryCenterView>();
   const evidenceBroker: ProjectEvidenceBroker | undefined =
     options.evidence === undefined
       ? undefined
@@ -1402,7 +1406,7 @@ export function createRealMingSystemHarness(options: {
     approvals: (workItemId) => state.approvals(workItemId),
     standingAuthorities: () => state.standingAuthorities(),
     dashboardOverview: (session) =>
-      buildDashboardOverview(state, { ...session, now: clock() }, portfolio),
+      buildDashboardOverview(state, { ...session, now: clock() }, portfolio, repositoryCenters),
     recordProviderObservation: (record) =>
       providerObservationCoordinator.observe(record),
     providerObservations: () => state.providerObservations(),
@@ -1452,6 +1456,11 @@ export function createRealMingSystemHarness(options: {
     portfolioProject: (id) => portfolio.project(id),
     portfolioProjects: () => portfolio.projects(),
     portfolioReconciliation: (id) => portfolio.reconcile(id),
+    setRepositoryCenterView: (projectId, view) => {
+      if (view.projectId !== projectId) throw new Error("Repository Center project identity mismatch.");
+      repositoryCenters.set(projectId, view);
+    },
+    repositoryCenterView: (projectId) => repositoryCenters.get(projectId),
     bindPortfolioProject: (workItemId, projectId) => {
       if (evidenceBroker === undefined) {
         portfolio.bindWorkItem(workItemId, projectId);
@@ -1507,6 +1516,7 @@ export function createRealMingSystemHarness(options: {
         credentials,
         now: clock,
         portfolio,
+        repositoryCenters,
         ...(evidenceBroker === undefined ? {} : { projectEvidence: evidenceBroker }),
       }),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),

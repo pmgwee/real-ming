@@ -11,6 +11,7 @@ import {
 import { renderDashboardPage } from "./dashboard-page.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { ProjectEvidenceBroker } from "../evidence/evidence-broker.js";
+import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 
 export const dashboardSessionCookie = "real_ming_session";
 
@@ -162,6 +163,10 @@ export function createDashboardServer(options: {
   readonly state: OperationsState;
   readonly gateway: OperationsGateway;
   readonly portfolio?: ProjectPortfolio;
+  /** Controlled, read-only GitHub/Git lineage projections for portfolio projects. */
+  readonly repositoryCenters?: ReadonlyMap<string, RepositoryCenterView>;
+  /** Refreshes provider-backed Repository Center snapshots for each read. */
+  readonly refreshRepositoryCenters?: () => Promise<ReadonlyMap<string, RepositoryCenterView>>;
   /** Optional CEO-governed binding and evidence capture boundary. */
   readonly projectEvidence?: ProjectEvidenceBroker;
   readonly credentials: readonly DashboardCredential[];
@@ -177,8 +182,15 @@ export function createDashboardServer(options: {
   const now = options.now ?? (() => new Date().toISOString());
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 0;
-  const overviewFor = (session: DashboardSession): DashboardOverview =>
-    buildDashboardOverview(options.state, { ...session, now: now() }, options.portfolio);
+  const overviewFor = async (session: DashboardSession): Promise<DashboardOverview> =>
+    buildDashboardOverview(
+      options.state,
+      { ...session, now: now() },
+      options.portfolio,
+      options.refreshRepositoryCenters === undefined
+        ? options.repositoryCenters
+        : await options.refreshRepositoryCenters(),
+    );
 
   const server: Server = createServer((request, response) => {
     void (async () => {
@@ -197,7 +209,7 @@ export function createDashboardServer(options: {
 
       try {
         if (request.method === "GET" && url.pathname === "/") {
-          const page = renderDashboardPage(overviewFor(session));
+          const page = renderDashboardPage(await overviewFor(session));
           response.writeHead(200, {
             "content-type": "text/html; charset=utf-8",
             "cache-control": "no-store",
@@ -208,7 +220,7 @@ export function createDashboardServer(options: {
         }
 
         if (request.method === "GET" && url.pathname === "/api/overview") {
-          sendJson(response, 200, overviewFor(session));
+          sendJson(response, 200, await overviewFor(session));
           return;
         }
 

@@ -122,6 +122,57 @@ export function renderDashboardPage(overview: DashboardOverview): string {
     )
     .join("");
 
+  const repositoryCenterRows = overview.projectPortfolio
+    .filter((project) => project.repositoryCenter !== null)
+    .map((project) => {
+      const center = project.repositoryCenter!;
+      const branchSummary = center.git.branches
+        .map((branch) => `${branch.name} ${branch.sha} ${branch.divergence} (+${branch.ahead}/-${branch.behind})`)
+        .join(", ");
+      const pullSummary = center.github.pullRequests
+        .map((pull) => `#${pull.number} ${pull.title} ${pull.head.sha}`)
+        .join(", ");
+      const checkSummary = center.github.checks
+        .map((check) => `${check.name}:${check.conclusion ?? check.status} ${check.sha}`)
+        .join(", ");
+      const reviewSummary = center.github.reviews
+        .map((review) => `#${review.pullRequestNumber} ${review.reviewer}:${review.state} ${review.commitSha}`)
+        .join(", ");
+      const releaseSummary = center.github.releases
+        .map((release) => `${release.tag} ${release.targetSha}`)
+        .join(", ");
+      const incidentSummary = center.github.incidents
+        .map((incident) => `#${incident.number} ${incident.title}`)
+        .join(", ");
+      const tagSummary = center.git.tags.map((tag) => `${tag.name} ${tag.sha}`).join(", ");
+      const deploymentSummary = center.git.deploymentAssociations
+        .map((association) => `${association.provider}:${association.reference} ${association.commitSha}`)
+        .join(", ");
+      return (
+        `<tr data-repository-center-project-id="${escapeHtml(project.id)}">` +
+        cell(center.repository.fullName ?? center.repository.reference ?? "") +
+        `<td data-field="githubStatus">${escapeHtml(center.github.observation.status)}</td>` +
+        `<td data-field="githubSource">${escapeHtml(center.github.observation.sourceReference)} @ ${escapeHtml(center.github.observation.asOf ?? "unknown")}</td>` +
+        `<td data-field="gitStatus">${escapeHtml(center.git.observation.status)}</td>` +
+        `<td data-field="gitSource">${escapeHtml(center.git.observation.sourceReference)} @ ${escapeHtml(center.git.observation.asOf ?? "unknown")}</td>` +
+        `<td data-field="productionHeadSha">${escapeHtml(center.repository.productionHeadSha ?? "")}</td>` +
+        `<td data-field="currentHead">${escapeHtml(`${center.git.currentBranch ?? "unknown"} ${center.git.currentHeadSha ?? "unknown"}`)}</td>` +
+        `<td data-field="branches">${escapeHtml(branchSummary)}</td>` +
+        `<td data-field="pullRequests">${escapeHtml(pullSummary || "none")}</td>` +
+        `<td data-field="checks">${escapeHtml(checkSummary || "none")}</td>` +
+        `<td data-field="reviews">${escapeHtml(reviewSummary || "none")}</td>` +
+        `<td data-field="releases">${escapeHtml(releaseSummary || "none")}</td>` +
+        `<td data-field="incidents">${escapeHtml(incidentSummary || "none")}</td>` +
+        `<td data-field="tags">${escapeHtml(tagSummary || "none")}</td>` +
+        `<td data-field="deployments">${escapeHtml(deploymentSummary || "none")}</td>` +
+        `<td data-field="workerAvailability">${escapeHtml(center.git.worker.availability)}</td>` +
+        `<td data-field="workerDirty">${escapeHtml(center.git.worker.dirty === null ? "unknown" : String(center.git.worker.dirty))}</td>` +
+        `<td data-field="deploymentAssociations">${center.git.deploymentAssociations.length}</td>` +
+        "</tr>"
+      );
+    })
+    .join("");
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -158,6 +209,11 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <section aria-labelledby="portfolio-title">
 <h2 id="portfolio-title">Project Portfolio</h2>
 <table id="project-portfolio"><tbody>${portfolioRows}</tbody></table>
+</section>
+
+<section aria-labelledby="repository-center-title">
+<h2 id="repository-center-title">GitHub Repository Center and Git Lineage</h2>
+<table id="repository-center"><tbody>${repositoryCenterRows}</tbody></table>
 </section>
 
 <section aria-labelledby="control-plane-title">

@@ -16,6 +16,7 @@ import {
   type SchedulerJobHealth,
 } from "../operations/daily-operations-scheduler.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
+import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 
 export interface DashboardWorkItemView {
   readonly id: string;
@@ -96,6 +97,8 @@ export interface DashboardPortfolioProjectView {
     readonly freshness: "current" | "stale";
   }[];
   readonly sourceFreshness: Readonly<Record<string, "current" | "stale">>;
+  /** Read-only GitHub/Git lineage when the provider observations are available. */
+  readonly repositoryCenter: RepositoryCenterView | null;
   readonly updatedAt: string;
 }
 
@@ -183,6 +186,7 @@ export function buildDashboardOverview(
     readonly now?: string;
   },
   portfolio?: ProjectPortfolio,
+  repositoryCenters?: ReadonlyMap<string, RepositoryCenterView>,
 ): DashboardOverview {
   const workItems = state
     .workItems()
@@ -301,6 +305,7 @@ export function buildDashboardOverview(
       sourceFreshness: Object.fromEntries(
         project.sourceLinks.map((source) => [source.kind, source.freshness]),
       ),
+      repositoryCenter: repositoryCenters?.get(project.id) ?? null,
       updatedAt: project.updatedAt,
     } satisfies DashboardPortfolioProjectView;
   });

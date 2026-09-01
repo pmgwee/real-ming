@@ -19,6 +19,9 @@ import type { PortfolioProjectInput } from "../portfolio/project-portfolio.js";
 import type { AgentBrainEvidenceProvider } from "../evidence/evidence-broker.js";
 import type { ProjectEvidenceBindingRequest } from "../evidence/evidence-broker.js";
 import type { ControlledWorker, EffectVerifier } from "../operations/contracts.js";
+import type { GitHubRepositoryAdapter } from "../providers/github-repository-adapter.js";
+import type { GitLineageAdapter } from "../providers/git-lineage-adapter.js";
+import { buildRepositoryCenterView, type RepositoryCenterView } from "../portfolio/repository-center.js";
 import { resolveControlPlaneCredentials } from "./credential-resolver.js";
 import {
   createDailyOperationsControlPlane,
@@ -42,6 +45,13 @@ export async function createProductionControlPlane(options: {
   readonly portfolioPath?: string;
   /** CEO-provided catalogue records; provider-owned records are never copied. */
   readonly portfolioProjects?: readonly PortfolioProjectInput[];
+  /** Optional read-only adapters. When supplied, their observations feed the authenticated dashboard. */
+  readonly repositoryCenterAdapters?: ReadonlyMap<string, {
+    readonly github: GitHubRepositoryAdapter;
+    readonly git: GitLineageAdapter;
+    /** Local checkout path for Git; distinct from the GitHub owner/name reference. */
+    readonly gitReference: string;
+  }>;
   /** Optional read-only Agent Brain adapter; no provider write capability is accepted. */
   readonly evidenceProvider?: AgentBrainEvidenceProvider;
   /** Optional private-worker adapter; omitted while the Lenovo is offline. */
@@ -123,10 +133,38 @@ export async function createProductionControlPlane(options: {
     for (const project of options.portfolioProjects ?? []) {
       portfolio.upsert(project);
     }
+    const refreshRepositoryCenters = async (): Promise<ReadonlyMap<string, RepositoryCenterView>> => {
+      const repositoryCenters = new Map<string, RepositoryCenterView>();
+      for (const [projectId, adapters] of options.repositoryCenterAdapters ?? []) {
+        const project = portfolio.project(projectId);
+        if (project === undefined) {
+          throw new Error(`Repository Center project ${projectId} was not found.`);
+        }
+        const reference = project.repository ?? "";
+        const [github, git] = await Promise.all([
+          adapters.github.read({ reference }),
+          adapters.git.read({ reference: adapters.gitReference }),
+        ]);
+        repositoryCenters.set(
+          projectId,
+          buildRepositoryCenterView({
+            project,
+            github,
+            git,
+            gitSourceReference: adapters.gitReference,
+            now: now(),
+          }),
+        );
+      }
+      return repositoryCenters;
+    };
     const controlPlane = await createDailyOperationsControlPlane({
       statePath: options.statePath,
       masterTasks,
       portfolio,
+      ...(options.repositoryCenterAdapters === undefined
+        ? {}
+        : { refreshRepositoryCenters }),
       ...(options.evidenceProvider === undefined
         ? {}
         : { evidenceProvider: options.evidenceProvider }),

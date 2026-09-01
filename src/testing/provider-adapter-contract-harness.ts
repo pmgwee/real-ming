@@ -38,6 +38,15 @@ import {
   type AzureBlobBackupUploader,
 } from "../providers/azure-blob-backup-uploader.js";
 import {
+  createGitHubRepositoryAdapter,
+  type GitHubRepositoryAdapter,
+} from "../providers/github-repository-adapter.js";
+import {
+  createGitLineageAdapter,
+  type GitCommandRunner,
+  type GitLineageAdapter,
+} from "../providers/git-lineage-adapter.js";
+import {
   createGoogleAccessTokens,
   type GoogleAccessTokens,
 } from "../runtime/google-access-token.js";
@@ -1410,5 +1419,124 @@ export function createAzureBlobBackupContractHarness(
     }),
     tokenRequestCount: () => tokenRequests,
     uploads: () => [...uploads],
+  };
+}
+
+export interface GitHubRepositoryContractHarness {
+  readonly adapter: GitHubRepositoryAdapter;
+  requests(): readonly string[];
+}
+
+/** Controlled GitHub API edge for RM-25. It never contacts github.com. */
+export function createGitHubRepositoryContractHarness(options: {
+  readonly failure?: ProviderFailureClass;
+  readonly stale?: boolean;
+} = {}): GitHubRepositoryContractHarness {
+  const requests: string[] = [];
+  const now = "2026-09-02T09:00:00.000Z";
+  const asOf = options.stale ? "2026-08-30T09:00:00.000Z" : now;
+  const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
+    "authentication-failed": 401,
+    "invalid-input": 404,
+    "permission-denied": 403,
+    "rate-limited": 429,
+    "unsupported-capability": 400,
+    unavailable: 503,
+    "provider-error": 500,
+  };
+  const fetchImplementation = async (input: string | URL | Request): Promise<Response> => {
+    const url = String(input);
+    requests.push(url);
+    if (options.failure !== undefined) {
+      return Response.json({ message: `controlled provider error ${contractSecretFixture}` }, { status: statusByClass[options.failure] });
+    }
+    if (/\/repos\/pmgwee\/subscription-agent$/.test(url)) {
+      return Response.json({
+        full_name: "pmgwee/subscription-agent",
+        html_url: "https://github.com/pmgwee/subscription-agent",
+        default_branch: "main",
+        updated_at: asOf,
+        pushed_at: asOf,
+      });
+    }
+    if (url.includes("/branches?")) {
+      return Response.json([
+        { name: "main", protected: true, commit: { sha: "sha-main" } },
+        { name: "feat/rm-25", protected: false, commit: { sha: "sha-work" } },
+      ]);
+    }
+    if (url.includes("/pulls?")) {
+      return Response.json([{
+        number: 99,
+        title: "Repository center",
+        state: "open",
+        draft: false,
+        html_url: "https://github.com/pmgwee/subscription-agent/pull/99",
+        head: { ref: "feat/rm-25", sha: "sha-work" },
+        base: { ref: "main", sha: "sha-main" },
+        review_decision: "APPROVED",
+        updated_at: asOf,
+      }]);
+    }
+    if (url.includes("/releases?")) {
+      return Response.json([{ tag_name: "v1.2.0", target_commitish: "sha-main", html_url: "https://github.com/pmgwee/subscription-agent/releases/tag/v1.2.0", published_at: asOf }]);
+    }
+    if (url.includes("/issues?")) {
+      return Response.json([{ number: 7, title: "incident", html_url: "https://github.com/pmgwee/subscription-agent/issues/7", created_at: asOf }]);
+    }
+    if (url.includes("/check-runs")) {
+      const sha = url.includes("sha-work") ? "sha-work" : "sha-main";
+      return Response.json({ check_runs: [{ name: "check", status: "completed", conclusion: "success", html_url: "https://github.com/check/1" }], head_sha: sha });
+    }
+    if (url.includes("/pulls/99/reviews")) {
+      return Response.json([{ user: { login: "reviewer" }, state: "APPROVED", commit_id: "sha-work", submitted_at: asOf }]);
+    }
+    return Response.json({ message: "unsupported controlled GitHub request" }, { status: 422 });
+  };
+  return {
+    adapter: createGitHubRepositoryAdapter({
+      token: contractSecretFixture,
+      workspaceId: "workspace:real-ming",
+      accountReference: "github:account:real-ming",
+      fetch: fetchImplementation,
+      now: () => now,
+    }),
+    requests: () => [...requests],
+  };
+}
+
+export interface GitLineageContractHarness {
+  readonly adapter: GitLineageAdapter;
+  commands(): readonly (readonly string[])[];
+}
+
+/** Controlled git command edge for RM-25; the runner is argument-only. */
+export function createGitLineageContractHarness(options: { readonly failure?: boolean } = {}): GitLineageContractHarness {
+  const commands: (readonly string[])[] = [];
+  const runner: GitCommandRunner = async (args) => {
+    commands.push([...args]);
+    if (options.failure === true) return { stdout: "", stderr: "controlled worker offline", exitCode: 1 };
+    const command = args.slice(2).join(" ");
+    if (command.startsWith("status ")) return { stdout: "## feat/rm-25...origin/feat/rm-25\n M src/example.ts\n", stderr: "", exitCode: 0 };
+    if (command === "rev-parse HEAD") return { stdout: "sha-work\n", stderr: "", exitCode: 0 };
+    if (command.startsWith("for-each-ref") && command.endsWith("refs/heads")) return { stdout: "main\tsha-main\nfeat/rm-25\tsha-work\n", stderr: "", exitCode: 0 };
+    if (command.startsWith("for-each-ref") && command.endsWith("refs/tags")) return { stdout: "v1.2.0\tsha-main\n", stderr: "", exitCode: 0 };
+    if (command.startsWith("rev-list")) {
+      return command.endsWith("main")
+        ? { stdout: "0\t0\n", stderr: "", exitCode: 0 }
+        : { stdout: "1\t2\n", stderr: "", exitCode: 0 };
+    }
+    return { stdout: "", stderr: "unsupported controlled git command", exitCode: 1 };
+  };
+  return {
+    adapter: createGitLineageAdapter({
+      workspaceId: "workspace:real-ming",
+      accountReference: "git:account:real-ming",
+      productionBranch: "main",
+      deploymentAssociations: [{ provider: "github", reference: "pmgwee/subscription-agent", commitSha: "sha-main" }],
+      runner,
+      now: () => "2026-09-02T09:00:00.000Z",
+    }),
+    commands: () => commands.map((args) => [...args]),
   };
 }

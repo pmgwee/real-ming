@@ -12,8 +12,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **25 of 44** *(RM-23 closed; RM-25 next)* |
-| Startable by an agent right now | **RM-25 (#26)** — Show DuitSini GitHub and Git lineage |
+| Phase 3 tickets closed | **26 of 44** *(RM-25 closed; RM-26 next)* |
+| Startable by an agent right now | **RM-26 (#27)** — Show DuitSini Vercel deployment lineage |
 | Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
@@ -140,6 +140,16 @@ retry. Repeated notices group and recover once, while the dashboard and
 Executive Roll-Up retain noncritical scheduler history. Future Vercel, GitHub
 Actions, application-scheduler, and Knowledge Compiler jobs can register through
 the inventory extension point.
+
+**RM-25 is complete.** The authenticated Repository Center now shows DuitSini's
+GitHub identity, production and work-branch heads, pull requests, checks,
+reviews, releases, incident links, and source/as-of provenance. Git lineage
+records exact heads, ahead/behind divergence, tags, deployment associations,
+and private-worker dirty state only when the local checkout is available;
+unavailable Git is explicit and never reported clean. The production CLI wires
+optional read-only GitHub and local-Git adapters, and dashboard reads refresh
+observations. RM-26 owns Vercel deployment lineage; no production write
+capability was added.
 
 **RM-17’s CEO selection is recorded and the bounded Personal Context ingestion
 boundary is implemented and proven in the controlled harness.** The eventual

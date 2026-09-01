@@ -3,6 +3,8 @@ import { dirname, join } from "node:path";
 
 import { createProductionControlPlane } from "../runtime/production-control-plane.js";
 import type { PortfolioProjectInput } from "../portfolio/project-portfolio.js";
+import { createGitHubRepositoryAdapter } from "../providers/github-repository-adapter.js";
+import { createGitLineageAdapter } from "../providers/git-lineage-adapter.js";
 
 function configuredPath(name: string, fallback: string): string {
   const value = process.env[name]?.trim();
@@ -33,6 +35,44 @@ function portfolioProjects(): readonly PortfolioProjectInput[] {
   return parsed as readonly PortfolioProjectInput[];
 }
 
+function repositoryCenterAdapters(projects: readonly PortfolioProjectInput[]) {
+  const githubToken = process.env["REAL_MING_GITHUB_READ_TOKEN"]?.trim() ?? "";
+  const defaultGitPath = process.env["REAL_MING_GIT_REPOSITORY_PATH"]?.trim() ?? "";
+  const adapters = new Map<string, {
+    readonly github: ReturnType<typeof createGitHubRepositoryAdapter>;
+    readonly git: ReturnType<typeof createGitLineageAdapter>;
+    readonly gitReference: string;
+  }>();
+  for (const project of projects) {
+    if (project.repository === null || project.productionBranch === null) continue;
+    const projectSlug = project.id.replace(/^project:/, "").replace(/[^A-Za-z0-9]/g, "_").toUpperCase();
+    const gitPath = process.env[`REAL_MING_${projectSlug}_GIT_PATH`]?.trim() ?? defaultGitPath;
+    adapters.set(project.id, {
+      github: createGitHubRepositoryAdapter({
+        token: githubToken,
+        workspaceId: "workspace:real-ming",
+        accountReference: "github:real-ming",
+        productionBranch: project.productionBranch,
+      }),
+      git: createGitLineageAdapter({
+        workspaceId: "workspace:real-ming",
+        accountReference: "git:real-ming",
+        productionBranch: project.productionBranch,
+        deploymentAssociations: (commitSha) =>
+          project.deploymentIdentifiers.github === null
+            ? []
+            : [{
+                provider: "github",
+                reference: project.deploymentIdentifiers.github,
+                commitSha,
+              }],
+      }),
+      gitReference: gitPath,
+    });
+  }
+  return adapters;
+}
+
 async function main(): Promise<void> {
   const statePath = configuredPath(
     "REAL_MING_STATE_PATH",
@@ -45,11 +85,13 @@ async function main(): Promise<void> {
   mkdirSync(dirname(statePath), { recursive: true });
   mkdirSync(dirname(notionLedgerPath), { recursive: true });
 
+  const projects = portfolioProjects();
   const controlPlane = await createProductionControlPlane({
     environment: process.env,
     statePath,
     notionLedgerPath,
-    portfolioProjects: portfolioProjects(),
+    portfolioProjects: projects,
+    repositoryCenterAdapters: repositoryCenterAdapters(projects),
     dashboardHost: "127.0.0.1",
     dashboardPort: dashboardPort(),
   });
