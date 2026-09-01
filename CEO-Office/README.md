@@ -12,8 +12,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **20 of 44** *(RM-18 closed; RM-19 next)* |
-| Startable by an agent right now | **RM-19 (#20)** — Establish the Project Portfolio and onboard DuitSini |
+| Phase 3 tickets closed | **21 of 44** *(RM-19 closed; RM-20 next)* |
+| Startable by an agent right now | **RM-20 (#21)** — Broker cited Agent Brain evidence for DuitSini |
 | Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
