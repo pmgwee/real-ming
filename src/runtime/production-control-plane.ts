@@ -14,6 +14,8 @@ import {
 } from "../providers/telegram-provider-adapter.js";
 import { providerFailure } from "../providers/adapter-contract.js";
 import { createGoogleAccessTokens } from "./google-access-token.js";
+import { ProjectPortfolio } from "../portfolio/project-portfolio.js";
+import type { PortfolioProjectInput } from "../portfolio/project-portfolio.js";
 import { resolveControlPlaneCredentials } from "./credential-resolver.js";
 import {
   createDailyOperationsControlPlane,
@@ -34,6 +36,9 @@ export async function createProductionControlPlane(options: {
   readonly environment: Readonly<Record<string, string | undefined>>;
   readonly statePath: string;
   readonly notionLedgerPath: string;
+  readonly portfolioPath?: string;
+  /** CEO-provided catalogue records; provider-owned records are never copied. */
+  readonly portfolioProjects?: readonly PortfolioProjectInput[];
   readonly vaultName?: string;
   readonly dashboardHost?: string;
   readonly dashboardPort?: number;
@@ -79,6 +84,10 @@ export async function createProductionControlPlane(options: {
     now,
   });
   const notionLedger = new SqliteNotionWriteLedger(options.notionLedgerPath);
+  const portfolio = new ProjectPortfolio(
+    options.portfolioPath ?? options.statePath,
+    now,
+  );
   const notion = createNotionProviderAdapter({
     token: required("REAL_MING_NOTION_TOKEN"),
     workspaceId: "workspace:real-ming",
@@ -102,9 +111,13 @@ export async function createProductionControlPlane(options: {
     optional(options.environment["REAL_MING_GOOGLE_CALENDAR_ID"]) ?? "primary";
 
   try {
+    for (const project of options.portfolioProjects ?? []) {
+      portfolio.upsert(project);
+    }
     const controlPlane = await createDailyOperationsControlPlane({
       statePath: options.statePath,
       masterTasks,
+      portfolio,
       telegram,
       ceoTelegramId: required("REAL_MING_TELEGRAM_CEO_ID"),
       ceoTelegramChatId: required("REAL_MING_TELEGRAM_CEO_ID"),
@@ -152,11 +165,13 @@ export async function createProductionControlPlane(options: {
         try {
           await controlPlane.close();
         } finally {
+          portfolio.close();
           notionLedger.close();
         }
       },
     };
   } catch (error) {
+    portfolio.close();
     notionLedger.close();
     throw error;
   }

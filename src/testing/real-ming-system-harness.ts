@@ -171,6 +171,12 @@ import {
   type ExceptionNoticeRhythm,
   type HeldRelease,
 } from "../operations/exception-notice-rhythm.js";
+import {
+  ProjectPortfolio,
+  type PortfolioProject,
+  type PortfolioProjectInput,
+  type PortfolioReconciliation,
+} from "../portfolio/project-portfolio.js";
 
 import {
   createDailyOperationsScheduler,
@@ -440,6 +446,10 @@ export interface RealMingSystemHarness {
     sourceKey: string,
     value: PersonalContextSourceValue,
   ): void;
+  upsertPortfolioProject(input: PortfolioProjectInput): PortfolioProject;
+  portfolioProject(id: string): PortfolioProject | undefined;
+  portfolioProjects(): readonly PortfolioProject[];
+  portfolioReconciliation(id: string): PortfolioReconciliation;
   startDashboard(
     credentials: readonly DashboardCredential[],
   ): Promise<DashboardServer>;
@@ -700,6 +710,10 @@ export function createRealMingSystemHarness(options: {
   };
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
+  const portfolio = new ProjectPortfolio(
+    options.statePath,
+    options.now,
+  );
   const masterTaskRecords = new Map<string, MasterTaskRecord>();
   let nextMasterTasksUpsertError: string | undefined;
   let masterTasksUpsertFailure: string | undefined;
@@ -781,6 +795,7 @@ export function createRealMingSystemHarness(options: {
             },
           });
   } catch (error) {
+    portfolio.close();
     state.close();
     throw error;
   }
@@ -1220,7 +1235,7 @@ export function createRealMingSystemHarness(options: {
     approvals: (workItemId) => state.approvals(workItemId),
     standingAuthorities: () => state.standingAuthorities(),
     dashboardOverview: (session) =>
-      buildDashboardOverview(state, { ...session, now: clock() }),
+      buildDashboardOverview(state, { ...session, now: clock() }, portfolio),
     ingestPersonalContext: async (entry) => {
       if (personalContext === undefined) {
         throw new Error("This harness was not configured for Personal Context.");
@@ -1263,8 +1278,12 @@ export function createRealMingSystemHarness(options: {
       }
       personalContextSources.set(sourceKey, value);
     },
+    upsertPortfolioProject: (input) => portfolio.upsert(input),
+    portfolioProject: (id) => portfolio.project(id),
+    portfolioProjects: () => portfolio.projects(),
+    portfolioReconciliation: (id) => portfolio.reconcile(id),
     startDashboard: (credentials) =>
-      createDashboardServer({ state, gateway, credentials, now: clock }),
+      createDashboardServer({ state, gateway, credentials, now: clock, portfolio }),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),
     recordWorkItemCommitment: (request) =>
       gateway.recordWorkItemCommitment(request),
@@ -1342,6 +1361,7 @@ export function createRealMingSystemHarness(options: {
     telegramAuditTrail: () => state.telegramAuditTrail(),
     close: () => {
       personalContext?.close();
+      portfolio.close();
       state.close();
     },
   };

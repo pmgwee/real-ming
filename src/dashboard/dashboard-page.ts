@@ -71,6 +71,20 @@ export function renderDashboardPage(overview: DashboardOverview): string {
     )
     .join("");
 
+  const portfolioRows = overview.projectPortfolio
+    .map(
+      (project) =>
+        `<tr data-portfolio-project-id="${escapeHtml(project.id)}">` +
+        cell(project.name) +
+        `<td data-field="portfolioState">${escapeHtml(project.portfolioState)}</td>` +
+        `<td data-field="remoteReady">${project.remoteReady ? "ready" : "not-ready"}</td>` +
+        `<td data-field="health">${escapeHtml(project.health)}</td>` +
+        `<td data-field="operatingInstructions">${escapeHtml(project.operatingInstructions ?? "")}</td>` +
+        `<td data-field="sourceFreshness">${escapeHtml(JSON.stringify(project.sourceFreshness))}</td>` +
+        "</tr>",
+    )
+    .join("");
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -102,6 +116,11 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <section aria-labelledby="audit-title">
 <h2 id="audit-title">Audit</h2>
 <table id="audit-events"><tbody>${auditRows}</tbody></table>
+</section>
+
+<section aria-labelledby="portfolio-title">
+<h2 id="portfolio-title">Project Portfolio</h2>
+<table id="project-portfolio"><tbody>${portfolioRows}</tbody></table>
 </section>
 
 <section aria-labelledby="control-plane-title">

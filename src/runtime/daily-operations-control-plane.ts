@@ -28,6 +28,7 @@ import {
 import { OperationsState } from "../operations/operations-state.js";
 import type { DashboardServer } from "../dashboard/dashboard-server.js";
 import { createDashboardServer } from "../dashboard/dashboard-server.js";
+import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import { createTelegramFrontDoor } from "../telegram/telegram-front-door.js";
 import {
   createControlPlaneSupervisor,
@@ -87,6 +88,7 @@ export interface DailyOperationsControlPlane {
 export async function createDailyOperationsControlPlane(options: {
   readonly statePath: string;
   readonly masterTasks: MasterTasksStore;
+  readonly portfolio?: ProjectPortfolio;
   readonly telegram: TelegramProviderAdapter;
   readonly ceoTelegramId: string;
   readonly ceoTelegramChatId: string;
@@ -246,6 +248,7 @@ export async function createDailyOperationsControlPlane(options: {
   const dashboard: DashboardServer = await createDashboardServer({
     state,
     gateway,
+    ...(options.portfolio === undefined ? {} : { portfolio: options.portfolio }),
     credentials: [
       {
         actorId: "ceo:ming",

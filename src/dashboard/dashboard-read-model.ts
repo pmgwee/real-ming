@@ -12,6 +12,7 @@ import {
   schedulerHealth,
   type SchedulerJobHealth,
 } from "../operations/daily-operations-scheduler.js";
+import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 
 export interface DashboardWorkItemView {
   readonly id: string;
@@ -66,6 +67,35 @@ export interface DashboardExecutiveView {
   readonly readyForCeoReview: number;
 }
 
+export interface DashboardPortfolioProjectView {
+  readonly id: string;
+  readonly name: string;
+  readonly portfolioState: string;
+  readonly repository: string | null;
+  readonly productionBranch: string | null;
+  readonly deploymentIdentifiers: Readonly<{
+    readonly github: string | null;
+    readonly vercel: string | null;
+  }>;
+  readonly evidenceIdentity: string | null;
+  readonly operatingInstructions: string | null;
+  readonly responsibleRoles: readonly ExecutiveRole[];
+  readonly sensitivity: string;
+  readonly health: string;
+  readonly remoteReady: boolean;
+  readonly remoteReadyReasons: readonly string[];
+  readonly reconciled: boolean;
+  readonly reconciliationIssues: readonly string[];
+  readonly sourceLinks: readonly {
+    readonly kind: string;
+    readonly reference: string;
+    readonly asOf: string;
+    readonly freshness: "current" | "stale";
+  }[];
+  readonly sourceFreshness: Readonly<Record<string, "current" | "stale">>;
+  readonly updatedAt: string;
+}
+
 export interface DashboardOverview {
   readonly actorId: string;
   readonly workspaceId: string;
@@ -74,6 +104,7 @@ export interface DashboardOverview {
   readonly outcomeReports: readonly DashboardOutcomeReportView[];
   readonly auditEvents: readonly DashboardAuditView[];
   readonly executives: readonly DashboardExecutiveView[];
+  readonly projectPortfolio: readonly DashboardPortfolioProjectView[];
   readonly scheduler: readonly SchedulerJobHealth[];
   readonly controlPlane: readonly ControlPlaneHealth[];
 }
@@ -146,6 +177,7 @@ export function buildDashboardOverview(
     /** The operating clock, so scheduler health can name the next run. */
     readonly now?: string;
   },
+  portfolio?: ProjectPortfolio,
 ): DashboardOverview {
   const workItems = state
     .workItems()
@@ -242,6 +274,32 @@ export function buildDashboardOverview(
     } satisfies DashboardExecutiveView;
   });
 
+  const projectPortfolio = (portfolio?.projects() ?? []).map((project) => {
+    const reconciliation = portfolio?.reconcile(project.id);
+    return {
+      id: project.id,
+      name: project.name,
+      portfolioState: project.portfolioState,
+      repository: project.repository,
+      productionBranch: project.productionBranch,
+      deploymentIdentifiers: project.deploymentIdentifiers,
+      evidenceIdentity: project.evidenceIdentity,
+      operatingInstructions: project.operatingInstructions,
+      responsibleRoles: project.responsibleRoles,
+      sensitivity: project.sensitivity,
+      health: project.health,
+      remoteReady: project.remoteReady.ready,
+      remoteReadyReasons: project.remoteReady.reasons,
+      reconciled: reconciliation?.reconciled ?? true,
+      reconciliationIssues: reconciliation?.issues.map((issue) => issue.code) ?? [],
+      sourceLinks: project.sourceLinks,
+      sourceFreshness: Object.fromEntries(
+        project.sourceLinks.map((source) => [source.kind, source.freshness]),
+      ),
+      updatedAt: project.updatedAt,
+    } satisfies DashboardPortfolioProjectView;
+  });
+
   return {
     actorId: session.actorId,
     workspaceId: session.workspaceId,
@@ -250,6 +308,7 @@ export function buildDashboardOverview(
     outcomeReports,
     auditEvents,
     executives,
+    projectPortfolio,
     scheduler: schedulerHealth(state, session.now ?? new Date().toISOString()),
     controlPlane: state.controlPlaneHealth(),
   };

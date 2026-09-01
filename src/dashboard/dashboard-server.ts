@@ -9,6 +9,7 @@ import {
   type DashboardOverview,
 } from "./dashboard-read-model.js";
 import { renderDashboardPage } from "./dashboard-page.js";
+import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 
 export const dashboardSessionCookie = "real_ming_session";
 
@@ -159,6 +160,7 @@ function sendUnauthorized(response: ServerResponse): void {
 export function createDashboardServer(options: {
   readonly state: OperationsState;
   readonly gateway: OperationsGateway;
+  readonly portfolio?: ProjectPortfolio;
   readonly credentials: readonly DashboardCredential[];
   /**
    * The operating clock. Without it the dashboard would report scheduler
@@ -173,7 +175,7 @@ export function createDashboardServer(options: {
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 0;
   const overviewFor = (session: DashboardSession): DashboardOverview =>
-    buildDashboardOverview(options.state, { ...session, now: now() });
+    buildDashboardOverview(options.state, { ...session, now: now() }, options.portfolio);
 
   const server: Server = createServer((request, response) => {
     void (async () => {

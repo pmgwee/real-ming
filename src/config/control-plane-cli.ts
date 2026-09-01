@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { createProductionControlPlane } from "../runtime/production-control-plane.js";
+import type { PortfolioProjectInput } from "../portfolio/project-portfolio.js";
 
 function configuredPath(name: string, fallback: string): string {
   const value = process.env[name]?.trim();
@@ -15,6 +16,21 @@ function dashboardPort(): number {
     throw new Error("REAL_MING_DASHBOARD_PORT must be an integer from 1 to 65535.");
   }
   return parsed;
+}
+
+function portfolioProjects(): readonly PortfolioProjectInput[] {
+  const raw = process.env["REAL_MING_PORTFOLIO_PROJECTS_JSON"]?.trim();
+  if (raw === undefined || raw.length === 0) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("REAL_MING_PORTFOLIO_PROJECTS_JSON must be valid JSON.");
+  }
+  if (!Array.isArray(parsed)) {
+    throw new Error("REAL_MING_PORTFOLIO_PROJECTS_JSON must be a JSON array.");
+  }
+  return parsed as readonly PortfolioProjectInput[];
 }
 
 async function main(): Promise<void> {
@@ -33,6 +49,7 @@ async function main(): Promise<void> {
     environment: process.env,
     statePath,
     notionLedgerPath,
+    portfolioProjects: portfolioProjects(),
     dashboardHost: "127.0.0.1",
     dashboardPort: dashboardPort(),
   });
