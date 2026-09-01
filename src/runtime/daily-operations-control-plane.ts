@@ -25,6 +25,7 @@ import {
   createOperationsGateway,
   type MaterialBlockerReason,
 } from "../operations/operations-gateway.js";
+import { createPrivateWorkerVerifier } from "../workers/private-worker.js";
 import { OperationsState } from "../operations/operations-state.js";
 import type { DashboardServer } from "../dashboard/dashboard-server.js";
 import { createDashboardServer } from "../dashboard/dashboard-server.js";
@@ -99,6 +100,10 @@ export async function createDailyOperationsControlPlane(options: {
   readonly masterTasks: MasterTasksStore;
   readonly portfolio?: ProjectPortfolio;
   readonly evidenceProvider?: AgentBrainEvidenceProvider;
+  /** Optional Lenovo/private-worker adapter for Local-Only Work. */
+  readonly privateWorker?: ControlledWorker;
+  /** Optional verifier paired with a supplied worker adapter. */
+  readonly effectVerifier?: EffectVerifier;
   readonly telegram: TelegramProviderAdapter;
   readonly ceoTelegramId: string;
   readonly ceoTelegramChatId: string;
@@ -135,8 +140,12 @@ export async function createDailyOperationsControlPlane(options: {
   let recoverMaterialBlocker: ((workItem: WorkItem) => Promise<void>) | undefined;
   const gateway = createOperationsGateway({
     state,
-    worker: refusingWorker,
-    verifier: refusingVerifier,
+    worker: options.privateWorker ?? refusingWorker,
+    verifier:
+      options.effectVerifier ??
+      (options.privateWorker === undefined
+        ? refusingVerifier
+        : createPrivateWorkerVerifier()),
     questionResponder: refusingResponder,
     commandClassifier: createCommandClassifier(),
     workItemChanged: async (workItem) => {

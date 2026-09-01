@@ -172,6 +172,15 @@ import {
   type HeldRelease,
 } from "../operations/exception-notice-rhythm.js";
 import {
+  createPrivateWorker,
+  createPrivateWorkerVerifier,
+  type PrivateWorker,
+  type PrivateWorkerExecutor,
+  type PrivateWorkerHeartbeat,
+  type PrivateWorkerJob,
+  type PrivateWorkerCapability,
+} from "../workers/private-worker.js";
+import {
   ProjectPortfolio,
   type PortfolioProject,
   type PortfolioProjectInput,
@@ -464,6 +473,11 @@ export interface RealMingSystemHarness {
     request: ProjectEvidenceRequest,
   ): Promise<ProjectEvidenceCandidateResult>;
   evidenceAuditTrail(workItemId: string): readonly AuditEvent[];
+  privateWorkerHeartbeat(): PrivateWorkerHeartbeat | undefined;
+  privateWorkerJobs(): readonly PrivateWorkerJob[];
+  setPrivateWorkerAvailable(available: boolean): void;
+  expirePrivateWorkerLeases(at?: string): void;
+  executePrivateWorkerEffect(effect: WorkerEffect): Promise<WorkerReceipt>;
   startDashboard(
     credentials: readonly DashboardCredential[],
   ): Promise<DashboardServer>;
@@ -616,6 +630,7 @@ class InMemoryControlledWorker implements ControlledWorker {
     private readonly ledger: ControlledEffectLedger,
     executionError?: string,
     private readonly receiptEvidence?: Readonly<Record<string, string>>,
+    private readonly receiptEffect?: WorkerEffect,
   ) {
     this.#executionError = executionError;
   }
@@ -630,7 +645,7 @@ class InMemoryControlledWorker implements ControlledWorker {
     }
 
     const receipt: WorkerReceipt = {
-      effect,
+      effect: this.receiptEffect ?? effect,
       evidence: this.receiptEvidence ?? {
         adapter: "controlled-worker",
         effectId: effect.idempotencyKey,
@@ -690,6 +705,13 @@ export function createRealMingSystemHarness(options: {
   readonly controlledWorker?: {
     readonly executionError?: string;
     readonly receiptEvidence?: Readonly<Record<string, string>>;
+    /** Controlled seam for proving the gateway never persists untrusted receipt metadata. */
+    readonly receiptEffect?: WorkerEffect;
+  };
+  readonly privateWorker?: {
+    readonly available?: boolean;
+    readonly capabilities?: readonly PrivateWorkerCapability[];
+    readonly executor?: PrivateWorkerExecutor;
   };
   readonly controlledVerifier?: {
     readonly result: "verify" | "error";
@@ -836,17 +858,58 @@ export function createRealMingSystemHarness(options: {
     masterTaskRecords.set(workItem.id, masterTasks.recordFor(workItem));
   }
   const ledger = new ControlledEffectLedger();
-  const worker = new InMemoryControlledWorker(
+  const controlledWorker = new InMemoryControlledWorker(
     ledger,
     options.controlledWorker?.executionError,
     options.controlledWorker?.receiptEvidence,
+    options.controlledWorker?.receiptEffect,
   );
-  const verifier = new ControlledEffectVerifier(
+  const privateWorker: PrivateWorker | undefined =
+    options.privateWorker === undefined
+      ? undefined
+      : createPrivateWorker({
+          statePath: options.statePath,
+          ...(options.privateWorker.available === undefined
+            ? {}
+            : { available: options.privateWorker.available }),
+          ...(options.privateWorker.capabilities === undefined
+            ? {}
+            : { capabilities: options.privateWorker.capabilities }),
+          ...(options.now === undefined ? {} : { now: options.now }),
+          executor:
+            options.privateWorker.executor ??
+            (async (job) => ({
+              evidence: {
+                workerId: "lenovo-private-worker",
+                expectedEvidence: job.expectedEvidence,
+              },
+              sourceReferences: job.sourceReferences,
+              completedAt: options.now?.() ?? new Date().toISOString(),
+            })),
+        });
+  const worker: ControlledWorker =
+    privateWorker === undefined
+      ? controlledWorker
+      : {
+          async execute(effect) {
+            const receipt = await privateWorker.execute(effect);
+            // The ledger is only the harness's verifier input. The Operations
+            // State still records the bounded effect reference, not raw worker
+            // output; verification remains mandatory before Review-Ready.
+            ledger.record(receipt);
+            return receipt;
+          },
+        };
+  const controlledVerifier = new ControlledEffectVerifier(
     ledger,
     options.controlledVerifier?.result,
     options.controlledVerifier?.errorMessage,
     options.controlledVerifier?.evidence,
   );
+  const verifier: EffectVerifier =
+    privateWorker !== undefined && options.controlledVerifier === undefined
+      ? createPrivateWorkerVerifier()
+      : controlledVerifier;
   const questionResponder = new ControlledQuestionResponder(
     options.controlledQuestionAnswer ?? "No controlled answer was configured.",
   );
@@ -1229,7 +1292,10 @@ export function createRealMingSystemHarness(options: {
       masterTasksUpsertFailure = message;
     },
     setControlledWorkerExecutionError: (message) => {
-      worker.setExecutionError(message);
+      if (privateWorker !== undefined) {
+        throw new Error("The private worker is configured; replace its executor to inject failures.");
+      }
+      controlledWorker.setExecutionError(message);
     },
     setTelegramDeliveryFailure: (failure) => {
       telegramTransport.setFailure(failure);
@@ -1343,6 +1409,26 @@ export function createRealMingSystemHarness(options: {
       state
         .auditTrail(workItemId)
         .filter((event) => event.type.startsWith("project-evidence.")),
+    privateWorkerHeartbeat: () => privateWorker?.heartbeat(),
+    privateWorkerJobs: () => privateWorker?.jobs() ?? [],
+    setPrivateWorkerAvailable: (available) => {
+      if (privateWorker === undefined) {
+        throw new Error("This harness was not configured with a private worker.");
+      }
+      privateWorker.setAvailability(available);
+    },
+    expirePrivateWorkerLeases: (at) => {
+      if (privateWorker === undefined) {
+        throw new Error("This harness was not configured with a private worker.");
+      }
+      privateWorker.expireLeases(at);
+    },
+    executePrivateWorkerEffect: (effect) => {
+      if (privateWorker === undefined) {
+        throw new Error("This harness was not configured with a private worker.");
+      }
+      return privateWorker.execute(effect);
+    },
     startDashboard: (credentials) =>
       createDashboardServer({
         state,
@@ -1363,7 +1449,7 @@ export function createRealMingSystemHarness(options: {
     auditTrail: (workItemId) => state.auditTrail(workItemId),
     controlledEffects: () => ledger.effects(),
     controlledReceipts: () => ledger.receipts(),
-    controlledVerificationResults: () => verifier.results(),
+    controlledVerificationResults: () => controlledVerifier.results(),
     receiveTelegramUpdate: (update) =>
       telegramFrontDoor.receiveUpdate(normalizeHarnessTelegramUpdate(update)),
     pollTelegramUpdates: (updates) =>
@@ -1429,6 +1515,7 @@ export function createRealMingSystemHarness(options: {
     telegramAuditTrail: () => state.telegramAuditTrail(),
     close: () => {
       personalContext?.close();
+      privateWorker?.close();
       portfolio.close();
       state.close();
     },

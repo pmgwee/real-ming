@@ -340,6 +340,23 @@ export interface WorkerReceipt {
   readonly evidence: Readonly<Record<string, string>>;
 }
 
+/** A worker can refuse execution because its private host is unavailable. */
+export class WorkerUnavailableError extends Error {
+  readonly kind = "worker-unavailable" as const;
+
+  constructor(
+    readonly reason:
+      | "private-worker-offline"
+      | "unsupported-capability"
+      | "lease-held"
+      | "deadline-expired"
+      | "retry-exhausted"
+      | "retry-deferred",
+  ) {
+    super(reason);
+  }
+}
+
 export interface EffectVerification {
   readonly status: "verified";
   readonly evidence: {
@@ -423,6 +440,7 @@ export interface EffectVerifier {
   verify(
     receipt: WorkerReceipt,
     expectedEffect: ExpectedEffect,
+    expectedWorkerEffect?: WorkerEffect,
   ): Promise<VerifierResult>;
 }
 

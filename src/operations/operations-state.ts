@@ -2255,19 +2255,24 @@ export class OperationsState {
     workItemId: string,
     receipt: WorkerReceipt,
     occurredAt: string,
+    trustedEffect: WorkerEffect = receipt.effect,
   ): void {
     this.#appendAudit(workItemId, "worker.effect-recorded", occurredAt, {
-      idempotencyKey: receipt.effect.idempotencyKey,
-      kind: receipt.effect.kind,
-      executive: receipt.effect.executive,
-      authority: receipt.effect.authority,
-      evidenceReference: receipt.effect.idempotencyKey,
+      idempotencyKey: trustedEffect.idempotencyKey,
+      kind: trustedEffect.kind,
+      executive: trustedEffect.executive,
+      authority: trustedEffect.authority,
+      evidenceReference: trustedEffect.idempotencyKey,
     });
   }
 
-  recordWorkerFailure(workItemId: string, occurredAt: string): void {
+  recordWorkerFailure(
+    workItemId: string,
+    occurredAt: string,
+    classification = "worker-execution-failed",
+  ): void {
     this.#appendAudit(workItemId, "worker.effect-failed", occurredAt, {
-      classification: "worker-execution-failed",
+      classification,
       secretSafe: true,
     });
   }

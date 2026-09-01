@@ -18,6 +18,7 @@ import { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { PortfolioProjectInput } from "../portfolio/project-portfolio.js";
 import type { AgentBrainEvidenceProvider } from "../evidence/evidence-broker.js";
 import type { ProjectEvidenceBindingRequest } from "../evidence/evidence-broker.js";
+import type { ControlledWorker, EffectVerifier } from "../operations/contracts.js";
 import { resolveControlPlaneCredentials } from "./credential-resolver.js";
 import {
   createDailyOperationsControlPlane,
@@ -43,6 +44,10 @@ export async function createProductionControlPlane(options: {
   readonly portfolioProjects?: readonly PortfolioProjectInput[];
   /** Optional read-only Agent Brain adapter; no provider write capability is accepted. */
   readonly evidenceProvider?: AgentBrainEvidenceProvider;
+  /** Optional private-worker adapter; omitted while the Lenovo is offline. */
+  readonly privateWorker?: ControlledWorker;
+  /** Optional verifier paired with a supplied private-worker adapter. */
+  readonly effectVerifier?: EffectVerifier;
   readonly vaultName?: string;
   readonly dashboardHost?: string;
   readonly dashboardPort?: number;
@@ -125,6 +130,12 @@ export async function createProductionControlPlane(options: {
       ...(options.evidenceProvider === undefined
         ? {}
         : { evidenceProvider: options.evidenceProvider }),
+      ...(options.privateWorker === undefined
+        ? {}
+        : { privateWorker: options.privateWorker }),
+      ...(options.effectVerifier === undefined
+        ? {}
+        : { effectVerifier: options.effectVerifier }),
       telegram,
       ceoTelegramId: required("REAL_MING_TELEGRAM_CEO_ID"),
       ceoTelegramChatId: required("REAL_MING_TELEGRAM_CEO_ID"),

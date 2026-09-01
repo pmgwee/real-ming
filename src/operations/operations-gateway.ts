@@ -22,6 +22,7 @@ import type {
   WorkItemState,
   WorkerEffect,
 } from "./contracts.js";
+import { WorkerUnavailableError } from "./contracts.js";
 import { migratedWorkItemStates } from "./contracts.js";
 import { OperationsState } from "./operations-state.js";
 import { isCeoActor } from "./actor-identity.js";
@@ -45,7 +46,13 @@ const reviewTargetStates = {
 export type MaterialBlockerReason =
   | "collaborator-execution-failed"
   | "effect-verification-failed"
-  | "worker-execution-failed";
+  | "worker-execution-failed"
+  | "private-worker-offline"
+  | "unsupported-capability"
+  | "lease-held"
+  | "deadline-expired"
+  | "retry-exhausted"
+  | "retry-deferred";
 
 export interface OperationsGateway {
   acknowledgeCeoAction(
@@ -166,7 +173,7 @@ export function createOperationsGateway(options: {
     reason: Exclude<MaterialBlockerReason, "effect-verification-failed">,
     message: string,
   ): Promise<never> => {
-    options.state.recordWorkerFailure(workItemId, now());
+    options.state.recordWorkerFailure(workItemId, now(), reason);
     const blocked = options.state.transition(workItemId, "Waiting/Blocked", now(), {
       reason,
     });
@@ -190,10 +197,12 @@ export function createOperationsGateway(options: {
   ) => {
     try {
       return await options.worker.execute(effect);
-    } catch {
+    } catch (error) {
+      const reason =
+        error instanceof WorkerUnavailableError ? error.reason : failureReason;
       return await blockAfterWorkerFailure(
         effect.workItemId,
-        failureReason,
+        reason,
         failureMessage,
       );
     }
@@ -258,6 +267,7 @@ export function createOperationsGateway(options: {
         workItem.id,
         contributionReceipt,
         now(),
+        contributionEffect,
       );
     }
 
@@ -274,7 +284,7 @@ export function createOperationsGateway(options: {
       "worker-execution-failed",
       "Controlled work failed before verification.",
     );
-    options.state.recordWorkerEffect(workItem.id, receipt, now());
+    options.state.recordWorkerEffect(workItem.id, receipt, now(), effect);
 
     workItem = options.state.transition(workItem.id, "Verifying", now());
     let verifierResult;
@@ -282,6 +292,7 @@ export function createOperationsGateway(options: {
       verifierResult = await options.verifier.verify(
         receipt,
         workItem.expectedEffect,
+        effect,
       );
     } catch {
       options.state.recordVerificationFailure(workItem.id, now());

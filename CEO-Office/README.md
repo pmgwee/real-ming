@@ -12,8 +12,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **22 of 44** *(RM-20 closed; RM-21 next)* |
-| Startable by an agent right now | **RM-21 (#22)** — Run Local-Only Work through the Lenovo private worker |
+| Phase 3 tickets closed | **23 of 44** *(RM-21 closed; RM-22 next)* |
+| Startable by an agent right now | **RM-22 (#23)** — Surface provider degradation and recovery |
 | Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
@@ -66,10 +66,12 @@ so moving between home, a café and tethering no longer breaks it, and port 22
 no longer answers the public internet at all.
 
 ⚠️ **Two limits worth knowing.** The deployed service cannot yet *execute* a
-Work Item autonomously — the Lenovo private worker is **RM-21**, blocked by
-RM-16 — so capture, review, approvals, the brief and the roll-up work, and a
-question gets an honest "not yet". And durable state has no off-host copy: 33
-Work Items in one file on one machine. Pull a copy down before day 31.
+Work Item autonomously — the controlled Lenovo private-worker protocol is
+**RM-21**, but the deployed Azure process still has no live Lenovo transport or
+worker adapter. Until that separately activated connection exists, capture,
+review, approvals, the brief and the roll-up work, while Local-Only execution
+still gets an honest "not yet". Durable state has no off-host copy: 33 Work
+Items in one file on one machine. Pull a copy down before day 31.
 
 | RM-11 cutover evidence | Result |
 | --- | --- |
@@ -110,10 +112,13 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 the reviewed `5016918` candidate. The RM-16 tracer is a controlled system
 harness proof; it required no deployment, Telegram message, or Notion mutation.
 
-The deployed control plane can capture, review, approve, brief, and roll up a
-Work Item, but it cannot execute one autonomously until RM-21 supplies the
-Lenovo private worker (RM-21 is downstream of RM-16). This remains an explicit
-production limitation; a green controlled tracer is not live worker execution.
+**RM-21 is complete in the controlled harness.** It adds the five-capability
+heartbeat, safe offline queue, bounded jobs, execution-token lease fencing,
+redacted evidence, reconnect/retry handling, and a production verifier seam.
+The deployed Azure service still supplies neither a live Lenovo transport nor a
+worker adapter, so it remains refusal-only for Local-Only execution until that
+separate connection and activation are approved. A green controlled tracer is
+not live worker execution.
 
 **RM-17’s CEO selection is recorded and the bounded Personal Context ingestion
 boundary is implemented and proven in the controlled harness.** The eventual
