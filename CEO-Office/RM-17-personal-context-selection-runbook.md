@@ -1,9 +1,9 @@
-# RM-17 Personal Context selection
+# RM-17 Personal Context selection and evidence
 
-> **TL;DR — choose one small, non-secret Personal Context item for the first
-> ingestion rehearsal.** RM-17 cannot begin its real ingestion proof until Ming
-> names the item and its source metadata. This is a CEO decision because it
-> determines which private fact enters the encrypted Context Vault boundary.
+> **Completed — one small, non-secret Personal Context item was selected and
+> verified through the RM-17 ingestion boundary.** The selected specimen is
+> recorded below. It remains a Candidate Envelope for later governed
+> compilation; it is not an imported truth or memory dump.
 
 ## Why this cannot be delegated
 
@@ -30,7 +30,26 @@ documents, payment-card details, account numbers, or an entire Notion export.
 | Source reference | Notion page identifier/URL or local file path |
 | Snapshot or pointer | `snapshot` for a bounded copy, or `pointer` to the Source of Record |
 
-## What happens after approval
+## Approved first specimen
+
+| Field | Approved value |
+| --- | --- |
+| Page/file title | Working preferences and routine |
+| Purpose | Help the CEO receive useful personalized daily planning |
+| Trust Domain | `Personal` |
+| Sensitivity | `private` |
+| Allowed roles | `COO` |
+| Authority | `personal plan` |
+| Freshness | Monthly review |
+| Retention class | `personal-context-30d` |
+| Source reference | `personal-context/working-preferences.md` (local, Git-ignored) |
+| Snapshot or pointer | `snapshot` |
+
+The file contains only the bounded planning preferences approved in the CEO
+conversation. It contains no credentials, financial account details,
+identity documents, or other Sensitive Secrets.
+
+## What happened after approval
 
 1. RM-17 validates the allowlist entry and scans the bounded input for
    Sensitive Secrets.
@@ -38,8 +57,9 @@ documents, payment-card details, account numbers, or an entire Notion export.
    captured and `as of` times, content hash, authority, sensitivity, Trust
    Domain, permitted roles, retention class, supersession, and snapshot/pointer.
 3. The raw staging payload is encrypted outside Git and marked
-   `verified-ingestion` or `quarantined`; it is eligible for purge after 30 days
-   under ADR-0017.
+   `verified-ingestion` or `quarantined`; its finite retention class controls
+   purge eligibility (`personal-context-30d` is 30 days; a stricter class such
+   as `personal-context-7d` is honoured).
 4. No Compiled Knowledge, Hot Runtime Memory, Source of Record, or Agent Brain
    record is changed by RM-17. Later compilation is RM-42 and requires its own
    governed path.
@@ -53,6 +73,11 @@ documents, payment-card details, account numbers, or an entire Notion export.
 | Submit a token, recovery code, card detail, or identity document | Rejected/quarantined before encrypted staging |
 | Read with an unlisted Executive Role | Denied; no raw payload returned |
 | Inspect Git | No raw staging file, secret, or encryption key tracked |
+
+Retention classes are explicit policy names ending in a finite duration (`d`,
+`w`, `m`, or `y`). The CEO allowlist stores a digest of the complete manifest,
+so changing roles, Trust Domain, sensitivity, source mode, or retention policy
+requires a fresh approval.
 
 ## Troubleshooting
 

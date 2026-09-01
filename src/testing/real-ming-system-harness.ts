@@ -47,6 +47,7 @@ import type {
   RecordWorkItemCommitmentRequest,
   RequestedAction,
   StandingAuthority,
+  ExecutiveRole,
   WorkItem,
   WorkerEffect,
   WorkerReceipt,
@@ -146,6 +147,16 @@ import {
   type ExecutiveRollUpResult,
   type ExecutiveRollUpRunner,
 } from "../operations/executive-roll-up.js";
+import {
+  createPersonalContextIngestion,
+  type PersonalContextCandidate,
+  type PersonalContextAllowlistEntry,
+  type PersonalContextIngestion,
+  type PersonalContextIngestionResult,
+  type PersonalContextManifestEntry,
+  type PersonalContextSourceReader,
+  type PersonalContextSourceValue,
+} from "../knowledge/personal-context-ingestion.js";
 import {
   createExceptionNoticeRhythm,
   type ExceptionNotice,
@@ -403,6 +414,20 @@ export interface RealMingSystemHarness {
     readonly actorId: string;
     readonly workspaceId: string;
   }): DashboardOverview;
+  ingestPersonalContext(
+    entry: PersonalContextManifestEntry,
+  ): Promise<PersonalContextIngestionResult>;
+  personalContextCandidates(): readonly PersonalContextCandidate[];
+  readPersonalContext(
+    candidateId: string,
+    executive: ExecutiveRole,
+  ): string;
+  personalContextStagingFiles(): readonly string[];
+  purgePersonalContext(at?: string): readonly string[];
+  setPersonalContextSource(
+    sourceKey: string,
+    value: PersonalContextSourceValue,
+  ): void;
   startDashboard(
     credentials: readonly DashboardCredential[],
   ): Promise<DashboardServer>;
@@ -652,6 +677,15 @@ export function createRealMingSystemHarness(options: {
   readonly cutover?: ControlledCutoverOptions;
   readonly calendar?: ControlledCalendarOptions;
   readonly morningBrief?: ControlledMorningBriefOptions;
+  readonly personalContext?: {
+    readonly statePath: string;
+    readonly stagingDirectory: string;
+    readonly repositoryRoot: string;
+    readonly encryptionKey: string;
+    readonly sources: Readonly<Record<string, PersonalContextSourceValue>>;
+    readonly allowlist: readonly PersonalContextAllowlistEntry[];
+    readonly sourceReader?: PersonalContextSourceReader;
+  };
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
   const masterTaskRecords = new Map<string, MasterTaskRecord>();
@@ -677,6 +711,42 @@ export function createRealMingSystemHarness(options: {
     options.legacyTaskSources ?? [],
     options.now,
   );
+  const personalContextSources = new Map(
+    Object.entries(options.personalContext?.sources ?? {}),
+  );
+  const controlledPersonalContextReader: PersonalContextSourceReader = {
+    read: async (entry) => {
+      const source = personalContextSources.get(
+        `${entry.sourceSystem}:${entry.sourceReference}`,
+      );
+      if (source === undefined) {
+        throw new Error(
+          `Controlled Personal Context source ${entry.sourceReference} was not found.`,
+        );
+      }
+      return source;
+    },
+  };
+  const personalContextReader =
+    options.personalContext?.sourceReader ?? controlledPersonalContextReader;
+  let personalContext: PersonalContextIngestion | undefined;
+  try {
+    personalContext =
+      options.personalContext === undefined
+        ? undefined
+        : createPersonalContextIngestion({
+            statePath: options.personalContext.statePath,
+            stagingDirectory: options.personalContext.stagingDirectory,
+            repositoryRoot: options.personalContext.repositoryRoot,
+            encryptionKey: options.personalContext.encryptionKey,
+            allowlist: options.personalContext.allowlist,
+            sourceReader: personalContextReader,
+            ...(options.now === undefined ? {} : { now: options.now }),
+          });
+  } catch (error) {
+    state.close();
+    throw error;
+  }
   for (const workItem of state.workItems()) {
     masterTaskRecords.set(workItem.id, masterTasks.recordFor(workItem));
   }
@@ -1114,6 +1184,32 @@ export function createRealMingSystemHarness(options: {
     standingAuthorities: () => state.standingAuthorities(),
     dashboardOverview: (session) =>
       buildDashboardOverview(state, { ...session, now: clock() }),
+    ingestPersonalContext: async (entry) => {
+      if (personalContext === undefined) {
+        throw new Error("This harness was not configured for Personal Context.");
+      }
+      return personalContext.ingest(entry);
+    },
+    personalContextCandidates: () => personalContext?.candidates() ?? [],
+    readPersonalContext: (candidateId, executive) => {
+      if (personalContext === undefined) {
+        throw new Error("This harness was not configured for Personal Context.");
+      }
+      return personalContext.read(candidateId, executive).content;
+    },
+    personalContextStagingFiles: () => personalContext?.stagingFiles() ?? [],
+    purgePersonalContext: (at) => {
+      if (personalContext === undefined) {
+        throw new Error("This harness was not configured for Personal Context.");
+      }
+      return personalContext.purgeExpired(at);
+    },
+    setPersonalContextSource: (sourceKey, value) => {
+      if (personalContext === undefined) {
+        throw new Error("This harness was not configured for Personal Context.");
+      }
+      personalContextSources.set(sourceKey, value);
+    },
     startDashboard: (credentials) =>
       createDashboardServer({ state, gateway, credentials, now: clock }),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),
@@ -1191,7 +1287,10 @@ export function createRealMingSystemHarness(options: {
     },
     telegramMessages: () => telegramTransport.messages(),
     telegramAuditTrail: () => state.telegramAuditTrail(),
-    close: () => state.close(),
+    close: () => {
+      personalContext?.close();
+      state.close();
+    },
   };
 }
 
