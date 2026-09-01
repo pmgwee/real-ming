@@ -71,13 +71,21 @@ describe("RM-15 Daily Operations scheduler", () => {
 
     expect(first.ran).toContain("morning-brief");
     expect(second.ran).toEqual([]);
-    expect(harness.telegramMessages()).toHaveLength(1);
+    expect(
+      harness
+        .telegramMessages()
+        .filter((message) => message.text.includes("Morning Brief")),
+    ).toHaveLength(1);
 
     clock = afterRollUp;
     const evening = await harness.tickDailyOperations();
     expect(evening.ran).toContain("executive-roll-up");
     expect(await harness.tickDailyOperations()).toMatchObject({ ran: [] });
-    expect(harness.telegramMessages()).toHaveLength(2);
+    expect(
+      harness
+        .telegramMessages()
+        .filter((message) => message.text.includes("Executive Roll-Up")),
+    ).toHaveLength(1);
 
     clock = nextMorning;
     const tomorrow = await harness.tickDailyOperations();

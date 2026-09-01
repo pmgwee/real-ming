@@ -71,6 +71,26 @@ export function renderDashboardPage(overview: DashboardOverview): string {
     )
     .join("");
 
+  const schedulerRows = overview.scheduler
+    .map(
+      (job) =>
+        `<tr data-scheduler-job="${escapeHtml(job.job)}">` +
+        `<td data-field="provider">${escapeHtml(job.provider)}</td>` +
+        `<td data-field="expectedCadence">${escapeHtml(job.expectedCadence)}</td>` +
+        `<td data-field="criticality">${escapeHtml(job.criticality)}</td>` +
+        `<td data-field="accountableExecutive">${escapeHtml(job.accountableExecutive)}</td>` +
+        `<td data-field="lastSchedulerHeartbeat">${escapeHtml(job.lastSchedulerHeartbeat ?? "")}</td>` +
+        `<td data-field="lastSuccess">${escapeHtml(job.lastSuccess ?? "")}</td>` +
+        `<td data-field="nextExpectedRun">${escapeHtml(job.nextExpectedRun)}</td>` +
+        `<td data-field="durationMs">${escapeHtml(String(job.durationMs ?? ""))}</td>` +
+        `<td data-field="failureStreak">${job.failureStreak}</td>` +
+        `<td data-field="failureHistory">${escapeHtml(job.failureHistory.map((failure) => `${failure.occurrenceDate} (${failure.evidenceLink})`).join(", "))}</td>` +
+        `<td data-field="evidenceLink">${escapeHtml(job.evidenceLink)}</td>` +
+        `<td data-field="lastOutcome">${escapeHtml(job.lastOutcome ?? "")}</td>` +
+        "</tr>",
+    )
+    .join("");
+
   const providerObservationRows = overview.providerObservations
     .map(
       (observation) =>
@@ -143,6 +163,11 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <section aria-labelledby="control-plane-title">
 <h2 id="control-plane-title">Control Plane Health and Recovery</h2>
 <table id="control-plane-health"><tbody>${controlPlaneRows}</tbody></table>
+</section>
+
+<section aria-labelledby="scheduler-health-title">
+<h2 id="scheduler-health-title">Scheduler Heartbeats</h2>
+<table id="scheduler-health"><tbody>${schedulerRows}</tbody></table>
 </section>
 
 <section aria-labelledby="provider-observations-title">

@@ -206,9 +206,11 @@ import {
   executiveRollUpJobName,
   morningBriefJobName,
   releaseHeldJobName,
+  schedulerJobInventory,
   type DailyOperationsScheduler,
   type DailyOperationsTick,
 } from "../operations/daily-operations-scheduler.js";
+import { dailyOccurrence } from "../operations/daily-schedule.js";
 
 export interface ControlledMorningBriefOptions {
   readonly calendarId: string;
@@ -400,8 +402,12 @@ export interface RealMingSystemHarness {
   releaseHeldExceptionNotices(): Promise<HeldRelease>;
   tickDailyOperations(): Promise<DailyOperationsTick>;
   failNextScheduledRun(job: string): Promise<void>;
+  hangNextScheduledRun(job: string): void;
+  /** Simulate a process crash after claiming an occurrence but before completion. */
+  claimScheduledRunWithoutCompletion(job: string): void;
   failNextMasterTasksUpsert(message: string): void;
   setMasterTasksUpsertFailure(message?: string): void;
+  setExceptionNoticeAdmissionFailure(message?: string): void;
   setControlledWorkerExecutionError(message?: string): void;
   setTelegramDeliveryFailure(failure?: ProviderFailure): void;
   setTelegramCrashAfterDelivery(message?: string): void;
@@ -745,6 +751,7 @@ export function createRealMingSystemHarness(options: {
   readonly cutover?: ControlledCutoverOptions;
   readonly calendar?: ControlledCalendarOptions;
   readonly morningBrief?: ControlledMorningBriefOptions;
+  readonly schedulerRunnerTimeoutMs?: number;
   readonly personalContext?: {
     readonly statePath: string;
     readonly stagingDirectory: string;
@@ -1108,6 +1115,7 @@ export function createRealMingSystemHarness(options: {
     notify: (notification) => telegramFrontDoor.notify(notification),
     now: clock,
   });
+  let exceptionNoticeAdmissionFailure: string | undefined;
   const recordExceptionNoticeHealth = (
     admission: ExceptionNoticeAdmission | undefined,
     failedBeforeAdmission = false,
@@ -1138,6 +1146,9 @@ export function createRealMingSystemHarness(options: {
   const admitTracked = async (
     notice: ExceptionNotice,
   ): Promise<ExceptionNoticeAdmission> => {
+    if (exceptionNoticeAdmissionFailure !== undefined) {
+      throw new Error(exceptionNoticeAdmissionFailure);
+    }
     try {
       const admission = await exceptionNoticeRhythm.admit(notice);
       recordExceptionNoticeHealth(admission);
@@ -1181,6 +1192,7 @@ export function createRealMingSystemHarness(options: {
   // Controlled failure injection, so a scheduler tick can be observed handling
   // one job failing without stranding the others.
   const forcedFailures = new Set<string>();
+  const forcedHangs = new Set<string>();
   const executiveRollUp: ExecutiveRollUpRunner = createExecutiveRollUpRunner({
     state,
     workspaceId: "workspace:real-ming",
@@ -1202,12 +1214,27 @@ export function createRealMingSystemHarness(options: {
     if (forcedFailures.delete(job)) {
       throw new Error(`Controlled failure of the ${job} job.`);
     }
+    if (forcedHangs.delete(job)) {
+      await new Promise<never>(() => undefined);
+    }
     return run();
   };
   const dailyOperations: DailyOperationsScheduler =
     createDailyOperationsScheduler({
       state,
       now: clock,
+      ...(options.schedulerRunnerTimeoutMs === undefined
+        ? {}
+        : { runnerTimeoutMs: options.schedulerRunnerTimeoutMs }),
+      admitExceptionNotice: admitTracked,
+      recordExceptionNoticeRecovery: async (signature, details) => {
+        const admission = await exceptionNoticeRhythm.recordRecovery(
+          signature,
+          details,
+        );
+        recordExceptionNoticeHealth(admission);
+        return admission;
+      },
       runners: {
         [releaseHeldJobName]: guarded(releaseHeldJobName, () =>
           releaseHeldTracked(),
@@ -1299,11 +1326,38 @@ export function createRealMingSystemHarness(options: {
     failNextScheduledRun: async (job) => {
       forcedFailures.add(job);
     },
+    hangNextScheduledRun: (job) => {
+      forcedHangs.add(job);
+    },
+    claimScheduledRunWithoutCompletion: (job) => {
+      const definition = schedulerJobInventory.find((candidate) => candidate.job === job);
+      if (definition === undefined) {
+        throw new Error(`Controlled scheduler job ${job} is not registered.`);
+      }
+      const occurrence = dailyOccurrence({
+        now: clock(),
+        hour: definition.hour,
+        minute: definition.minute,
+        job,
+      });
+      const claim = state.claimSchedulerRun({
+        job,
+        occurrenceDate: occurrence.occurrenceDate,
+        scheduledAt: occurrence.scheduledAt,
+        startedAt: clock(),
+      });
+      if (claim.kind !== "claimed") {
+        throw new Error(`Controlled scheduler job ${job} was already completed.`);
+      }
+    },
     failNextMasterTasksUpsert: (message) => {
       nextMasterTasksUpsertError = message;
     },
     setMasterTasksUpsertFailure: (message) => {
       masterTasksUpsertFailure = message;
+    },
+    setExceptionNoticeAdmissionFailure: (message) => {
+      exceptionNoticeAdmissionFailure = message;
     },
     setControlledWorkerExecutionError: (message) => {
       if (privateWorker !== undefined) {

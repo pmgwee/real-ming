@@ -7,6 +7,10 @@ import type {
   WorkItem,
 } from "./contracts.js";
 import type { OperationsState } from "./operations-state.js";
+import {
+  schedulerHealth,
+  type SchedulerJobHealth,
+} from "./daily-operations-scheduler.js";
 import type { TelegramNotificationResult } from "../telegram/contracts.js";
 import {
   blockersFor,
@@ -45,6 +49,12 @@ export interface RollUpEntry {
   readonly evidence: string;
 }
 
+export interface SchedulerRollUpEntry {
+  readonly job: string;
+  readonly label: string;
+  readonly evidence: string;
+}
+
 export interface ExecutiveRollUp {
   readonly occurrenceDate: string;
   readonly scheduledAt: string;
@@ -57,6 +67,7 @@ export interface ExecutiveRollUp {
   readonly changesRequested: readonly RollUpEntry[];
   readonly pendingApprovals: readonly RollUpEntry[];
   readonly nextPriorities: readonly RollUpEntry[];
+  readonly schedulerExceptions: readonly SchedulerRollUpEntry[];
   readonly text: string;
 }
 
@@ -99,6 +110,7 @@ export function buildExecutiveRollUp(input: {
   readonly outcomeReport: (
     workItemId: string,
   ) => { readonly id: string; readonly createdAt: string } | undefined;
+  readonly scheduler?: readonly SchedulerJobHealth[];
 }): ExecutiveRollUp {
   const occurrence = dailyOccurrence({
     now: input.now,
@@ -112,6 +124,22 @@ export function buildExecutiveRollUp(input: {
   const changesRequested: RollUpEntry[] = [];
   const pendingApprovals: RollUpEntry[] = [];
   const nextPriorities: RollUpEntry[] = [];
+  const schedulerExceptions: SchedulerRollUpEntry[] = (input.scheduler ?? [])
+    .filter(
+      (job) =>
+        job.failureStreak > 0 ||
+        job.lastOutcome === "failed" ||
+        (job.criticality === "routine" && job.failureHistory.length > 0),
+    )
+    .map((job) => ({
+      job: job.job,
+      label:
+        job.lastOutcome === "succeeded" && job.failureHistory.length > 0
+          ? `${job.job} (recovered; ${job.failureHistory.length} historical failure${job.failureHistory.length === 1 ? "" : "s"})`
+          : `${job.job} (${job.lastOutcome ?? "failed"}; ${job.failureStreak} consecutive failure${job.failureStreak === 1 ? "" : "s"})`,
+      evidence:
+        job.failureHistory.at(-1)?.evidenceLink ?? job.evidenceLink,
+    }));
 
   for (const workItem of input.workItems) {
     const approvals = input.approvals(workItem.id);
@@ -178,6 +206,7 @@ export function buildExecutiveRollUp(input: {
     changesRequested,
     pendingApprovals,
     nextPriorities,
+    schedulerExceptions,
   };
   return { ...rollUp, text: renderExecutiveRollUp(rollUp) };
 }
@@ -205,6 +234,14 @@ function renderExecutiveRollUp(rollUp: Omit<ExecutiveRollUp, "text">): string {
     section("Changes requested", rollUp.changesRequested),
     section("Pending Approvals", rollUp.pendingApprovals),
     section("Next priorities", rollUp.nextPriorities),
+    section(
+      "Scheduler exceptions",
+      rollUp.schedulerExceptions.map((entry) => ({
+        workItemId: entry.job,
+        label: entry.label,
+        evidence: entry.evidence,
+      })),
+    ),
   ].join("\n");
 }
 
@@ -230,14 +267,18 @@ export function createExecutiveRollUpRunner(options: {
   const now = options.now ?? (() => new Date().toISOString());
   return {
     async run(): Promise<ExecutiveRollUpResult> {
+      const currentNow = now();
       const rollUp = buildExecutiveRollUp({
-        now: now(),
+        now: currentNow,
         workItems: options.state
           .workItems()
           .filter((workItem) => workItem.workspaceId === options.workspaceId),
         approvals: (workItemId) => options.state.approvals(workItemId),
         auditTrail: (workItemId) => options.state.auditTrail(workItemId),
         outcomeReport: (workItemId) => options.state.outcomeReport(workItemId),
+        scheduler: schedulerHealth(options.state, currentNow, undefined, {
+          excludeInProgressJob: executiveRollUpJob,
+        }),
       });
       // An identical retry deduplicates; an evening whose picture has changed
       // is a correction, not a duplicate.

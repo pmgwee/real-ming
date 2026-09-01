@@ -617,6 +617,14 @@ export class OperationsState {
         PRIMARY KEY (job, occurrence_date)
       );
 
+      CREATE TABLE IF NOT EXISTS scheduler_run_failures (
+        job TEXT NOT NULL,
+        occurrence_date TEXT NOT NULL,
+        attempt INTEGER NOT NULL,
+        completed_at TEXT NOT NULL,
+        PRIMARY KEY (job, occurrence_date, attempt)
+      );
+
       CREATE TABLE IF NOT EXISTS control_plane_health (
         component TEXT PRIMARY KEY,
         last_outcome TEXT NOT NULL,
@@ -1716,16 +1724,32 @@ export class OperationsState {
     readonly occurrenceDate: string;
     readonly scheduledAt: string;
     readonly startedAt: string;
-  }): { readonly kind: "claimed" | "already-succeeded" } {
+    readonly staleAfterMs?: number;
+  }): {
+    readonly kind:
+      | "claimed"
+      | "already-succeeded"
+      | "already-running"
+      | "stale-reclaimed";
+  } {
     const row = this.#database
       .prepare(
-        "SELECT outcome FROM scheduler_runs WHERE job = ? AND occurrence_date = ?",
+        "SELECT outcome, started_at FROM scheduler_runs WHERE job = ? AND occurrence_date = ?",
       )
       .get(run.job, run.occurrenceDate) as unknown as
-      | { readonly outcome: string | null }
+      | { readonly outcome: string | null; readonly started_at: string }
       | undefined;
     if (row?.outcome === "succeeded") {
       return { kind: "already-succeeded" };
+    }
+    let staleReclaimed = false;
+    if (row?.outcome === null) {
+      const staleAfterMs = run.staleAfterMs ?? 5 * 60 * 1000;
+      const elapsed = Date.parse(run.startedAt) - Date.parse(row.started_at);
+      if (Number.isFinite(elapsed) && elapsed >= 0 && elapsed < staleAfterMs) {
+        return { kind: "already-running" };
+      }
+      staleReclaimed = true;
     }
     this.#database
       .prepare(
@@ -1738,7 +1762,7 @@ export class OperationsState {
            outcome = NULL`,
       )
       .run(run.job, run.occurrenceDate, run.scheduledAt, run.startedAt);
-    return { kind: "claimed" };
+    return { kind: staleReclaimed ? "stale-reclaimed" : "claimed" };
   }
 
   completeSchedulerRun(
@@ -1747,6 +1771,19 @@ export class OperationsState {
     completedAt: string,
     outcome: "succeeded" | "failed",
   ): void {
+    if (outcome === "failed") {
+      this.#database
+        .prepare(
+          `INSERT INTO scheduler_run_failures
+             (job, occurrence_date, attempt, completed_at)
+           VALUES (?, ?, COALESCE((
+             SELECT MAX(attempt) + 1
+             FROM scheduler_run_failures
+             WHERE job = ? AND occurrence_date = ?
+           ), 1), ?)`,
+        )
+        .run(job, occurrenceDate, job, occurrenceDate, completedAt);
+    }
     this.#database
       .prepare(
         `UPDATE scheduler_runs SET completed_at = ?, outcome = ?
@@ -1815,6 +1852,33 @@ export class OperationsState {
       startedAt: row.started_at,
       completedAt: row.completed_at,
       outcome: row.outcome,
+    }));
+  }
+
+  schedulerFailureHistory(): readonly {
+    readonly job: string;
+    readonly occurrenceDate: string;
+    readonly attempt: number;
+    readonly completedAt: string;
+  }[] {
+    return (
+      this.#database
+        .prepare(
+          `SELECT job, occurrence_date, attempt, completed_at
+           FROM scheduler_run_failures
+           ORDER BY occurrence_date ASC, attempt ASC`,
+        )
+        .all() as unknown as readonly {
+        readonly job: string;
+        readonly occurrence_date: string;
+        readonly attempt: number;
+        readonly completed_at: string;
+      }[]
+    ).map((row) => ({
+      job: row.job,
+      occurrenceDate: row.occurrence_date,
+      attempt: row.attempt,
+      completedAt: row.completed_at,
     }));
   }
 

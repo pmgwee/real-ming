@@ -189,6 +189,16 @@ describe("RM-08 dashboard browser view", () => {
             lastOutcome: read(row, "lastOutcome"),
             consecutiveFailures: read(row, "consecutiveFailures"),
           })),
+          scheduler: [
+            ...document.querySelectorAll("#scheduler-health tr[data-scheduler-job]"),
+          ].map((row) => ({
+            job: row.getAttribute("data-scheduler-job") ?? "",
+            provider: read(row, "provider"),
+            criticality: read(row, "criticality"),
+             accountableExecutive: read(row, "accountableExecutive"),
+             failureStreak: read(row, "failureStreak"),
+             failureHistory: read(row, "failureHistory"),
+          })),
           providerObservations: [
             ...document.querySelectorAll(
               "#provider-observations tr[data-provider-observation-id]",
@@ -270,6 +280,18 @@ describe("RM-08 dashboard browser view", () => {
           provider: observation.provider,
           sourceReference: observation.sourceReference,
           status: observation.status,
+        })),
+      );
+      expect(rendered.scheduler).toEqual(
+        overview.scheduler.map((job) => ({
+          job: job.job,
+          provider: job.provider,
+          criticality: job.criticality,
+           accountableExecutive: job.accountableExecutive,
+           failureStreak: String(job.failureStreak),
+           failureHistory: job.failureHistory
+             .map((failure) => `${failure.occurrenceDate} (${failure.evidenceLink})`)
+             .join(", "),
         })),
       );
       expect(rendered.auditCount).toBe(overview.auditEvents.length);

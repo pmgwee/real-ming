@@ -321,6 +321,12 @@ export async function createDailyOperationsControlPlane(options: {
   const scheduler = createDailyOperationsScheduler({
     state,
     now,
+    admitExceptionNotice: admitTracked,
+    recordExceptionNoticeRecovery: async (signature, details) => {
+      const admission = await notices.recordRecovery(signature, details);
+      recordExceptionNoticeHealth(admission);
+      return admission;
+    },
     runners: {
       [releaseHeldJobName]: () => releaseHeldTracked(),
       [morningBriefJobName]: () => morningBrief.run(),
