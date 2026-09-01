@@ -148,6 +148,9 @@ export function renderDashboardPage(overview: DashboardOverview): string {
       const deploymentSummary = center.git.deploymentAssociations
         .map((association) => `${association.provider}:${association.reference} ${association.commitSha}`)
         .join(", ");
+      const vercelSummary = center.vercel?.deployments
+        .map((deployment) => `${deployment.environment}:${deployment.status} ${deployment.commitSha ?? "unknown"} ${deployment.lineageStatus} ${deployment.verificationStatus}${deployment.rollbackCandidate ? " rollback-candidate" : ""} pr#${deployment.pullRequestNumber ?? "none"} branch=${deployment.branch ?? "unknown"} source=${deployment.sourceReference} asOf=${deployment.readyAt ?? deployment.createdAt ?? "unknown"} evidence=${deployment.verificationEvidence?.reference ?? "none"} ${deployment.domain ?? ""}`)
+        .join(", ") ?? "not configured";
       return (
         `<tr data-repository-center-project-id="${escapeHtml(project.id)}">` +
         cell(center.repository.fullName ?? center.repository.reference ?? "") +
@@ -165,6 +168,9 @@ export function renderDashboardPage(overview: DashboardOverview): string {
         `<td data-field="incidents">${escapeHtml(incidentSummary || "none")}</td>` +
         `<td data-field="tags">${escapeHtml(tagSummary || "none")}</td>` +
         `<td data-field="deployments">${escapeHtml(deploymentSummary || "none")}</td>` +
+        `<td data-field="vercelStatus">${escapeHtml(center.vercel?.observation.status ?? "not configured")}</td>` +
+        `<td data-field="vercelSource">${escapeHtml(center.vercel === null ? "not configured" : `${center.vercel.observation.sourceReference} @ ${center.vercel.observation.asOf ?? "unknown"}`)}</td>` +
+        `<td data-field="vercelDeployments">${escapeHtml(vercelSummary)}</td>` +
         `<td data-field="workerAvailability">${escapeHtml(center.git.worker.availability)}</td>` +
         `<td data-field="workerDirty">${escapeHtml(center.git.worker.dirty === null ? "unknown" : String(center.git.worker.dirty))}</td>` +
         `<td data-field="deploymentAssociations">${center.git.deploymentAssociations.length}</td>` +

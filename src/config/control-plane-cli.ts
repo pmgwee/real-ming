@@ -5,6 +5,7 @@ import { createProductionControlPlane } from "../runtime/production-control-plan
 import type { PortfolioProjectInput } from "../portfolio/project-portfolio.js";
 import { createGitHubRepositoryAdapter } from "../providers/github-repository-adapter.js";
 import { createGitLineageAdapter } from "../providers/git-lineage-adapter.js";
+import { createVercelDeploymentAdapter } from "../providers/vercel-deployment-adapter.js";
 
 function configuredPath(name: string, fallback: string): string {
   const value = process.env[name]?.trim();
@@ -37,10 +38,12 @@ function portfolioProjects(): readonly PortfolioProjectInput[] {
 
 function repositoryCenterAdapters(projects: readonly PortfolioProjectInput[]) {
   const githubToken = process.env["REAL_MING_GITHUB_READ_TOKEN"]?.trim() ?? "";
+  const vercelToken = process.env["REAL_MING_VERCEL_READ_TOKEN"]?.trim() ?? "";
   const defaultGitPath = process.env["REAL_MING_GIT_REPOSITORY_PATH"]?.trim() ?? "";
   const adapters = new Map<string, {
     readonly github: ReturnType<typeof createGitHubRepositoryAdapter>;
     readonly git: ReturnType<typeof createGitLineageAdapter>;
+    readonly vercel: ReturnType<typeof createVercelDeploymentAdapter>;
     readonly gitReference: string;
   }>();
   for (const project of projects) {
@@ -68,6 +71,11 @@ function repositoryCenterAdapters(projects: readonly PortfolioProjectInput[]) {
               }],
       }),
       gitReference: gitPath,
+      vercel: createVercelDeploymentAdapter({
+        token: vercelToken,
+        workspaceId: "workspace:real-ming",
+        accountReference: "vercel:real-ming",
+      }),
     });
   }
   return adapters;

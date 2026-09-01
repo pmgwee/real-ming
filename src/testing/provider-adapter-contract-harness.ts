@@ -47,6 +47,10 @@ import {
   type GitLineageAdapter,
 } from "../providers/git-lineage-adapter.js";
 import {
+  createVercelDeploymentAdapter,
+  type VercelDeploymentAdapter,
+} from "../providers/vercel-deployment-adapter.js";
+import {
   createGoogleAccessTokens,
   type GoogleAccessTokens,
 } from "../runtime/google-access-token.js";
@@ -1538,5 +1542,55 @@ export function createGitLineageContractHarness(options: { readonly failure?: bo
       now: () => "2026-09-02T09:00:00.000Z",
     }),
     commands: () => commands.map((args) => [...args]),
+  };
+}
+
+export interface VercelDeploymentContractHarness {
+  readonly adapter: VercelDeploymentAdapter;
+  requests(): readonly string[];
+}
+
+/** Controlled Vercel API edge for RM-26. It never contacts vercel.com. */
+export function createVercelDeploymentContractHarness(options: {
+  readonly failure?: ProviderFailureClass;
+  readonly stale?: boolean;
+  readonly missing?: boolean;
+} = {}): VercelDeploymentContractHarness {
+  const requests: string[] = [];
+  const now = "2026-09-02T09:00:00.000Z";
+  const asOf = options.stale ? "2026-08-30T09:00:00.000Z" : now;
+  const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
+    "authentication-failed": 401,
+    "invalid-input": 404,
+    "permission-denied": 403,
+    "rate-limited": 429,
+    "unsupported-capability": 400,
+    unavailable: 503,
+    "provider-error": 500,
+  };
+  const fetchImplementation: typeof fetch = async (input, _init): Promise<Response> => {
+    const url = String(input);
+    requests.push(url);
+    if (options.failure !== undefined) {
+      return Response.json({ error: { message: `controlled Vercel error ${contractSecretFixture}` } }, { status: statusByClass[options.failure] });
+    }
+    if (options.missing === true) return Response.json({ deployments: [] });
+    const asOfMs = Date.parse(asOf);
+    return Response.json({ deployments: [
+      { uid: "vercel-preview", state: "READY", target: null, url: "preview.duitsini.test", meta: { githubCommitSha: "sha-work", githubCommitRef: "feat/rm-25", githubPrId: 99 }, createdAt: asOfMs, readyAt: asOfMs },
+      { uid: "vercel-production", state: "READY", target: "production", url: "duitsini.test", meta: { githubCommitSha: "sha-main" }, createdAt: asOfMs, readyAt: asOfMs },
+      { uid: "vercel-failed", state: "ERROR", target: "production", url: "failed.duitsini.test", meta: { githubCommitSha: "sha-mismatch" }, createdAt: asOfMs },
+      { uid: "vercel-cancelled", state: "CANCELED", target: "preview", url: "cancelled.duitsini.test", meta: {}, createdAt: asOfMs },
+    ] });
+  };
+  return {
+    adapter: createVercelDeploymentAdapter({
+      token: contractSecretFixture,
+      workspaceId: "workspace:real-ming",
+      accountReference: "vercel:account:real-ming",
+      fetch: fetchImplementation,
+      now: () => now,
+    }),
+    requests: () => [...requests],
   };
 }

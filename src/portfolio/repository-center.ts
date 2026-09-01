@@ -13,6 +13,10 @@ import {
   gitLineageProvider,
   type GitLineageSnapshot,
 } from "../providers/git-lineage-adapter.js";
+import type {
+  VercelDeployment,
+  VercelDeploymentSnapshot,
+} from "../providers/vercel-deployment-adapter.js";
 
 export interface RepositoryProviderObservation {
   readonly provider: string;
@@ -21,6 +25,22 @@ export interface RepositoryProviderObservation {
   readonly asOf: string | null;
   readonly retrievedAt: string;
   readonly failureClass: string | null;
+}
+
+export interface DeploymentVerificationRecord {
+  readonly reference: string;
+  readonly asOf: string;
+}
+
+export function vercelDeploymentLineageStatus(
+  commitSha: string | null,
+  githubPullRequestHeads: readonly string[],
+  gitBranchHeads: readonly string[],
+): "matched" | "mismatched" | "unknown" {
+  if (commitSha === null) return "unknown";
+  return githubPullRequestHeads.includes(commitSha) || gitBranchHeads.includes(commitSha)
+    ? "matched"
+    : "mismatched";
 }
 
 export interface RepositoryCenterView {
@@ -51,6 +71,16 @@ export interface RepositoryCenterView {
     readonly deploymentAssociations: readonly GitLineageSnapshot["deploymentAssociations"][number][];
     readonly worker: GitLineageSnapshot["worker"];
   };
+  readonly vercel: {
+    readonly observation: RepositoryProviderObservation;
+    readonly deployments: readonly (VercelDeployment & {
+      readonly verificationStatus: "unverified" | "verified";
+      /** Evidence is intentionally separate from Vercel's deployment status. */
+      readonly verificationEvidence: DeploymentVerificationRecord | null;
+      readonly rollbackCandidate: boolean;
+      readonly lineageStatus: "matched" | "mismatched" | "unknown";
+    })[];
+  } | null;
 }
 
 function observationFor<T>(
@@ -83,6 +113,9 @@ export function buildRepositoryCenterView(options: {
   readonly project: PortfolioProject;
   readonly github: ProviderReadResult<GitHubRepositorySnapshot>;
   readonly git: ProviderReadResult<GitLineageSnapshot>;
+  readonly vercel?: ProviderReadResult<VercelDeploymentSnapshot>;
+  /** Optional live/synthetic verification records supplied by a later tracer. */
+  readonly verificationEvidence?: ReadonlyMap<string, DeploymentVerificationRecord>;
   /** Local Git checkout reference used for truthful degraded provenance. */
   readonly gitSourceReference?: string;
   readonly now: string;
@@ -91,8 +124,34 @@ export function buildRepositoryCenterView(options: {
   const gitReference = options.gitSourceReference?.trim() || "local-git:unconfigured";
   const githubObservation = observationFor(githubRepositoryProvider, githubReference, options.github, options.now);
   const gitObservation = observationFor(gitLineageProvider, gitReference, options.git, options.now);
+  const vercelReference = options.project.deploymentIdentifiers.vercel ?? "vercel:unconfigured";
+  const vercelObservation = options.vercel === undefined
+    ? undefined
+    : observationFor("vercel", vercelReference, options.vercel, options.now);
   const githubValue = options.github.kind === "failed" ? undefined : options.github.value;
   const gitValue = options.git.kind === "failed" ? undefined : options.git.value;
+  const vercelValue = options.vercel === undefined || options.vercel.kind === "failed" ? undefined : options.vercel.value;
+  const productionDeployments = vercelValue?.deployments.filter((deployment) => deployment.environment === "production" && deployment.status === "ready") ?? [];
+  const newestProduction = [...productionDeployments].sort((left, right) => Date.parse(right.readyAt ?? right.createdAt ?? "") - Date.parse(left.readyAt ?? left.createdAt ?? ""))[0];
+  const githubPulls = githubValue?.pullRequests ?? [];
+  const gitShas = new Set((gitValue?.branches ?? []).map((branch) => branch.sha));
+  const vercelDeployments = (vercelValue?.deployments ?? []).map((deployment) => {
+    const verificationEvidence = deployment.status === "ready"
+      ? options.verificationEvidence?.get(deployment.id) ?? null
+      : null;
+    const lineageStatus = vercelDeploymentLineageStatus(
+      deployment.commitSha,
+      githubPulls.map((pull) => pull.head.sha),
+      [...gitShas],
+    );
+    return {
+      ...deployment,
+      verificationStatus: verificationEvidence === null ? "unverified" as const : "verified" as const,
+      verificationEvidence,
+      rollbackCandidate: deployment.environment === "production" && deployment.status === "ready" && newestProduction !== undefined && deployment.id !== newestProduction.id && verificationEvidence !== null && lineageStatus === "matched",
+      lineageStatus,
+    };
+  });
   return {
     projectId: options.project.id,
     repository: {
@@ -127,5 +186,8 @@ export function buildRepositoryCenterView(options: {
         dirtyFiles: null,
       },
     },
+    vercel: vercelObservation === undefined
+      ? null
+      : { observation: vercelObservation, deployments: vercelDeployments },
   };
 }

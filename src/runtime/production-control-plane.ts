@@ -21,6 +21,7 @@ import type { ProjectEvidenceBindingRequest } from "../evidence/evidence-broker.
 import type { ControlledWorker, EffectVerifier } from "../operations/contracts.js";
 import type { GitHubRepositoryAdapter } from "../providers/github-repository-adapter.js";
 import type { GitLineageAdapter } from "../providers/git-lineage-adapter.js";
+import type { VercelDeploymentAdapter } from "../providers/vercel-deployment-adapter.js";
 import { buildRepositoryCenterView, type RepositoryCenterView } from "../portfolio/repository-center.js";
 import { resolveControlPlaneCredentials } from "./credential-resolver.js";
 import {
@@ -49,6 +50,7 @@ export async function createProductionControlPlane(options: {
   readonly repositoryCenterAdapters?: ReadonlyMap<string, {
     readonly github: GitHubRepositoryAdapter;
     readonly git: GitLineageAdapter;
+    readonly vercel?: VercelDeploymentAdapter;
     /** Local checkout path for Git; distinct from the GitHub owner/name reference. */
     readonly gitReference: string;
   }>;
@@ -141,9 +143,12 @@ export async function createProductionControlPlane(options: {
           throw new Error(`Repository Center project ${projectId} was not found.`);
         }
         const reference = project.repository ?? "";
-        const [github, git] = await Promise.all([
+        const [github, git, vercel] = await Promise.all([
           adapters.github.read({ reference }),
           adapters.git.read({ reference: adapters.gitReference }),
+          adapters.vercel === undefined
+            ? Promise.resolve(undefined)
+            : adapters.vercel.read({ reference: project.deploymentIdentifiers.vercel ?? "" }),
         ]);
         repositoryCenters.set(
           projectId,
@@ -151,6 +156,7 @@ export async function createProductionControlPlane(options: {
             project,
             github,
             git,
+            ...(vercel === undefined ? {} : { vercel }),
             gitSourceReference: adapters.gitReference,
             now: now(),
           }),
