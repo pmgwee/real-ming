@@ -94,6 +94,7 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 | Activate RM-15 candidate | Started image `sha256:0ed353723aa4…`; Telegram proven from a phone with the Lenovo shut. | Approved and executed 31 Aug. | ✅ Done |
 | Off-host backup | An Azure Storage account and a narrowly scoped role assignment, so the 33 Work Items survive losing the VM. | **Not yet.** Local backup meets every acceptance criterion, and a storage account is Azure-specific against your day-31 plan. Worth revisiting before teardown. | ⏳ Open |
 | Select RM-17 Personal Context item | One bounded file or allowlisted Notion page plus source metadata for the first Candidate Envelope. | **Choose exactly one item using the runbook.** | ⏳ Waiting on CEO |
+| Open Tracer 1 milestone PR | Reviewable `feat/tracer-1-daily-operations` increment containing RM-07…RM-16. | **Open a PR for review; do not merge to `main` without separate approval.** | ⏳ Waiting on CEO |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
