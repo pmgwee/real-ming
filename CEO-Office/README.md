@@ -12,8 +12,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **21 of 44** *(RM-19 closed; RM-20 next)* |
-| Startable by an agent right now | **RM-20 (#21)** — Broker cited Agent Brain evidence for DuitSini |
+| Phase 3 tickets closed | **22 of 44** *(RM-20 closed; RM-21 next)* |
+| Startable by an agent right now | **RM-21 (#22)** — Run Local-Only Work through the Lenovo private worker |
 | Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
