@@ -158,6 +158,13 @@ import {
   type PersonalContextSourceValue,
 } from "../knowledge/personal-context-ingestion.js";
 import {
+  createPersonalContextProjectionBroker,
+  type PersonalContextDrillDownRequest,
+  type PersonalContextProjection,
+  type PersonalContextProjectionBroker,
+  type PersonalContextProjectionRequest,
+} from "../knowledge/personal-context-projection.js";
+import {
   createExceptionNoticeRhythm,
   type ExceptionNotice,
   type ExceptionNoticeAdmission,
@@ -424,6 +431,11 @@ export interface RealMingSystemHarness {
   ): string;
   personalContextStagingFiles(): readonly string[];
   purgePersonalContext(at?: string): readonly string[];
+  servePersonalContextProjection(
+    request: PersonalContextProjectionRequest,
+  ): PersonalContextProjection;
+  drillDownPersonalContext(request: PersonalContextDrillDownRequest): string;
+  personalContextAuditTrail(workItemId: string): readonly AuditEvent[];
   setPersonalContextSource(
     sourceKey: string,
     value: PersonalContextSourceValue,
@@ -730,6 +742,7 @@ export function createRealMingSystemHarness(options: {
   const personalContextReader =
     options.personalContext?.sourceReader ?? controlledPersonalContextReader;
   let personalContext: PersonalContextIngestion | undefined;
+  let personalContextProjection: PersonalContextProjectionBroker | undefined;
   try {
     personalContext =
       options.personalContext === undefined
@@ -742,6 +755,30 @@ export function createRealMingSystemHarness(options: {
             allowlist: options.personalContext.allowlist,
             sourceReader: personalContextReader,
             ...(options.now === undefined ? {} : { now: options.now }),
+          });
+    personalContextProjection =
+      personalContext === undefined
+        ? undefined
+        : createPersonalContextProjectionBroker({
+            ingestion: personalContext,
+            ...(options.now === undefined ? {} : { now: options.now }),
+            recordAudit: (workItemId, type, occurredAt, details) => {
+              const workItem = state.workItem(workItemId);
+              if (workItem === undefined) {
+                throw new Error("The Personal Context projection Work Item scope was not found.");
+              }
+              const executive = details["executive"];
+              if (
+                typeof executive === "string" &&
+                workItem.accountableExecutive !== executive &&
+                !workItem.collaboratingExecutives.some(
+                  (assignment) => assignment.executive === executive,
+                )
+              ) {
+                throw new Error("The Personal Context projection Executive is outside the Work Item scope.");
+              }
+              state.recordAuditEvent(workItemId, type, occurredAt, details);
+            },
           });
   } catch (error) {
     state.close();
@@ -1204,6 +1241,22 @@ export function createRealMingSystemHarness(options: {
       }
       return personalContext.purgeExpired(at);
     },
+    servePersonalContextProjection: (request) => {
+      if (personalContextProjection === undefined) {
+        throw new Error("This harness was not configured for Personal Context.");
+      }
+      return personalContextProjection.serve(request);
+    },
+    drillDownPersonalContext: (request) => {
+      if (personalContextProjection === undefined) {
+        throw new Error("This harness was not configured for Personal Context.");
+      }
+      return personalContextProjection.drillDown(request);
+    },
+    personalContextAuditTrail: (workItemId) =>
+      state
+        .auditTrail(workItemId)
+        .filter((event) => event.type.startsWith("personal-context.")),
     setPersonalContextSource: (sourceKey, value) => {
       if (personalContext === undefined) {
         throw new Error("This harness was not configured for Personal Context.");

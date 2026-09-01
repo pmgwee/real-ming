@@ -669,6 +669,16 @@ export class OperationsState {
     }));
   }
 
+  /** Append a scoped audit event for brokered reads that are not Work Item effects. */
+  recordAuditEvent(
+    workItemId: string,
+    type: AuditEvent["type"],
+    occurredAt: string,
+    details: Readonly<Record<string, unknown>>,
+  ): void {
+    this.#appendAudit(workItemId, type, occurredAt, details);
+  }
+
   telegramAuditTrail(): TelegramAuditEvent[] {
     const rows = this.#database
       .prepare(

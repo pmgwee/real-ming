@@ -395,7 +395,9 @@ export interface AuditEvent {
     | "approval.requested"
     | "approval.granted"
     | "approval.invalidated"
-    | "standing-authority.granted";
+    | "standing-authority.granted"
+    | "personal-context.projection-served"
+    | "personal-context.raw-drilldown";
   readonly occurredAt: string;
   readonly details: Readonly<Record<string, unknown>>;
 }
