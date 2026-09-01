@@ -29,6 +29,12 @@ import { OperationsState } from "../operations/operations-state.js";
 import type { DashboardServer } from "../dashboard/dashboard-server.js";
 import { createDashboardServer } from "../dashboard/dashboard-server.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
+import {
+  createProjectEvidenceBroker,
+  type AgentBrainEvidenceProvider,
+  type ProjectEvidenceBindingRequest,
+  type ProjectEvidenceBroker,
+} from "../evidence/evidence-broker.js";
 import { createTelegramFrontDoor } from "../telegram/telegram-front-door.js";
 import {
   createControlPlaneSupervisor,
@@ -73,6 +79,9 @@ const refusingResponder: QuestionResponder = {
 
 export interface DailyOperationsControlPlane {
   readonly dashboardOrigin: string;
+  readonly projectPortfolio: ProjectPortfolio | undefined;
+  readonly projectEvidence: ProjectEvidenceBroker | undefined;
+  bindPortfolioProject(request: ProjectEvidenceBindingRequest): void;
   runCycle(): Promise<ControlPlaneCycle>;
   run(): Promise<void>;
   stop(): void;
@@ -89,6 +98,7 @@ export async function createDailyOperationsControlPlane(options: {
   readonly statePath: string;
   readonly masterTasks: MasterTasksStore;
   readonly portfolio?: ProjectPortfolio;
+  readonly evidenceProvider?: AgentBrainEvidenceProvider;
   readonly telegram: TelegramProviderAdapter;
   readonly ceoTelegramId: string;
   readonly ceoTelegramChatId: string;
@@ -104,6 +114,17 @@ export async function createDailyOperationsControlPlane(options: {
 }): Promise<DailyOperationsControlPlane> {
   const now = options.now ?? (() => new Date().toISOString());
   const state = new OperationsState(options.statePath);
+  const projectEvidence =
+    options.evidenceProvider === undefined || options.portfolio === undefined
+      ? undefined
+      : createProjectEvidenceBroker({
+          state,
+          portfolio: options.portfolio,
+          provider: options.evidenceProvider,
+          now,
+          recordAudit: (workItemId, type, occurredAt, details) =>
+            state.recordAuditEvent(workItemId, type, occurredAt, details),
+        });
   const projection = new MasterTasksProjection(state, options.masterTasks);
   // The rhythm needs the front door, which needs the gateway, so it cannot
   // exist yet. Bound late rather than reordered, because the gateway must not
@@ -249,6 +270,7 @@ export async function createDailyOperationsControlPlane(options: {
     state,
     gateway,
     ...(options.portfolio === undefined ? {} : { portfolio: options.portfolio }),
+    ...(projectEvidence === undefined ? {} : { projectEvidence }),
     credentials: [
       {
         actorId: "ceo:ming",
@@ -345,6 +367,14 @@ export async function createDailyOperationsControlPlane(options: {
 
   return {
     dashboardOrigin: dashboard.origin,
+    projectPortfolio: options.portfolio,
+    projectEvidence,
+    bindPortfolioProject(request) {
+      if (projectEvidence === undefined) {
+        throw new Error("This control plane was not configured with Project Evidence.");
+      }
+      projectEvidence.bind(request);
+    },
     runCycle: () => supervisor.runCycle(),
     run: () => supervisor.run(),
     stop: () => supervisor.stop(),

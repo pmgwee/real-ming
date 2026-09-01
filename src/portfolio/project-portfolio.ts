@@ -250,6 +250,12 @@ export class ProjectPortfolio {
         record_json TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+
+      CREATE TABLE IF NOT EXISTS project_work_item_bindings (
+        work_item_id TEXT PRIMARY KEY,
+        project_id TEXT NOT NULL,
+        FOREIGN KEY (project_id) REFERENCES project_portfolio(id)
+      );
     `);
   }
 
@@ -282,6 +288,27 @@ export class ProjectPortfolio {
       .prepare("SELECT record_json FROM project_portfolio ORDER BY rowid ASC")
       .all() as unknown as { record_json: string }[];
     return rows.map((row) => refreshProject(parseProject(row.record_json), this.#now()));
+  }
+
+  bindWorkItem(workItemId: string, projectId: string): void {
+    if (workItemId.trim().length === 0) throw new Error("A Work Item binding requires an id.");
+    if (this.project(projectId) === undefined) {
+      throw new Error(`Portfolio Project ${projectId} was not found.`);
+    }
+    this.#database
+      .prepare(
+        `INSERT INTO project_work_item_bindings (work_item_id, project_id)
+         VALUES (?, ?)
+         ON CONFLICT(work_item_id) DO UPDATE SET project_id = excluded.project_id`,
+      )
+      .run(workItemId, projectId);
+  }
+
+  projectForWorkItem(workItemId: string): string | undefined {
+    const row = this.#database
+      .prepare("SELECT project_id FROM project_work_item_bindings WHERE work_item_id = ?")
+      .get(workItemId) as unknown as { project_id: string } | undefined;
+    return row?.project_id;
   }
 
   reconcile(id: string): PortfolioReconciliation {

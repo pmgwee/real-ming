@@ -42,8 +42,38 @@ import {
   type GoogleAccessTokens,
 } from "../runtime/google-access-token.js";
 import type { VaultSecretReader } from "../runtime/credential-resolver.js";
+import type {
+  AgentBrainEvidenceProvider,
+  AgentBrainEvidenceReadResult,
+} from "../evidence/evidence-broker.js";
 
 export const contractSecretFixture = "provider-secret-must-never-be-reported";
+
+export interface AgentBrainEvidenceContractHarness {
+  readonly provider: AgentBrainEvidenceProvider;
+  setResult(result: AgentBrainEvidenceReadResult): void;
+  readCount(): number;
+}
+
+/** Controlled Agent Brain edge for broker contract tests; it has no write API. */
+export function createAgentBrainEvidenceContractHarness(
+  initial: AgentBrainEvidenceReadResult,
+): AgentBrainEvidenceContractHarness {
+  let result = initial;
+  let reads = 0;
+  return {
+    provider: {
+      read: async () => {
+        reads += 1;
+        return result;
+      },
+    },
+    setResult: (next) => {
+      result = next;
+    },
+    readCount: () => reads,
+  };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);

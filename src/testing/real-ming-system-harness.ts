@@ -177,6 +177,14 @@ import {
   type PortfolioProjectInput,
   type PortfolioReconciliation,
 } from "../portfolio/project-portfolio.js";
+import {
+  createProjectEvidenceBroker,
+  type AgentBrainEvidenceProvider,
+  type ProjectEvidenceBroker,
+  type ProjectEvidenceRequest,
+  type ProjectEvidenceCandidateResult,
+  type ProjectEvidenceResult,
+} from "../evidence/evidence-broker.js";
 
 import {
   createDailyOperationsScheduler,
@@ -450,6 +458,12 @@ export interface RealMingSystemHarness {
   portfolioProject(id: string): PortfolioProject | undefined;
   portfolioProjects(): readonly PortfolioProject[];
   portfolioReconciliation(id: string): PortfolioReconciliation;
+  bindPortfolioProject(workItemId: string, projectId: string): void;
+  serveProjectEvidence(request: ProjectEvidenceRequest): Promise<ProjectEvidenceResult>;
+  captureProjectEvidenceCandidate(
+    request: ProjectEvidenceRequest,
+  ): Promise<ProjectEvidenceCandidateResult>;
+  evidenceAuditTrail(workItemId: string): readonly AuditEvent[];
   startDashboard(
     credentials: readonly DashboardCredential[],
   ): Promise<DashboardServer>;
@@ -708,12 +722,31 @@ export function createRealMingSystemHarness(options: {
     readonly allowlist: readonly PersonalContextAllowlistEntry[];
     readonly sourceReader?: PersonalContextSourceReader;
   };
+  readonly evidence?: {
+    readonly provider: AgentBrainEvidenceProvider;
+  };
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
   const portfolio = new ProjectPortfolio(
     options.statePath,
     options.now,
   );
+  const evidenceBroker: ProjectEvidenceBroker | undefined =
+    options.evidence === undefined
+      ? undefined
+      : createProjectEvidenceBroker({
+          state,
+          portfolio,
+          provider: options.evidence.provider,
+          ...(options.now === undefined ? {} : { now: options.now }),
+          recordAudit: (workItemId, type, occurredAt, details) =>
+            state.recordAuditEvent(
+              workItemId,
+              type,
+              occurredAt,
+              details,
+            ),
+        });
   const masterTaskRecords = new Map<string, MasterTaskRecord>();
   let nextMasterTasksUpsertError: string | undefined;
   let masterTasksUpsertFailure: string | undefined;
@@ -1282,8 +1315,43 @@ export function createRealMingSystemHarness(options: {
     portfolioProject: (id) => portfolio.project(id),
     portfolioProjects: () => portfolio.projects(),
     portfolioReconciliation: (id) => portfolio.reconcile(id),
+    bindPortfolioProject: (workItemId, projectId) => {
+      if (evidenceBroker === undefined) {
+        portfolio.bindWorkItem(workItemId, projectId);
+        return;
+      }
+      evidenceBroker.bind({
+        actorId: "ceo:ming",
+        workspaceId: "workspace:real-ming",
+        workItemId,
+        portfolioProjectId: projectId,
+      });
+    },
+    serveProjectEvidence: (request) => {
+      if (evidenceBroker === undefined) {
+        throw new Error("This harness was not configured for Project Evidence.");
+      }
+      return evidenceBroker.serve(request);
+    },
+    captureProjectEvidenceCandidate: (request) => {
+      if (evidenceBroker === undefined) {
+        throw new Error("This harness was not configured for Project Evidence.");
+      }
+      return evidenceBroker.captureCandidate(request);
+    },
+    evidenceAuditTrail: (workItemId) =>
+      state
+        .auditTrail(workItemId)
+        .filter((event) => event.type.startsWith("project-evidence.")),
     startDashboard: (credentials) =>
-      createDashboardServer({ state, gateway, credentials, now: clock, portfolio }),
+      createDashboardServer({
+        state,
+        gateway,
+        credentials,
+        now: clock,
+        portfolio,
+        ...(evidenceBroker === undefined ? {} : { projectEvidence: evidenceBroker }),
+      }),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),
     recordWorkItemCommitment: (request) =>
       gateway.recordWorkItemCommitment(request),

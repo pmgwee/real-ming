@@ -16,6 +16,8 @@ import { providerFailure } from "../providers/adapter-contract.js";
 import { createGoogleAccessTokens } from "./google-access-token.js";
 import { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { PortfolioProjectInput } from "../portfolio/project-portfolio.js";
+import type { AgentBrainEvidenceProvider } from "../evidence/evidence-broker.js";
+import type { ProjectEvidenceBindingRequest } from "../evidence/evidence-broker.js";
 import { resolveControlPlaneCredentials } from "./credential-resolver.js";
 import {
   createDailyOperationsControlPlane,
@@ -39,6 +41,8 @@ export async function createProductionControlPlane(options: {
   readonly portfolioPath?: string;
   /** CEO-provided catalogue records; provider-owned records are never copied. */
   readonly portfolioProjects?: readonly PortfolioProjectInput[];
+  /** Optional read-only Agent Brain adapter; no provider write capability is accepted. */
+  readonly evidenceProvider?: AgentBrainEvidenceProvider;
   readonly vaultName?: string;
   readonly dashboardHost?: string;
   readonly dashboardPort?: number;
@@ -118,6 +122,9 @@ export async function createProductionControlPlane(options: {
       statePath: options.statePath,
       masterTasks,
       portfolio,
+      ...(options.evidenceProvider === undefined
+        ? {}
+        : { evidenceProvider: options.evidenceProvider }),
       telegram,
       ceoTelegramId: required("REAL_MING_TELEGRAM_CEO_ID"),
       ceoTelegramChatId: required("REAL_MING_TELEGRAM_CEO_ID"),
@@ -158,6 +165,10 @@ export async function createProductionControlPlane(options: {
     });
     return {
       dashboardOrigin: controlPlane.dashboardOrigin,
+      projectPortfolio: controlPlane.projectPortfolio,
+      projectEvidence: controlPlane.projectEvidence,
+      bindPortfolioProject: (request: ProjectEvidenceBindingRequest) =>
+        controlPlane.bindPortfolioProject(request),
       runCycle: () => controlPlane.runCycle(),
       run: () => controlPlane.run(),
       stop: () => controlPlane.stop(),

@@ -10,6 +10,7 @@ import {
 } from "./dashboard-read-model.js";
 import { renderDashboardPage } from "./dashboard-page.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
+import type { ProjectEvidenceBroker } from "../evidence/evidence-broker.js";
 
 export const dashboardSessionCookie = "real_ming_session";
 
@@ -161,6 +162,8 @@ export function createDashboardServer(options: {
   readonly state: OperationsState;
   readonly gateway: OperationsGateway;
   readonly portfolio?: ProjectPortfolio;
+  /** Optional CEO-governed binding and evidence capture boundary. */
+  readonly projectEvidence?: ProjectEvidenceBroker;
   readonly credentials: readonly DashboardCredential[];
   /**
    * The operating clock. Without it the dashboard would report scheduler
@@ -249,6 +252,31 @@ export function createDashboardServer(options: {
             actorId: session.actorId,
           } as never);
           sendJson(response, 200, workItem);
+          return;
+        }
+
+        if (
+          request.method === "POST" &&
+          url.pathname === "/api/project-evidence-bindings"
+        ) {
+          if (options.projectEvidence === undefined) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const body = await readJsonBody(request);
+          if (!ownsWorkItem(body["workItemId"])) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const workItemId = String(body["workItemId"]);
+          const portfolioProjectId = String(body["portfolioProjectId"]);
+          options.projectEvidence.bind({
+            actorId: session.actorId,
+            workspaceId: session.workspaceId,
+            workItemId,
+            portfolioProjectId,
+          });
+          sendJson(response, 200, { workItemId, portfolioProjectId });
           return;
         }
 
