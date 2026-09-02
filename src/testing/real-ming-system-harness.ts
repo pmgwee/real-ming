@@ -1411,7 +1411,7 @@ export function createRealMingSystemHarness(options: {
   const schedulerJobs = entertainmentEmailDigest === undefined
     ? schedulerJobInventory
     : [...schedulerJobInventory, entertainmentEmailDigestJobDefinition];
-  const runEntertainmentEmailDigest = async (): Promise<void> => {
+  const runEntertainmentEmailDigestJob = async (): Promise<void> => {
     if (entertainmentEmailDigest === undefined) return;
     const result = await entertainmentEmailDigest.run();
     if (result.kind === "failed") {
@@ -1452,7 +1452,7 @@ export function createRealMingSystemHarness(options: {
         ),
         ...(entertainmentEmailDigest === undefined
           ? {}
-          : { [entertainmentEmailDigestJobName]: guarded(entertainmentEmailDigestJobName, runEntertainmentEmailDigest) }),
+          : { [entertainmentEmailDigestJobName]: guarded(entertainmentEmailDigestJobName, runEntertainmentEmailDigestJob) }),
       },
       jobs: schedulerJobs,
     });

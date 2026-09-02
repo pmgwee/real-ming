@@ -9,8 +9,8 @@ import type {
 import type { ProviderFailure } from "../providers/adapter-contract.js";
 import type { ExceptionNotice, ExceptionNoticeAdmission } from "./exception-notice-rhythm.js";
 import { operatingDayOf } from "./daily-schedule.js";
-
-export const entertainmentEmailDigestJob = "entertainment-email-digest";
+import { entertainmentEmailDigestJobName } from "./daily-operations-scheduler.js";
+import type { EmailMessage } from "../providers/email-provider-adapter.js";
 
 export interface EntertainmentEmailDigest {
   readonly mailbox: string;
@@ -33,7 +33,7 @@ function digest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 }
 
-function actionableByLabel(message: { readonly labels: readonly string[] }): boolean {
+function actionableByLabel(message: EmailMessage): boolean {
   return message.labels.some((label) => ["ACTIONABLE", "IMPORTANT", "STARRED"].includes(label.toUpperCase()));
 }
 
@@ -46,7 +46,7 @@ export function createEntertainmentEmailDigestRunner(options: {
   readonly mailbox: string;
   readonly admit: (notice: ExceptionNotice) => Promise<ExceptionNoticeAdmission>;
   readonly now: () => string;
-  readonly isActionable?: (message: Parameters<EmailOperationsCoordinator["projection"]>[0]["message"]) => boolean;
+  readonly isActionable?: (message: EmailMessage) => boolean;
 }): EntertainmentEmailDigestRunner {
   const isActionable = options.isActionable ?? actionableByLabel;
   return {
@@ -71,7 +71,7 @@ export function createEntertainmentEmailDigestRunner(options: {
           mailboxKind: "entertainment",
           summary,
           workstream: "Personal Life",
-          idempotencyKey: `${entertainmentEmailDigestJob}:${message.id}`,
+          idempotencyKey: `${entertainmentEmailDigestJobName}:${message.id}`,
         });
         if (captured.kind === "denied") return captured;
         actionableProjections.push(options.coordinator.projection({
@@ -85,7 +85,7 @@ export function createEntertainmentEmailDigestRunner(options: {
       }
 
       const operatingDay = operatingDayOf(Date.parse(options.now()));
-      const idempotencyKey = `${entertainmentEmailDigestJob}:${digest({ operatingDay, mailbox: read.mailbox, messageIds: read.messages.map((message) => message.id).sort(), actionableIds: actionableProjections.map((projection) => projection.messageId).sort() })}`;
+      const idempotencyKey = `${entertainmentEmailDigestJobName}:${digest({ operatingDay, mailbox: read.mailbox, messageIds: read.messages.map((message) => message.id).sort(), actionableIds: actionableProjections.map((projection) => projection.messageId).sort() })}`;
       const digestOutput: EntertainmentEmailDigest = {
         mailbox: read.mailbox,
         mailboxKind: read.mailboxKind,
@@ -100,6 +100,12 @@ export function createEntertainmentEmailDigestRunner(options: {
         kind: "entertainment-digest",
         text: digestOutput.text,
         idempotencyKey,
+        // One operating day is one digest interruption. The scheduler retries a
+        // failed occurrence by re-reading the live mailbox, so mail arriving in
+        // between changes the content and therefore the idempotency key. The
+        // signature is what recognises the retry as the same interruption; the
+        // key still guards the payload underneath it.
+        signature: `${entertainmentEmailDigestJobName}:${operatingDay}:${read.mailbox}`,
       });
       return { kind: "digest", digest: digestOutput, admission };
     },

@@ -192,6 +192,40 @@ describe("RM-29 personal and opportunity email read-and-draft", () => {
     expect(JSON.stringify(harness.dashboardOverview({ actorId: "ceo:ming", workspaceId: "workspace:real-ming" }))).not.toContain(message.body);
   });
 
+  it("does not interrupt twice when mail arrives between a digest attempt and its retry", async () => {
+    // The scheduler retries the same daily occurrence after a failed delivery,
+    // and re-reads the live mailbox. A message arriving in between changes the
+    // digest content, so a content-derived key alone cannot recognise the
+    // retry as the same interruption.
+    const actionable = { ...message, id: "message-actionable-1", threadId: "thread-actionable-1", subject: "Your application status", labels: ["STARRED"] };
+    const late = { ...message, id: "message-late-1", threadId: "thread-late-1", subject: "Arrived after the first attempt" };
+    let readCount = 0;
+    const emailAdapter = adapter({
+      listMessages: async () => {
+        const identity = { provider: "gmail", workspaceId: "workspace:real-ming", accountReference: "gmail:real-ming" } as const;
+        readCount += 1;
+        const provenance = { sourceIdentity: "gmail", sourceReference: "gmail:personal@example.test", asOf: new Date(Date.parse(now) + readCount * 60_000).toISOString(), retrievedAt: now, freshness: "current" as const };
+        return { kind: "ok" as const, identity, provenance, value: readCount === 1 ? [message, actionable] : [message, actionable, late] };
+      },
+    });
+    const harness = await start(emailAdapter);
+
+    const first = await harness.runEntertainmentEmailDigest();
+    expect(first.kind).toBe("digest");
+    const interruptions = harness.telegramMessages().length;
+
+    const retry = await harness.runEntertainmentEmailDigest();
+    expect(retry.kind).toBe("digest");
+    if (retry.kind !== "digest") return;
+
+    // One operating day is one digest interruption. The late message may change
+    // the digest content, but it must not buy the CEO a second notification.
+    expect(retry.digest.idempotencyKey).not.toBe(
+      first.kind === "digest" ? first.digest.idempotencyKey : "",
+    );
+    expect(harness.telegramMessages()).toHaveLength(interruptions);
+  });
+
   it("runs the digest through the daily scheduler when Gmail is configured", async () => {
     const directory = mkdtempSync(join(tmpdir(), "real-ming-rm30-scheduler-"));
     directories.push(directory);
