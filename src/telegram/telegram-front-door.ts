@@ -83,6 +83,11 @@ function parseChangeReason(
     : { controlId, reason };
 }
 
+function parsePromotionApproval(text: string): string | undefined {
+  const match = /^\/approve-promotion\s+(\S+)$/su.exec(text.trim());
+  return match?.[1];
+}
+
 function outboundDigest(message: {
   readonly chatId: string;
   readonly text: string;
@@ -433,6 +438,24 @@ export function createTelegramFrontDoor(options: {
       return;
     }
 
+    if (result.kind === "approval-rejected") {
+      await sendDurably({
+        chatId: options.ceoTelegramChatId,
+        text: `This promotion Approval cannot be used (${result.reason}).`,
+        idempotencyKey: `telegram:approval:${update.updateId}:rejected`,
+      });
+      return;
+    }
+
+    if (result.kind === "approval-applied") {
+      await sendDurably({
+        chatId: options.ceoTelegramChatId,
+        text: `Approve Promotion · Approval ${result.approval.id} · ${result.approval.targetVersion} granted.`,
+        idempotencyKey: `telegram:approval:${update.updateId}:applied`,
+      });
+      return;
+    }
+
     await sendDurably({
       chatId: options.ceoTelegramChatId,
       text: `${controlLabels[result.decision]} · Work Item ${result.workItem.id} · ${result.workItem.state}.`,
@@ -480,6 +503,19 @@ export function createTelegramFrontDoor(options: {
           ? "This Telegram update type is not supported."
           : "Sensitive Secrets cannot be accepted through Telegram.",
       idempotencyKey: `telegram:reply:update:${updateId}:rejected`,
+    });
+    return recordIngress(updateId, result);
+  };
+
+  const rejectPromotionApproval = async (
+    updateId: number,
+    reason: Extract<TelegramIngressResult, { kind: "approval-rejected" }>['reason'],
+  ): Promise<TelegramIngressResult> => {
+    const result = { kind: "approval-rejected" as const, reason };
+    await sendDurably({
+      chatId: options.ceoTelegramChatId,
+      text: `This promotion Approval cannot be used (${reason}).`,
+      idempotencyKey: `telegram:approval:${updateId}:rejected`,
     });
     return recordIngress(updateId, result);
   };
@@ -862,6 +898,38 @@ export function createTelegramFrontDoor(options: {
         detectSensitiveFields({ text: update.message.text }).length > 0
       ) {
         return rejectIngress(update.updateId, "sensitive-secret-rejected");
+      }
+
+      if ("message" in update) {
+        const approvalId = parsePromotionApproval(update.message.text);
+        if (approvalId !== undefined) {
+          const approval = options.state.approval(approvalId);
+          if (approval === undefined) {
+            return rejectPromotionApproval(update.updateId, "approval-not-found");
+          }
+          if (approval.scope !== "code-promotion" || approval.targetType !== "deployment-candidate") {
+            return rejectPromotionApproval(update.updateId, "promotion-approval-required");
+          }
+          if (approval.state !== "requested") {
+            return rejectPromotionApproval(update.updateId, "approval-not-pending");
+          }
+          const issuedAt = canonicalIsoTimestamp(now());
+          if (issuedAt === undefined) {
+            return rejectPromotionApproval(update.updateId, "approval-not-pending");
+          }
+          const granted = await options.gateway.grantApproval({
+            approvalId,
+            actorId: ceoOwnership.actorId,
+            expiresAt: new Date(issuedAt + reviewControlTtlMs).toISOString(),
+          });
+          const result = { kind: "approval-applied" as const, approval: granted };
+          await sendDurably({
+            chatId: options.ceoTelegramChatId,
+            text: `Approve Promotion · Approval ${granted.id} · ${granted.targetVersion} granted.`,
+            idempotencyKey: `telegram:approval:${update.updateId}:applied`,
+          });
+          return recordIngress(update.updateId, result);
+        }
       }
 
       if ("callbackQuery" in update) {

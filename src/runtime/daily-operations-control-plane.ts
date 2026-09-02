@@ -45,6 +45,16 @@ import {
   type DeploymentCandidateStore,
 } from "../portfolio/deployment-candidate.js";
 import {
+  createDeploymentPromotionCoordinator,
+  type DeploymentPromotionApprovalRequest,
+  type DeploymentPromotionApprovalResult,
+  type DeploymentPromotionCoordinator,
+  type DeploymentPromotionExecutor,
+  type DeploymentPromotionRequest,
+  type DeploymentPromotionResult,
+  type DeploymentPromotionStore,
+} from "../portfolio/deployment-promotion.js";
+import {
   createProjectEvidenceBroker,
   type AgentBrainEvidenceProvider,
   type ProjectEvidenceBindingRequest,
@@ -99,6 +109,8 @@ export interface DailyOperationsControlPlane {
   bindPortfolioProject(request: ProjectEvidenceBindingRequest): void;
   prepareDeploymentCandidate(input: DeploymentCandidateBuildInput): DeploymentCandidateBuildResult;
   deploymentCandidate(id: string): DeploymentCandidate | undefined;
+  requestDeploymentPromotionApproval(input: DeploymentPromotionApprovalRequest): Promise<DeploymentPromotionApprovalResult>;
+  promoteDeploymentCandidate(input: DeploymentPromotionRequest): Promise<DeploymentPromotionResult>;
   runCycle(): Promise<ControlPlaneCycle>;
   run(): Promise<void>;
   stop(): void;
@@ -121,6 +133,10 @@ export async function createDailyOperationsControlPlane(options: {
   readonly refreshRepositoryCenters?: () => Promise<ReadonlyMap<string, RepositoryCenterView>>;
   /** Durable local record for review-ready candidates; no provider write is implied. */
   readonly deploymentCandidateStore?: DeploymentCandidateStore;
+  /** Durable append-only promotion events; no provider write is implied. */
+  readonly deploymentPromotionStore?: DeploymentPromotionStore;
+  /** Explicitly supplied promotion capability; omitted in the cloud-only process. */
+  readonly deploymentPromotionExecutor?: DeploymentPromotionExecutor;
   readonly evidenceProvider?: AgentBrainEvidenceProvider;
   /** Optional Lenovo/private-worker adapter for Local-Only Work. */
   readonly privateWorker?: ControlledWorker;
@@ -228,6 +244,20 @@ export async function createDailyOperationsControlPlane(options: {
     auditPseudonymKey: options.auditPseudonymKey,
     now,
   });
+  const deploymentPromotion =
+    options.deploymentCandidateStore === undefined || options.deploymentPromotionStore === undefined
+      ? undefined
+      : createDeploymentPromotionCoordinator({
+          candidates: options.deploymentCandidateStore,
+          promotions: options.deploymentPromotionStore,
+          state,
+          gateway,
+          ...(options.deploymentPromotionExecutor === undefined
+            ? {}
+            : { executor: options.deploymentPromotionExecutor }),
+          notify: (notification) => frontDoor.notify(notification),
+          now,
+        });
   const notices = createExceptionNoticeRhythm({
     state,
     notify: (notification) => frontDoor.notify(notification),
@@ -356,6 +386,12 @@ export async function createDailyOperationsControlPlane(options: {
     ...(options.repositoryCenters === undefined ? {} : { repositoryCenters: options.repositoryCenters }),
     ...(options.refreshRepositoryCenters === undefined ? {} : { refreshRepositoryCenters: options.refreshRepositoryCenters }),
     ...(projectEvidence === undefined ? {} : { projectEvidence }),
+    ...(options.deploymentCandidateStore === undefined
+      ? {}
+      : {
+          deploymentCandidates: options.deploymentCandidateStore,
+          ...(deploymentPromotion === undefined ? {} : { deploymentPromotion }),
+        }),
     credentials: [
       {
         actorId: "ceo:ming",
@@ -486,6 +522,18 @@ export async function createDailyOperationsControlPlane(options: {
       };
     },
     deploymentCandidate: (id) => options.deploymentCandidateStore?.candidate(id),
+    requestDeploymentPromotionApproval: async (input) => {
+      if (deploymentPromotion === undefined) {
+        return { kind: "rejected", reasons: ["Deployment promotion is not configured."] };
+      }
+      return deploymentPromotion.requestApproval(input);
+    },
+    promoteDeploymentCandidate: async (input) => {
+      if (deploymentPromotion === undefined) {
+        return { kind: "rejected", reasons: ["Deployment promotion is not configured."] };
+      }
+      return deploymentPromotion.promote(input);
+    },
     runCycle: () => supervisor.runCycle(),
     run: () => supervisor.run(),
     stop: () => supervisor.stop(),
@@ -495,6 +543,7 @@ export async function createDailyOperationsControlPlane(options: {
       supervisor.stop();
       await dashboard.close();
       options.deploymentCandidateStore?.close();
+      options.deploymentPromotionStore?.close();
       state.close();
     },
   };

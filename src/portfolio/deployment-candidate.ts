@@ -18,6 +18,13 @@ export const deploymentCandidateCheckNames = [
 ] as const;
 export type DeploymentCandidateCheckName = (typeof deploymentCandidateCheckNames)[number];
 
+export const deploymentCandidateAdditionalChangeScopes = [
+  "database-migration",
+  "production-data-change",
+] as const;
+export type DeploymentCandidateAdditionalChangeScope =
+  (typeof deploymentCandidateAdditionalChangeScopes)[number];
+
 export interface DeploymentCandidateCheck {
   readonly name: DeploymentCandidateCheckName;
   readonly status: "passed" | "failed";
@@ -87,6 +94,8 @@ export interface DeploymentCandidateBuildInput {
   readonly preview: DeploymentCandidatePreview;
   readonly previewVerification: DeploymentCandidatePreviewVerification;
   readonly rollback: DeploymentCandidateRollbackInformation;
+  /** Change classes that must be separately planned and approved at promotion. */
+  readonly additionalChangeScopes?: readonly DeploymentCandidateAdditionalChangeScope[];
   readonly remainingRisks: readonly string[];
   readonly now: string;
 }
@@ -129,6 +138,7 @@ export interface DeploymentCandidate {
   readonly preview: DeploymentCandidatePreview;
   readonly previewVerification: DeploymentCandidatePreviewVerification;
   readonly rollback: DeploymentCandidateRollbackInformation;
+  readonly additionalChangeScopes: readonly DeploymentCandidateAdditionalChangeScope[];
   readonly outcomeReport: DeploymentCandidateOutcomeReport;
   readonly createdAt: string;
 }
@@ -158,6 +168,12 @@ function immutableCandidateJson(candidate: DeploymentCandidate): string {
     ...candidateArtifact,
     outcomeReport: outcomeReportArtifact,
   });
+}
+
+function parseDeploymentCandidate(serialized: string): DeploymentCandidate {
+  const candidate = JSON.parse(serialized) as DeploymentCandidate;
+  // Candidates persisted by RM-27 do not carry RM-28's optional scope list.
+  return { ...candidate, additionalChangeScopes: candidate.additionalChangeScopes ?? [] };
 }
 
 /** Durable, append-only local record of review-ready candidates. */
@@ -195,11 +211,11 @@ export class SqliteDeploymentCandidateStore implements DeploymentCandidateStore 
       .prepare("SELECT candidate_json FROM deployment_candidates WHERE id = ?")
       .get(candidate.id) as unknown as { candidate_json: string } | undefined;
     if (existing !== undefined) {
-      const existingCandidate = JSON.parse(existing.candidate_json) as DeploymentCandidate;
+      const existingCandidate = parseDeploymentCandidate(existing.candidate_json);
       if (immutableCandidateJson(existingCandidate) !== immutableCandidateJson(candidate)) {
         throw new Error("Deployment Candidate identity collision.");
       }
-      return JSON.parse(existing.candidate_json) as DeploymentCandidate;
+      return parseDeploymentCandidate(existing.candidate_json);
     }
     this.#database
       .prepare(`INSERT INTO deployment_candidates (id, project_id, work_item_id, exact_commit_sha, candidate_json, created_at)
@@ -212,14 +228,14 @@ export class SqliteDeploymentCandidateStore implements DeploymentCandidateStore 
     const row = this.#database
       .prepare("SELECT candidate_json FROM deployment_candidates WHERE id = ?")
       .get(id) as unknown as { candidate_json: string } | undefined;
-    return row === undefined ? undefined : JSON.parse(row.candidate_json) as DeploymentCandidate;
+    return row === undefined ? undefined : parseDeploymentCandidate(row.candidate_json);
   }
 
   candidates(workItemId?: string): readonly DeploymentCandidate[] {
     const rows = workItemId === undefined
       ? this.#database.prepare("SELECT candidate_json FROM deployment_candidates ORDER BY created_at, id").all()
       : this.#database.prepare("SELECT candidate_json FROM deployment_candidates WHERE work_item_id = ? ORDER BY created_at, id").all(workItemId);
-    return (rows as unknown as { candidate_json: string }[]).map((row) => JSON.parse(row.candidate_json) as DeploymentCandidate);
+    return (rows as unknown as { candidate_json: string }[]).map((row) => parseDeploymentCandidate(row.candidate_json));
   }
 
   close(): void {
@@ -327,6 +343,8 @@ export function buildDeploymentCandidate(
   if (Date.parse(input.now) - Date.parse(input.previewVerification.asOf) > providerStalenessThresholdMs) reasons.push("preview verification evidence is stale");
   if (input.rollback.commitSha === input.taskBranch.headSha) reasons.push("rollback target must be a different exact commit");
   if (Date.parse(input.now) - Date.parse(input.rollback.asOf) < 0) reasons.push("rollback evidence cannot be from the future");
+  const additionalChangeScopes = input.additionalChangeScopes ?? [];
+  if (new Set(additionalChangeScopes).size !== additionalChangeScopes.length) reasons.push("deployment candidate additional change scopes must be unique");
 
   const serializedInput = JSON.stringify(input);
   if (detectSensitiveFields({ candidateEvidence: serializedInput }).length > 0) reasons.push("candidate evidence contains a Sensitive Secret");
@@ -374,6 +392,7 @@ export function buildDeploymentCandidate(
       preview: input.preview,
       previewVerification: input.previewVerification,
       rollback: input.rollback,
+      additionalChangeScopes,
       outcomeReport,
       createdAt: input.now,
     },

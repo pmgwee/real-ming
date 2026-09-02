@@ -12,8 +12,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **26 of 44** *(RM-25 closed; RM-26 next)* |
-| Startable by an agent right now | **RM-26 (#27)** — Show DuitSini Vercel deployment lineage |
+| Phase 3 tickets closed | **29 of 44** *(RM-28 closed; RM-29 next)* |
+| Startable by an agent right now | **RM-29 (#30)** — Connect personal and opportunity email read-and-draft |
 | Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
@@ -150,6 +150,24 @@ unavailable Git is explicit and never reported clean. The production CLI wires
 optional read-only GitHub and local-Git adapters, and dashboard reads refresh
 observations. RM-26 owns Vercel deployment lineage; no production write
 capability was added.
+
+**RM-26 is complete.** Vercel deployment lineage is now read-only, provenance
+bound to the exact deployment and commit, and rendered beside GitHub/Git
+observations. No deployment write capability was added.
+
+**RM-27 is complete.** A verified DuitSini Deployment Candidate is durable and
+append-only, bound to one exact task-branch commit, draft pull request, checks,
+preview verification, and known rollback target. Candidate creation performs no
+merge, deployment, or production-data effect.
+
+**RM-28 is complete in the controlled harness.** Approve Promotion is bound to
+the exact repository, pull request, and commit shown in Telegram and the CEO
+dashboard. Database migrations and production-data changes require complete,
+separately scoped plans and Approvals. A read-only freshness check runs before
+the merge effect; success requires exact live verification and a final Outcome
+Report; failed verification records an auditable rollback. The production
+composition intentionally has no live promotion executor yet, so it refuses
+activation until a separately approved provider capability is installed.
 
 **RM-17’s CEO selection is recorded and the bounded Personal Context ingestion
 boundary is implemented and proven in the controlled harness.** The eventual

@@ -143,6 +143,17 @@ export type TelegramIngressResult =
         | "control-used"
         | "control-expired"
         | "target-changed";
+    }
+  | {
+      readonly kind: "approval-applied";
+      readonly approval: import("../operations/contracts.js").Approval;
+    }
+  | {
+      readonly kind: "approval-rejected";
+      readonly reason:
+        | "approval-not-found"
+        | "approval-not-pending"
+        | "promotion-approval-required";
     };
 
 export interface TelegramOutboundMessage {

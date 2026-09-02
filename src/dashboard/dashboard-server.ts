@@ -12,6 +12,12 @@ import { renderDashboardPage } from "./dashboard-page.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { ProjectEvidenceBroker } from "../evidence/evidence-broker.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
+import type { DeploymentCandidateStore } from "../portfolio/deployment-candidate.js";
+import type {
+  DeploymentPromotionApprovalRequest,
+  DeploymentPromotionCoordinator,
+  DeploymentPromotionRequest,
+} from "../portfolio/deployment-promotion.js";
 
 export const dashboardSessionCookie = "real_ming_session";
 
@@ -169,6 +175,8 @@ export function createDashboardServer(options: {
   readonly refreshRepositoryCenters?: () => Promise<ReadonlyMap<string, RepositoryCenterView>>;
   /** Optional CEO-governed binding and evidence capture boundary. */
   readonly projectEvidence?: ProjectEvidenceBroker;
+  readonly deploymentCandidates?: DeploymentCandidateStore;
+  readonly deploymentPromotion?: DeploymentPromotionCoordinator;
   readonly credentials: readonly DashboardCredential[];
   /**
    * The operating clock. Without it the dashboard would report scheduler
@@ -190,6 +198,7 @@ export function createDashboardServer(options: {
       options.refreshRepositoryCenters === undefined
         ? options.repositoryCenters
         : await options.refreshRepositoryCenters(),
+      options.deploymentCandidates,
     );
 
   const server: Server = createServer((request, response) => {
@@ -221,6 +230,50 @@ export function createDashboardServer(options: {
 
         if (request.method === "GET" && url.pathname === "/api/overview") {
           sendJson(response, 200, await overviewFor(session));
+          return;
+        }
+
+        const candidateApprovalMatch = url.pathname.match(/^\/api\/deployment-candidates\/([^/]+)\/approval$/u);
+        if (request.method === "POST" && candidateApprovalMatch !== null) {
+          if (options.deploymentPromotion === undefined) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const candidateId = decodeURIComponent(candidateApprovalMatch[1] ?? "");
+          const candidate = options.deploymentCandidates?.candidate(candidateId);
+          if (candidate === undefined || !ownsWorkItem(candidate.workItemId)) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const body = await readJsonBody(request);
+          const result = await options.deploymentPromotion.requestApproval({
+            candidateId,
+            ...(Array.isArray(body["additionalPlans"])
+              ? { additionalPlans: body["additionalPlans"] as NonNullable<DeploymentPromotionApprovalRequest["additionalPlans"]> }
+              : {}),
+          });
+          sendJson(response, 200, result);
+          return;
+        }
+
+        const candidatePromotionMatch = url.pathname.match(/^\/api\/deployment-candidates\/([^/]+)\/promote$/u);
+        if (request.method === "POST" && candidatePromotionMatch !== null) {
+          if (options.deploymentPromotion === undefined) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const candidateId = decodeURIComponent(candidatePromotionMatch[1] ?? "");
+          const candidate = options.deploymentCandidates?.candidate(candidateId);
+          if (candidate === undefined || !ownsWorkItem(candidate.workItemId)) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const body = await readJsonBody(request);
+          const result = await options.deploymentPromotion.promote({
+            ...(body as unknown as DeploymentPromotionRequest),
+            candidateId,
+          });
+          sendJson(response, 200, result);
           return;
         }
 

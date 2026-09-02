@@ -59,6 +59,24 @@ export function renderDashboardPage(overview: DashboardOverview): string {
     )
     .join("");
 
+  const deploymentCandidateRows = overview.deploymentCandidates
+    .map(
+      (candidate) =>
+        `<tr data-deployment-candidate-id="${escapeHtml(candidate.id)}">` +
+        cell(candidate.projectName) +
+        `<td data-field="repositorySourceReference">${escapeHtml(candidate.repositorySourceReference)}</td>` +
+        `<td data-field="pullRequestSourceReference">${escapeHtml(candidate.pullRequestSourceReference)}</td>` +
+        `<td data-field="exactCommitSha">${escapeHtml(candidate.exactCommitSha)}</td>` +
+        `<td data-field="pullRequestNumber">#${candidate.pullRequestNumber}</td>` +
+        `<td data-field="preview">${escapeHtml(`${candidate.previewDeploymentId} ${candidate.previewDomain}`)}</td>` +
+        `<td data-field="verificationStatus">${escapeHtml(candidate.verificationStatus)}</td>` +
+        `<td data-field="rollbackCommitSha">${escapeHtml(candidate.rollbackCommitSha)}</td>` +
+        `<td data-field="requiredDecisions">${escapeHtml(candidate.requiredDecisions.join("; "))}</td>` +
+        `<td data-field="approvals">${escapeHtml(candidate.approvals.map((approval) => `${approval.scope}:${approval.id}:${approval.state}:${approval.targetVersion}${approval.expiresAt === null ? "" : ` exp=${approval.expiresAt}`}`).join("; "))}</td>` +
+        `</tr>`,
+    )
+    .join("");
+
   const controlPlaneRows = overview.controlPlane
     .map(
       (component) =>
@@ -210,6 +228,12 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <section aria-labelledby="audit-title">
 <h2 id="audit-title">Audit</h2>
 <table id="audit-events"><tbody>${auditRows}</tbody></table>
+</section>
+
+<section aria-labelledby="deployment-candidates-title">
+<h2 id="deployment-candidates-title">Approve Promotion · Deployment Candidates</h2>
+<p>Each row is the exact repository, pull request, commit, preview, rollback target, and Approval identity. Promotion is available only through the candidate-bound API.</p>
+<table id="deployment-candidates"><tbody>${deploymentCandidateRows}</tbody></table>
 </section>
 
 <section aria-labelledby="portfolio-title">

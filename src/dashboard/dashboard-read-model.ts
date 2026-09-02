@@ -17,6 +17,7 @@ import {
 } from "../operations/daily-operations-scheduler.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
+import type { DeploymentCandidate, DeploymentCandidateStore } from "../portfolio/deployment-candidate.js";
 
 export interface DashboardWorkItemView {
   readonly id: string;
@@ -54,6 +55,33 @@ export interface DashboardOutcomeReportView {
   readonly verificationStatus: OutcomeReport["verification"]["status"];
   readonly remainingRisks: readonly string[];
   readonly requiredDecisions: readonly string[];
+  readonly createdAt: string;
+}
+
+export interface DashboardDeploymentCandidateView {
+  readonly id: string;
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly workItemId: string;
+  readonly exactCommitSha: string;
+  readonly productionBranch: string;
+  readonly repositorySourceReference: string;
+  readonly pullRequestSourceReference: string;
+  readonly pullRequestNumber: number;
+  readonly previewDeploymentId: string;
+  readonly previewDomain: string;
+  readonly verificationStatus: DeploymentCandidate["previewVerification"]["status"];
+  readonly rollbackCommitSha: string;
+  readonly requiredDecisions: readonly string[];
+  readonly approvals: readonly {
+    readonly id: string;
+    readonly scope: Approval["scope"];
+    readonly targetType: string;
+    readonly targetIdentity: string;
+    readonly targetVersion: string;
+    readonly state: Approval["state"];
+    readonly expiresAt: string | null;
+  }[];
   readonly createdAt: string;
 }
 
@@ -108,6 +136,7 @@ export interface DashboardOverview {
   readonly workItems: readonly DashboardWorkItemView[];
   readonly pendingApprovals: readonly DashboardApprovalView[];
   readonly outcomeReports: readonly DashboardOutcomeReportView[];
+  readonly deploymentCandidates: readonly DashboardDeploymentCandidateView[];
   readonly auditEvents: readonly DashboardAuditView[];
   readonly executives: readonly DashboardExecutiveView[];
   readonly projectPortfolio: readonly DashboardPortfolioProjectView[];
@@ -187,6 +216,7 @@ export function buildDashboardOverview(
   },
   portfolio?: ProjectPortfolio,
   repositoryCenters?: ReadonlyMap<string, RepositoryCenterView>,
+  deploymentCandidates?: DeploymentCandidateStore,
 ): DashboardOverview {
   const workItems = state
     .workItems()
@@ -254,6 +284,37 @@ export function buildDashboardOverview(
     ),
   );
 
+  const deploymentCandidateViews = (deploymentCandidates?.candidates() ?? [])
+    .filter((candidate) => workItems.some((workItem) => workItem.id === candidate.workItemId))
+    .map((candidate) => ({
+      id: candidate.id,
+      projectId: candidate.projectId,
+      projectName: candidate.projectName,
+      workItemId: candidate.workItemId,
+      exactCommitSha: candidate.exactCommitSha,
+      productionBranch: candidate.productionBranch,
+      repositorySourceReference: candidate.taskBranch.sourceReference,
+      pullRequestSourceReference: candidate.pullRequest.sourceReference,
+      pullRequestNumber: candidate.pullRequest.number,
+      previewDeploymentId: candidate.preview.deploymentId,
+      previewDomain: candidate.preview.domain,
+      verificationStatus: candidate.previewVerification.status,
+      rollbackCommitSha: candidate.rollback.commitSha,
+      requiredDecisions: candidate.outcomeReport.requiredDecisions,
+      approvals: state.approvals(candidate.workItemId)
+        .filter((approval) => approval.targetIdentity === candidate.id)
+        .map((approval) => ({
+          id: approval.id,
+          scope: approval.scope,
+          targetType: approval.targetType,
+          targetIdentity: approval.targetIdentity,
+          targetVersion: approval.targetVersion,
+          state: approval.state,
+          expiresAt: approval.expiresAt,
+        })),
+      createdAt: candidate.createdAt,
+    } satisfies DashboardDeploymentCandidateView));
+
   const auditEvents = workItems
     .flatMap((workItem) => state.auditTrail(workItem.id))
     .sort((left, right) => left.sequence - right.sequence)
@@ -316,6 +377,7 @@ export function buildDashboardOverview(
     workItems: views,
     pendingApprovals,
     outcomeReports,
+    deploymentCandidates: deploymentCandidateViews,
     auditEvents,
     executives,
     projectPortfolio,

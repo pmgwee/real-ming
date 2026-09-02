@@ -136,6 +136,17 @@ import {
   type DeploymentCandidateBuildInput,
   type DeploymentCandidateBuildResult,
 } from "../portfolio/deployment-candidate.js";
+import {
+  createDeploymentPromotionCoordinator,
+  deploymentPromotionStatePath,
+  SqliteDeploymentPromotionStore,
+  type DeploymentPromotionApprovalRequest,
+  type DeploymentPromotionApprovalResult,
+  type DeploymentPromotionExecutor,
+  type DeploymentPromotionRequest,
+  type DeploymentPromotionResult,
+  type DeploymentPromotionRecord,
+} from "../portfolio/deployment-promotion.js";
 import type { CutoverBindings } from "../migration/master-tasks-cutover.js";
 
 import {
@@ -443,6 +454,13 @@ export interface RealMingSystemHarness {
     input: DeploymentCandidateBuildInput,
   ): DeploymentCandidateBuildResult;
   deploymentCandidate(id: string): DeploymentCandidate | undefined;
+  requestDeploymentPromotionApproval(
+    input: DeploymentPromotionApprovalRequest,
+  ): Promise<DeploymentPromotionApprovalResult>;
+  promoteDeploymentCandidate(
+    input: DeploymentPromotionRequest,
+  ): Promise<DeploymentPromotionResult>;
+  deploymentPromotion(candidateId: string): DeploymentPromotionRecord | undefined;
   editMasterTaskThroughView(
     request: EditMasterTaskThroughViewRequest,
   ): Promise<MasterTaskRecord>;
@@ -730,6 +748,67 @@ class ControlledEffectVerifier implements EffectVerifier {
   }
 }
 
+class ControlledDeploymentPromotionExecutor implements DeploymentPromotionExecutor {
+  readonly #calls: string[] = [];
+
+  constructor(
+    private readonly options: {
+      readonly merge?: "ok" | "failed";
+      readonly verification?: "verified" | "failed";
+      readonly verificationEvidence?: "present" | "missing";
+      readonly rollback?: "rolled-back" | "failed";
+      readonly freshness?: "current" | "drifted";
+    },
+  ) {}
+
+  async verifyCandidateBeforeMerge(input: Parameters<DeploymentPromotionExecutor["verifyCandidateBeforeMerge"]>[0]) {
+    if (this.options.freshness === "drifted") {
+      return { kind: "drifted" as const, commitSha: "sha-drifted", reason: "candidate-drift" as const };
+    }
+    return { kind: "current" as const, commitSha: input.candidate.exactCommitSha };
+  }
+
+  async mergeDraftPullRequest(input: Parameters<DeploymentPromotionExecutor["mergeDraftPullRequest"]>[0]) {
+    this.#calls.push(`merge:${input.candidate.id}`);
+    if (this.options.merge === "failed") return { kind: "failed" as const, reason: "provider-error" as const };
+    return {
+      kind: "merged" as const,
+      commitSha: input.candidate.exactCommitSha,
+      effectReference: `github:merge:${input.candidate.pullRequest.number}`,
+    };
+  }
+
+  async verifyProduction(input: Parameters<DeploymentPromotionExecutor["verifyProduction"]>[0]) {
+    this.#calls.push(`verify:${input.candidate.id}`);
+    if (this.options.verification === "failed") {
+      return this.options.verificationEvidence === "missing"
+        ? { kind: "failed" as const, reason: "verification-failed" as const }
+        : { kind: "failed" as const, reason: "verification-failed" as const, evidenceReference: "verification:production:failed", asOf: "2026-09-02T10:00:00.000Z" };
+    }
+    return {
+      kind: "verified" as const,
+      commitSha: input.candidate.exactCommitSha,
+      evidenceReference: "verification:production:candidate",
+      asOf: "2026-09-02T10:05:00.000Z",
+      assertions: ["Production serves the approved candidate commit."],
+    };
+  }
+
+  async rollback(input: Parameters<DeploymentPromotionExecutor["rollback"]>[0]) {
+    this.#calls.push(`rollback:${input.candidate.id}`);
+    if (this.options.rollback === "failed") return { kind: "failed" as const, reason: "rollback-failed" as const };
+    return {
+      kind: "rolled-back" as const,
+      commitSha: input.candidate.rollback.commitSha,
+      effectReference: input.candidate.rollback.sourceReference,
+    };
+  }
+
+  calls(): readonly string[] {
+    return [...this.#calls];
+  }
+}
+
 export function createRealMingSystemHarness(options: {
   readonly statePath: string;
   readonly controlledQuestionAnswer?: string;
@@ -748,6 +827,12 @@ export function createRealMingSystemHarness(options: {
     readonly result: "verify" | "error";
     readonly errorMessage?: string;
     readonly evidence?: Readonly<Record<string, string>>;
+  };
+  readonly deploymentPromotion?: {
+    readonly merge?: "ok" | "failed";
+    readonly verification?: "verified" | "failed";
+    readonly rollback?: "rolled-back" | "failed";
+    readonly freshness?: "current" | "drifted";
   };
   readonly now?: () => string;
   readonly telegram?: {
@@ -783,6 +868,9 @@ export function createRealMingSystemHarness(options: {
   const state = new OperationsState(options.statePath);
   const deploymentCandidateStore = new SqliteDeploymentCandidateStore(
     deploymentCandidateStatePath(options.statePath),
+  );
+  const deploymentPromotionStore = new SqliteDeploymentPromotionStore(
+    deploymentPromotionStatePath(options.statePath),
   );
   const portfolio = new ProjectPortfolio(
     options.statePath,
@@ -888,6 +976,7 @@ export function createRealMingSystemHarness(options: {
   } catch (error) {
     portfolio.close();
     deploymentCandidateStore.close();
+    deploymentPromotionStore.close();
     state.close();
     throw error;
   }
@@ -1093,6 +1182,7 @@ export function createRealMingSystemHarness(options: {
     options.telegram?.deliveryFailure,
     options.telegram?.crashAfterDelivery,
   );
+  const clock = options.now ?? (() => new Date().toISOString());
   const telegramFrontDoor: TelegramFrontDoor = createTelegramFrontDoor({
     ceoTelegramId: options.telegram?.ceoTelegramId ?? "100000001",
     ceoTelegramChatId:
@@ -1128,8 +1218,19 @@ export function createRealMingSystemHarness(options: {
         }),
     ...(options.now === undefined ? {} : { now: options.now }),
   });
+  const deploymentPromotionExecutor = new ControlledDeploymentPromotionExecutor(
+    options.deploymentPromotion ?? {},
+  );
+  const deploymentPromotion = createDeploymentPromotionCoordinator({
+    candidates: deploymentCandidateStore,
+    promotions: deploymentPromotionStore,
+    state,
+    gateway,
+    ...(options.deploymentPromotion === undefined ? {} : { executor: deploymentPromotionExecutor }),
+    notify: (notification) => telegramFrontDoor.notify(notification),
+    now: clock,
+  });
   const calendarId = options.morningBrief?.calendarId ?? "";
-  const clock = options.now ?? (() => new Date().toISOString());
   const exceptionNoticeRhythm: ExceptionNoticeRhythm = createExceptionNoticeRhythm({
     state,
     notify: (notification) => telegramFrontDoor.notify(notification),
@@ -1399,6 +1500,9 @@ export function createRealMingSystemHarness(options: {
         : result;
     },
     deploymentCandidate: (id) => deploymentCandidateStore.candidate(id),
+    requestDeploymentPromotionApproval: (input) => deploymentPromotion.requestApproval(input),
+    promoteDeploymentCandidate: (input) => deploymentPromotion.promote(input),
+    deploymentPromotion: (candidateId) => deploymentPromotionStore.latestForCandidate(candidateId),
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
     listCalendarEvents: ({ calendarId }) =>
       calendarAdapter.listEvents(calendarId),
@@ -1429,7 +1533,13 @@ export function createRealMingSystemHarness(options: {
     approvals: (workItemId) => state.approvals(workItemId),
     standingAuthorities: () => state.standingAuthorities(),
     dashboardOverview: (session) =>
-      buildDashboardOverview(state, { ...session, now: clock() }, portfolio, repositoryCenters),
+      buildDashboardOverview(
+        state,
+        { ...session, now: clock() },
+        portfolio,
+        repositoryCenters,
+        deploymentCandidateStore,
+      ),
     recordProviderObservation: (record) =>
       providerObservationCoordinator.observe(record),
     providerObservations: () => state.providerObservations(),
@@ -1540,6 +1650,8 @@ export function createRealMingSystemHarness(options: {
         now: clock,
         portfolio,
         repositoryCenters,
+        deploymentCandidates: deploymentCandidateStore,
+        deploymentPromotion,
         ...(evidenceBroker === undefined ? {} : { projectEvidence: evidenceBroker }),
       }),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),
@@ -1622,6 +1734,7 @@ export function createRealMingSystemHarness(options: {
       privateWorker?.close();
       portfolio.close();
       deploymentCandidateStore.close();
+      deploymentPromotionStore.close();
       state.close();
     },
   };

@@ -27,6 +27,10 @@ import {
   deploymentCandidateStatePath,
   SqliteDeploymentCandidateStore,
 } from "../portfolio/deployment-candidate.js";
+import {
+  deploymentPromotionStatePath,
+  SqliteDeploymentPromotionStore,
+} from "../portfolio/deployment-promotion.js";
 import { resolveControlPlaneCredentials } from "./credential-resolver.js";
 import {
   createDailyOperationsControlPlane,
@@ -137,6 +141,9 @@ export async function createProductionControlPlane(options: {
   const deploymentCandidateStore = new SqliteDeploymentCandidateStore(
     deploymentCandidateStatePath(options.statePath),
   );
+  const deploymentPromotionStore = new SqliteDeploymentPromotionStore(
+    deploymentPromotionStatePath(options.statePath),
+  );
 
   try {
     for (const project of options.portfolioProjects ?? []) {
@@ -176,6 +183,7 @@ export async function createProductionControlPlane(options: {
       masterTasks,
       portfolio,
       deploymentCandidateStore,
+      deploymentPromotionStore,
       ...(options.repositoryCenterAdapters === undefined
         ? {}
         : { refreshRepositoryCenters }),
@@ -235,6 +243,10 @@ export async function createProductionControlPlane(options: {
       prepareDeploymentCandidate: (input) =>
         controlPlane.prepareDeploymentCandidate(input),
       deploymentCandidate: (id) => controlPlane.deploymentCandidate(id),
+      requestDeploymentPromotionApproval: (input) =>
+        controlPlane.requestDeploymentPromotionApproval(input),
+      promoteDeploymentCandidate: (input) =>
+        controlPlane.promoteDeploymentCandidate(input),
       runCycle: () => controlPlane.runCycle(),
       run: () => controlPlane.run(),
       stop: () => controlPlane.stop(),
@@ -250,6 +262,7 @@ export async function createProductionControlPlane(options: {
   } catch (error) {
     portfolio.close();
     deploymentCandidateStore.close();
+    deploymentPromotionStore.close();
     notionLedger.close();
     throw error;
   }
