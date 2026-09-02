@@ -19,9 +19,12 @@ import type {
 import { createCommandClassifier } from "../operations/command-classifier.js";
 import { createDailyOperationsScheduler } from "../operations/daily-operations-scheduler.js";
 import {
+  entertainmentEmailDigestJobDefinition,
+  entertainmentEmailDigestJobName,
   executiveRollUpJobName,
   morningBriefJobName,
   releaseHeldJobName,
+  schedulerJobInventory,
 } from "../operations/daily-operations-scheduler.js";
 import { createExceptionNoticeRhythm } from "../operations/exception-notice-rhythm.js";
 import { createProviderObservationCoordinator } from "../operations/provider-observation-coordinator.js";
@@ -60,6 +63,10 @@ import {
   type EmailMailboxKind,
 } from "../operations/email-operations.js";
 import type { GmailEmailAdapter } from "../providers/email-provider-adapter.js";
+import {
+  createEntertainmentEmailDigestRunner,
+  type EntertainmentEmailDigestRunner,
+} from "../operations/entertainment-email-digest.js";
 import {
   createProjectEvidenceBroker,
   type AgentBrainEvidenceProvider,
@@ -118,6 +125,7 @@ export interface DailyOperationsControlPlane {
   requestDeploymentPromotionApproval(input: DeploymentPromotionApprovalRequest): Promise<DeploymentPromotionApprovalResult>;
   promoteDeploymentCandidate(input: DeploymentPromotionRequest): Promise<DeploymentPromotionResult>;
   readonly emailOperations: EmailOperationsCoordinator | undefined;
+  readonly entertainmentEmailDigest: EntertainmentEmailDigestRunner | undefined;
   runCycle(): Promise<ControlPlaneCycle>;
   run(): Promise<void>;
   stop(): void;
@@ -270,7 +278,7 @@ export async function createDailyOperationsControlPlane(options: {
       });
   const emailOperations = options.emailAdapter === undefined
     ? undefined
-      : createEmailOperationsCoordinator({ adapter: options.emailAdapter, gateway, mailboxBindings: options.emailMailboxBindings ?? { personal: "personal@example.test", opportunity: "personal@example.test" } });
+      : createEmailOperationsCoordinator({ adapter: options.emailAdapter, gateway, mailboxBindings: options.emailMailboxBindings ?? { personal: "personal@example.test", opportunity: "personal@example.test", entertainment: "personal@example.test" } });
   const notices = createExceptionNoticeRhythm({
     state,
     notify: (notification) => frontDoor.notify(notification),
@@ -320,6 +328,27 @@ export async function createDailyOperationsControlPlane(options: {
     } catch (error) {
       recordExceptionNoticeHealth(undefined, true);
       throw error;
+    }
+  };
+  const entertainmentEmailDigest = emailOperations === undefined
+    ? undefined
+    : createEntertainmentEmailDigestRunner({
+        coordinator: emailOperations,
+        mailbox: options.emailMailboxBindings?.entertainment ?? "personal@example.test",
+        admit: admitTracked,
+        now,
+      });
+  const schedulerJobs = entertainmentEmailDigest === undefined
+    ? schedulerJobInventory
+    : [...schedulerJobInventory, entertainmentEmailDigestJobDefinition];
+  const runEntertainmentEmailDigest = async (): Promise<void> => {
+    if (entertainmentEmailDigest === undefined) return;
+    const result = await entertainmentEmailDigest.run();
+    if (result.kind === "failed") {
+      throw new Error(`Entertainment email digest failed (${result.failure.class}).`);
+    }
+    if (result.kind === "denied") {
+      throw new Error("Entertainment email digest mailbox is not authorized.");
     }
   };
   const providerObservationCoordinator = createProviderObservationCoordinator({
@@ -390,7 +419,11 @@ export async function createDailyOperationsControlPlane(options: {
       [releaseHeldJobName]: () => releaseHeldTracked(),
       [morningBriefJobName]: () => morningBrief.run(),
       [executiveRollUpJobName]: () => rollUp.run(),
+      ...(entertainmentEmailDigest === undefined
+        ? {}
+        : { [entertainmentEmailDigestJobName]: runEntertainmentEmailDigest }),
     },
+    jobs: schedulerJobs,
   });
   const dashboard: DashboardServer = await createDashboardServer({
     state,
@@ -405,6 +438,7 @@ export async function createDailyOperationsControlPlane(options: {
           deploymentCandidates: options.deploymentCandidateStore,
           ...(deploymentPromotion === undefined ? {} : { deploymentPromotion }),
         }),
+    schedulerJobs,
     credentials: [
       {
         actorId: "ceo:ming",
@@ -548,6 +582,7 @@ export async function createDailyOperationsControlPlane(options: {
       return deploymentPromotion.promote(input);
     },
     emailOperations,
+    entertainmentEmailDigest,
     runCycle: () => supervisor.runCycle(),
     run: () => supervisor.run(),
     stop: () => supervisor.stop(),

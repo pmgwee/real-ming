@@ -105,9 +105,10 @@ async function main(): Promise<void> {
     : {
         personal: optionalEnvironment("REAL_MING_PERSONAL_MAILBOX") ?? "",
         opportunity: optionalEnvironment("REAL_MING_OPPORTUNITY_MAILBOX") ?? "",
+        entertainment: optionalEnvironment("REAL_MING_ENTERTAINMENT_MAILBOX") ?? "",
       };
-  if (emailMailboxBindings !== undefined && (emailMailboxBindings.personal.length === 0 || emailMailboxBindings.opportunity.length === 0)) {
-    throw new Error("REAL_MING_PERSONAL_MAILBOX and REAL_MING_OPPORTUNITY_MAILBOX are required when Gmail email access is configured.");
+  if (emailMailboxBindings !== undefined && (emailMailboxBindings.personal.length === 0 || emailMailboxBindings.opportunity.length === 0 || emailMailboxBindings.entertainment.length === 0)) {
+    throw new Error("REAL_MING_PERSONAL_MAILBOX, REAL_MING_OPPORTUNITY_MAILBOX, and REAL_MING_ENTERTAINMENT_MAILBOX are required when Gmail email access is configured.");
   }
   const controlPlane = await createProductionControlPlane({
     environment: process.env,

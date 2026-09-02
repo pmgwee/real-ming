@@ -79,6 +79,30 @@ describe("RM-29 personal and opportunity email read-and-draft", () => {
     expect(JSON.stringify(projection)).not.toContain(message.body);
   });
 
+  it("rejects a provider response that crosses the requested mailbox boundary", async () => {
+    const emailAdapter = adapter({
+      listMessages: async () => {
+        const identity = { provider: "gmail", workspaceId: "workspace:real-ming", accountReference: "gmail:real-ming" } as const;
+        const provenance = { sourceIdentity: "gmail", sourceReference: "gmail:personal@example.test", asOf: message.receivedAt, retrievedAt: now, freshness: "current" as const };
+        return { kind: "ok" as const, identity, provenance, value: [{ ...message, mailbox: "restricted@example.test" }] };
+      },
+    });
+    const harness = await start(emailAdapter);
+    await expect(harness.readEmailMailbox({ mailbox: message.mailbox, mailboxKind: "entertainment" })).resolves.toMatchObject({ kind: "failed", failure: { class: "provider-error" } });
+  });
+
+  it("rejects provider provenance that crosses the requested mailbox boundary", async () => {
+    const emailAdapter = adapter({
+      listMessages: async () => {
+        const identity = { provider: "gmail", workspaceId: "workspace:real-ming", accountReference: "gmail:real-ming" } as const;
+        const provenance = { sourceIdentity: "gmail", sourceReference: "gmail:notpersonal@example.test", asOf: message.receivedAt, retrievedAt: now, freshness: "current" as const };
+        return { kind: "ok" as const, identity, provenance, value: [message] };
+      },
+    });
+    const harness = await start(emailAdapter);
+    await expect(harness.readEmailMailbox({ mailbox: message.mailbox, mailboxKind: "entertainment" })).resolves.toMatchObject({ kind: "failed", failure: { class: "provider-error" } });
+  });
+
   it("captures one bounded COO Work Item without copying the raw message", async () => {
     const harness = await start();
     const first = await harness.captureEmailActionable({ message, mailboxKind: "opportunity", summary: "Choose an interview time with the recruiter.", workstream: "Career Job", idempotencyKey: "email-action:message-opportunity-1" });
@@ -100,6 +124,7 @@ describe("RM-29 personal and opportunity email read-and-draft", () => {
     if (draft.kind !== "drafted") return;
     await expect(harness.createEmailDraft({ mailbox: message.mailbox, mailboxKind: "opportunity", to: [message.from], subject: "Re: Interview scheduling", body: "I can attend at 10:00.", idempotencyKey: "draft:message-opportunity-1" })).resolves.toMatchObject({ kind: "drafted", draft: { id: draft.draft.id } });
     await expect(harness.createEmailDraft({ mailbox: "restricted@example.test", mailboxKind: "opportunity", to: [message.from], subject: "Re: Interview scheduling", body: "I can attend at 10:00.", idempotencyKey: "draft:restricted" })).resolves.toMatchObject({ kind: "denied", reason: "mailbox-not-authorized" });
+    await expect(harness.createEmailDraft({ mailbox: message.mailbox, mailboxKind: "entertainment", to: [message.from], subject: "Re: Entertainment message", body: "This must remain digest-only.", idempotencyKey: "draft:entertainment" })).resolves.toMatchObject({ kind: "denied", reason: "entertainment-digest-only" });
     await expect(harness.sendEmailDraft({ draft: draft.draft, to: draft.draft.to, subject: draft.draft.subject, body: draft.draft.body })).resolves.toMatchObject({ kind: "denied", reason: "send-requires-separate-authorized-capability" });
     await expect(harness.sendEmailDraft({ draft: draft.draft, to: ["other@example.test"], subject: draft.draft.subject, body: draft.draft.body })).resolves.toMatchObject({ kind: "denied", reason: "recipient-or-content-changed" });
   });
@@ -121,7 +146,7 @@ describe("RM-29 personal and opportunity email read-and-draft", () => {
       statePath: join(directory, "state.sqlite"),
       notionLedgerPath: join(directory, "notion-ledger.sqlite"),
       emailAdapter: adapter(),
-      emailMailboxBindings: { personal: message.mailbox, opportunity: message.mailbox },
+      emailMailboxBindings: { personal: message.mailbox, opportunity: message.mailbox, entertainment: message.mailbox },
       fetch: async () => { throw new Error("unexpected provider call"); },
       dashboardPort: 0,
       now: () => now,
@@ -132,5 +157,75 @@ describe("RM-29 personal and opportunity email read-and-draft", () => {
     } finally {
       await controlPlane.close();
     }
+  });
+
+  it("delivers a metadata-only low-priority digest and deduplicates a retry", async () => {
+    const actionable = { ...message, id: "message-actionable-1", threadId: "thread-actionable-1", subject: "Your application status", labels: ["STARRED"] };
+    let readCount = 0;
+    const emailAdapter = adapter({
+      listMessages: async () => {
+        const identity = { provider: "gmail", workspaceId: "workspace:real-ming", accountReference: "gmail:real-ming" } as const;
+        readCount += 1;
+        const provenance = { sourceIdentity: "gmail", sourceReference: "gmail:personal@example.test", asOf: new Date(Date.parse(now) + readCount * 60_000).toISOString(), retrievedAt: now, freshness: "current" as const };
+        return { kind: "ok" as const, identity, provenance, value: [message, actionable] };
+      },
+    });
+    const harness = await start(emailAdapter);
+    const first = await harness.runEntertainmentEmailDigest();
+    expect(first.kind).toBe("digest");
+    if (first.kind !== "digest") return;
+    expect(first.digest.mailboxKind).toBe("entertainment");
+    expect(first.digest.routineMessageIds).toEqual([message.id]);
+    expect(first.digest.actionableProjections).toMatchObject([{ messageId: actionable.id, mailboxKind: "entertainment", executive: "COO", sourceReference: actionable.sourceReference, actionability: "actionable" }]);
+    expect(first.digest.text).not.toContain(message.subject);
+    expect(first.digest.text).not.toContain(message.body);
+    expect(harness.workItems()[0]?.intent).not.toContain(actionable.subject);
+    expect(JSON.stringify(harness.dashboardOverview({ actorId: "ceo:ming", workspaceId: "workspace:real-ming" }))).not.toContain(actionable.subject);
+    expect(first.admission.kind).toBe("delivered");
+    const messageCount = harness.telegramMessages().length;
+    const second = await harness.runEntertainmentEmailDigest();
+    expect(second.kind).toBe("digest");
+    if (second.kind !== "digest") return;
+    expect(second.digest.idempotencyKey).toBe(first.digest.idempotencyKey);
+    expect(harness.workItems()).toHaveLength(1);
+    expect(harness.telegramMessages()).toHaveLength(messageCount);
+    expect(JSON.stringify(harness.dashboardOverview({ actorId: "ceo:ming", workspaceId: "workspace:real-ming" }))).not.toContain(message.body);
+  });
+
+  it("runs the digest through the daily scheduler when Gmail is configured", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm30-scheduler-"));
+    directories.push(directory);
+    const harness = createRealMingSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      now: () => "2026-09-02T00:30:00.000Z", // 08:30 Kuala Lumpur
+      emailAdapter: adapter(),
+      morningBrief: { calendarId: "primary" },
+      calendar: { events: [] },
+    });
+    harnesses.push(harness);
+
+    const tick = await harness.tickDailyOperations();
+    expect(tick.ran).toContain("entertainment-email-digest");
+    expect(harness.telegramMessages().some((outbound) => outbound.text.includes("Entertainment/application digest"))).toBe(true);
+    expect(harness.dashboardOverview({ actorId: "ceo:ming", workspaceId: "workspace:real-ming" }).scheduler.find((job) => job.job === "entertainment-email-digest")?.lastOutcome).toBe("succeeded");
+  });
+
+  it("records a failed digest heartbeat when the entertainment mailbox is unavailable", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm30-scheduler-failure-"));
+    directories.push(directory);
+    const harness = createRealMingSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      now: () => "2026-09-02T00:30:00.000Z", // 08:30 Kuala Lumpur
+      emailAdapter: adapter({
+        listMessages: async () => ({ kind: "failed", failure: { class: "unavailable", retryable: true, message: "Gmail unavailable." } }),
+      }),
+      morningBrief: { calendarId: "primary" },
+      calendar: { events: [] },
+    });
+    harnesses.push(harness);
+
+    const tick = await harness.tickDailyOperations();
+    expect(tick.failed).toContain("entertainment-email-digest");
+    expect(harness.dashboardOverview({ actorId: "ceo:ming", workspaceId: "workspace:real-ming" }).scheduler.find((job) => job.job === "entertainment-email-digest")?.lastOutcome).toBe("failed");
   });
 });

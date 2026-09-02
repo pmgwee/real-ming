@@ -157,6 +157,10 @@ import {
   type EmailDraftResult,
   type EmailSendResult,
 } from "../operations/email-operations.js";
+import {
+  createEntertainmentEmailDigestRunner,
+  type EntertainmentEmailDigestRunResult,
+} from "../operations/entertainment-email-digest.js";
 import type { EmailMessage, GmailEmailAdapter } from "../providers/email-provider-adapter.js";
 import type { CutoverBindings } from "../migration/master-tasks-cutover.js";
 
@@ -234,6 +238,8 @@ import {
 
 import {
   createDailyOperationsScheduler,
+  entertainmentEmailDigestJobDefinition,
+  entertainmentEmailDigestJobName,
   executiveRollUpJobName,
   morningBriefJobName,
   releaseHeldJobName,
@@ -500,6 +506,7 @@ export interface RealMingSystemHarness {
     readonly body: string;
   }): Promise<EmailSendResult>;
   emailProjection(input: Parameters<EmailOperationsCoordinator["projection"]>[0]): EmailApprovedProjection;
+  runEntertainmentEmailDigest(): Promise<EntertainmentEmailDigestRunResult>;
   editMasterTaskThroughView(
     request: EditMasterTaskThroughViewRequest,
   ): Promise<MasterTaskRecord>;
@@ -1281,7 +1288,7 @@ export function createRealMingSystemHarness(options: {
     : createEmailOperationsCoordinator({
         adapter: options.emailAdapter,
         gateway,
-        mailboxBindings: options.emailMailboxBindings ?? { personal: "personal@example.test", opportunity: "personal@example.test" },
+        mailboxBindings: options.emailMailboxBindings ?? { personal: "personal@example.test", opportunity: "personal@example.test", entertainment: "personal@example.test" },
       });
   const calendarId = options.morningBrief?.calendarId ?? "";
   const exceptionNoticeRhythm: ExceptionNoticeRhythm = createExceptionNoticeRhythm({
@@ -1332,6 +1339,14 @@ export function createRealMingSystemHarness(options: {
       throw error;
     }
   };
+  const entertainmentEmailDigest = emailOperations === undefined
+    ? undefined
+    : createEntertainmentEmailDigestRunner({
+        coordinator: emailOperations,
+        mailbox: options.emailMailboxBindings?.entertainment ?? "personal@example.test",
+        admit: admitTracked,
+        now: clock,
+      });
   const providerObservationCoordinator = createProviderObservationCoordinator({
     state,
     notices: exceptionNoticeRhythm,
@@ -1393,6 +1408,19 @@ export function createRealMingSystemHarness(options: {
     }
     return run();
   };
+  const schedulerJobs = entertainmentEmailDigest === undefined
+    ? schedulerJobInventory
+    : [...schedulerJobInventory, entertainmentEmailDigestJobDefinition];
+  const runEntertainmentEmailDigest = async (): Promise<void> => {
+    if (entertainmentEmailDigest === undefined) return;
+    const result = await entertainmentEmailDigest.run();
+    if (result.kind === "failed") {
+      throw new Error(`Entertainment email digest failed (${result.failure.class}).`);
+    }
+    if (result.kind === "denied") {
+      throw new Error("Entertainment email digest mailbox is not authorized.");
+    }
+  };
   const dailyOperations: DailyOperationsScheduler =
     createDailyOperationsScheduler({
       state,
@@ -1422,7 +1450,11 @@ export function createRealMingSystemHarness(options: {
         [executiveRollUpJobName]: guarded(executiveRollUpJobName, () =>
           executiveRollUp.run(),
         ),
+        ...(entertainmentEmailDigest === undefined
+          ? {}
+          : { [entertainmentEmailDigestJobName]: guarded(entertainmentEmailDigestJobName, runEntertainmentEmailDigest) }),
       },
+      jobs: schedulerJobs,
     });
 
   return {
@@ -1504,7 +1536,7 @@ export function createRealMingSystemHarness(options: {
       forcedHangs.add(job);
     },
     claimScheduledRunWithoutCompletion: (job) => {
-      const definition = schedulerJobInventory.find((candidate) => candidate.job === job);
+      const definition = schedulerJobs.find((candidate) => candidate.job === job);
       if (definition === undefined) {
         throw new Error(`Controlled scheduler job ${job} is not registered.`);
       }
@@ -1576,6 +1608,10 @@ export function createRealMingSystemHarness(options: {
       if (emailOperations === undefined) throw new Error("Email operations are not configured.");
       return emailOperations.projection(input);
     },
+    runEntertainmentEmailDigest: async () => {
+      if (entertainmentEmailDigest === undefined) return { kind: "failed", failure: { class: "unsupported-capability", retryable: false, message: "Email operations are not configured." } };
+      return entertainmentEmailDigest.run();
+    },
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
     listCalendarEvents: ({ calendarId }) =>
       calendarAdapter.listEvents(calendarId),
@@ -1612,6 +1648,7 @@ export function createRealMingSystemHarness(options: {
         portfolio,
         repositoryCenters,
         deploymentCandidateStore,
+        schedulerJobs,
       ),
     recordProviderObservation: (record) =>
       providerObservationCoordinator.observe(record),
@@ -1725,6 +1762,7 @@ export function createRealMingSystemHarness(options: {
         repositoryCenters,
         deploymentCandidates: deploymentCandidateStore,
         deploymentPromotion,
+        schedulerJobs,
         ...(evidenceBroker === undefined ? {} : { projectEvidence: evidenceBroker }),
       }),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),

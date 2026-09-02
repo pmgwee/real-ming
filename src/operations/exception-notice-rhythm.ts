@@ -61,6 +61,7 @@ const doNotDisturbBypass: readonly TelegramNotificationKind[] = [
  * blocker, a critical incident, and the Roll-Up itself — still runs.
  */
 const weekendSuppressed: readonly TelegramNotificationKind[] = [
+  "entertainment-digest",
   "routine-progress",
   "completed-outcome-report",
 ];
@@ -72,6 +73,7 @@ const telegramNotificationKinds: readonly TelegramNotificationKind[] = [
   "critical-incident",
   "completed-outcome-report",
   "recovery-notice",
+  "entertainment-digest",
   "routine-progress",
 ];
 

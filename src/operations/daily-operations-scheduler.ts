@@ -15,6 +15,19 @@ import type {
 export const morningBriefJobName = "morning-brief";
 export const executiveRollUpJobName = "executive-roll-up";
 export const releaseHeldJobName = "release-held-exception-notices";
+export const entertainmentEmailDigestJobName = "entertainment-email-digest";
+
+/** Optional provider-backed job; the control plane adds it only when Gmail is configured. */
+export const entertainmentEmailDigestJobDefinition: SchedulerJobDefinition = {
+  job: entertainmentEmailDigestJobName,
+  hour: 8,
+  minute: 0,
+  provider: "gmail",
+  expectedCadence: "daily",
+  criticality: "routine",
+  accountableExecutive: "COO",
+  evidenceLink: `scheduler-definition:${entertainmentEmailDigestJobName}`,
+};
 
 /**
  * A claimed occurrence is given one hour to finish before a late heartbeat is

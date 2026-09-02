@@ -18,6 +18,7 @@ import type {
   DeploymentPromotionCoordinator,
   DeploymentPromotionRequest,
 } from "../portfolio/deployment-promotion.js";
+import type { SchedulerJobDefinition } from "../operations/daily-operations-scheduler.js";
 
 export const dashboardSessionCookie = "real_ming_session";
 
@@ -177,6 +178,7 @@ export function createDashboardServer(options: {
   readonly projectEvidence?: ProjectEvidenceBroker;
   readonly deploymentCandidates?: DeploymentCandidateStore;
   readonly deploymentPromotion?: DeploymentPromotionCoordinator;
+  readonly schedulerJobs?: readonly SchedulerJobDefinition[];
   readonly credentials: readonly DashboardCredential[];
   /**
    * The operating clock. Without it the dashboard would report scheduler
@@ -199,6 +201,7 @@ export function createDashboardServer(options: {
         ? options.repositoryCenters
         : await options.refreshRepositoryCenters(),
       options.deploymentCandidates,
+      options.schedulerJobs,
     );
 
   const server: Server = createServer((request, response) => {

@@ -12,7 +12,7 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **30 of 44** *(RM-29 closed; RM-31 next)* |
+| Phase 3 tickets closed | **31 of 44** *(RM-30 closed; RM-31 next)* |
 | Startable by an agent right now | **RM-31 (#32)** — Coordinate one academic commitment end to end |
 | Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
 
@@ -178,6 +178,19 @@ receive only a body-free Approved Projection. Any mailbox crossover, changed
 recipient/content, or send attempt is refused. Production wiring is optional
 until the CEO supplies an authorized Gmail access token and both mailbox
 bindings; no send capability exists in this ticket.
+
+**RM-30 is complete in the controlled harness.** The entertainment/application
+mailbox is an explicit third Gmail boundary. When Gmail is configured, a daily
+08:00 Kuala Lumpur scheduler occurrence produces a low-priority, metadata-only
+digest; `STARRED`, `IMPORTANT`, and `ACTIONABLE`
+messages become idempotent COO Work Items with a bounded Approved Projection
+and source provenance. The digest is delivered through its own Telegram
+notification kind so it remains distinct from suppressed routine progress,
+respects weekend rhythm, and retries without duplicate Work Items or notices.
+Raw subject, snippet, and body content remain inside the Entertainment Trust
+Domain and never enter the digest text or dashboard overview. Production
+wiring refuses Gmail unless all three mailbox bindings are explicit; no email
+send capability was added.
 
 **RM-17’s CEO selection is recorded and the bounded Personal Context ingestion
 boundary is implemented and proven in the controlled harness.** The eventual

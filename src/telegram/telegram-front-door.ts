@@ -56,6 +56,7 @@ const allowedNotificationKinds: ReadonlySet<TelegramNotification["kind"]> =
     "critical-incident",
     "completed-outcome-report",
     "recovery-notice",
+    "entertainment-digest",
   ]);
 
 function callbackData(controlId: string): string {

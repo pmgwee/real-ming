@@ -88,8 +88,8 @@ export async function createProductionControlPlane(options: {
   const now = options.now ?? (() => new Date().toISOString());
   const emailAccessToken = optional(options.emailAccessToken);
   const emailConfigured = emailAccessToken !== undefined || options.emailAdapter !== undefined;
-  if (emailConfigured && (options.emailMailboxBindings === undefined || options.emailMailboxBindings.personal.trim().length === 0 || options.emailMailboxBindings.opportunity.trim().length === 0)) {
-    throw new Error("Email operations require explicit personal and opportunity mailbox bindings.");
+  if (emailConfigured && (options.emailMailboxBindings === undefined || options.emailMailboxBindings.personal.trim().length === 0 || options.emailMailboxBindings.opportunity.trim().length === 0 || options.emailMailboxBindings.entertainment.trim().length === 0)) {
+    throw new Error("Email operations require explicit personal, opportunity, and entertainment mailbox bindings.");
   }
   const vaultName =
     optional(options.vaultName) ??
@@ -277,6 +277,7 @@ export async function createProductionControlPlane(options: {
       promoteDeploymentCandidate: (input) =>
         controlPlane.promoteDeploymentCandidate(input),
       emailOperations: controlPlane.emailOperations,
+      entertainmentEmailDigest: controlPlane.entertainmentEmailDigest,
       runCycle: () => controlPlane.runCycle(),
       run: () => controlPlane.run(),
       stop: () => controlPlane.stop(),

@@ -93,6 +93,7 @@ export type TelegramNotificationKind =
   | "critical-incident"
   | "completed-outcome-report"
   | "recovery-notice"
+  | "entertainment-digest"
   | "routine-progress";
 
 export interface TelegramNotification {

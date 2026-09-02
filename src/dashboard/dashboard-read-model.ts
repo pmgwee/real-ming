@@ -13,7 +13,9 @@ import type {
 } from "../operations/operations-state.js";
 import {
   schedulerHealth,
+  schedulerJobInventory,
   type SchedulerJobHealth,
+  type SchedulerJobDefinition,
 } from "../operations/daily-operations-scheduler.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
@@ -217,6 +219,7 @@ export function buildDashboardOverview(
   portfolio?: ProjectPortfolio,
   repositoryCenters?: ReadonlyMap<string, RepositoryCenterView>,
   deploymentCandidates?: DeploymentCandidateStore,
+  schedulerJobs: readonly SchedulerJobDefinition[] = schedulerJobInventory,
 ): DashboardOverview {
   const workItems = state
     .workItems()
@@ -381,7 +384,7 @@ export function buildDashboardOverview(
     auditEvents,
     executives,
     projectPortfolio,
-    scheduler: schedulerHealth(state, session.now ?? new Date().toISOString()),
+    scheduler: schedulerHealth(state, session.now ?? new Date().toISOString(), schedulerJobs),
     controlPlane: state.controlPlaneHealth(),
     providerObservations: state.providerObservations(),
   };

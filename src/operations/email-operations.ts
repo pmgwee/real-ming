@@ -6,7 +6,7 @@ import type { GmailEmailAdapter, EmailDraft, EmailMessage } from "../providers/e
 import type { ProviderFailure, ProviderReadResult } from "../providers/adapter-contract.js";
 import { detectSensitiveFields } from "./sensitive-secret.js";
 
-export type EmailMailboxKind = "personal" | "opportunity";
+export type EmailMailboxKind = "personal" | "opportunity" | "entertainment";
 
 export interface EmailReadRequest {
   readonly mailbox: string;
@@ -41,7 +41,7 @@ export type EmailCaptureResult =
 
 export type EmailDraftResult =
   | { readonly kind: "drafted"; readonly draft: EmailDraft }
-  | { readonly kind: "denied"; readonly reason: "mailbox-not-authorized" }
+  | { readonly kind: "denied"; readonly reason: "mailbox-not-authorized" | "entertainment-digest-only" }
   | { readonly kind: "failed"; readonly failure: ProviderFailure };
 
 export type EmailSendResult =
@@ -86,6 +86,11 @@ function digest(value: unknown): string {
   return createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex");
 }
 
+function sourceReferenceBelongsToMailbox(sourceReference: string, mailbox: string): boolean {
+  const prefix = `gmail:${mailbox}`;
+  return sourceReference === prefix || sourceReference.startsWith(`${prefix}:`);
+}
+
 export function createEmailOperationsCoordinator(options: {
   readonly adapter: GmailEmailAdapter;
   readonly gateway: OperationsGateway;
@@ -96,6 +101,16 @@ export function createEmailOperationsCoordinator(options: {
       if (request.mailbox !== options.mailboxBindings[request.mailboxKind]) return { kind: "denied", reason: "mailbox-not-authorized" };
       const result = await options.adapter.listMessages({ mailbox: request.mailbox, ...(request.query === undefined ? {} : { query: request.query }) });
       if (result.kind === "failed") return result;
+      if (
+        !sourceReferenceBelongsToMailbox(result.provenance.sourceReference, request.mailbox) ||
+        result.value.some(
+          (message) =>
+            message.mailbox !== request.mailbox ||
+            !sourceReferenceBelongsToMailbox(message.sourceReference, request.mailbox),
+        )
+      ) {
+        return { kind: "failed", failure: { class: "provider-error", retryable: false, message: "Gmail returned a message outside the requested mailbox." } };
+      }
       return { kind: result.kind, mailbox: request.mailbox, mailboxKind: request.mailboxKind, messages: result.value, sourceIdentity: result.provenance.sourceIdentity, sourceReference: result.provenance.sourceReference, asOf: result.provenance.asOf, freshness: result.provenance.freshness };
     },
 
@@ -118,6 +133,9 @@ export function createEmailOperationsCoordinator(options: {
     },
 
     async createDraft(input): Promise<EmailDraftResult> {
+      if (input.mailboxKind === "entertainment") {
+        return { kind: "denied", reason: "entertainment-digest-only" };
+      }
       if (input.mailbox !== options.mailboxBindings[input.mailboxKind]) {
         return { kind: "denied", reason: "mailbox-not-authorized" };
       }
