@@ -12,9 +12,9 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **30 of 44** *(RM-29 closed; RM-30 committed locally, GitHub closure pending)* |
-| Startable by an agent right now | **RM-30 (#31)** — Publish and close the committed entertainment/application email digest |
-| Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
+| Phase 3 tickets closed | **31 of 44** *(RM-30 closed with evidence)* |
+| Startable by an agent right now | **RM-31 (#32)** — Coordinate one academic commitment end to end |
+| Waiting on you | Optional: the Azure budget alert, the Tracer 1 milestone PR review, and two RM-30 questions below. Nothing here blocks the loop. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
@@ -88,6 +88,14 @@ Phase B failed once before this, at the linked-view step, and retired nothing. T
 ---
 
 ## 🔀 Decisions awaiting you
+
+Two came out of the RM-30 reviews. Neither blocks anything; both change what you see.
+
+| Decision | What it means | Recommendation |
+| --- | --- | --- |
+| Where should actionable **application** mail land? | Every actionable message from the entertainment/application mailbox is routed to the `Personal Life` Workstream, so a job-application email appears in the COO Personal Life view rather than `Career Job`, which already exists. No acceptance criterion set this, so it was left as built. | Route application mail to `Career Job` if that is where you would look for it. Say the word and it becomes its own ticket. |
+| `Exception Notice` now carries a routine digest | CONTEXT.md scopes Exception Notice to approvals, blockers, incidents and Outcome Reports, and lists "daily digest" under *Avoid*. RM-30 follows the existing `routine-progress` precedent rather than inventing it, but the glossary and the channel now disagree. | Update CONTEXT.md to admit routine notices, since that is what the system actually does. |
+
 
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
