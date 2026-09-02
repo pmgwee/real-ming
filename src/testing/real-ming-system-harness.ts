@@ -756,6 +756,7 @@ class ControlledDeploymentPromotionExecutor implements DeploymentPromotionExecut
       readonly merge?: "ok" | "failed";
       readonly verification?: "verified" | "failed";
       readonly verificationEvidence?: "present" | "missing";
+      readonly verificationInvalid?: boolean;
       readonly rollback?: "rolled-back" | "failed";
       readonly freshness?: "current" | "drifted";
     },
@@ -780,6 +781,9 @@ class ControlledDeploymentPromotionExecutor implements DeploymentPromotionExecut
 
   async verifyProduction(input: Parameters<DeploymentPromotionExecutor["verifyProduction"]>[0]) {
     this.#calls.push(`verify:${input.candidate.id}`);
+    if (this.options.verificationInvalid === true) {
+      return { kind: "verified" as const, commitSha: input.candidate.exactCommitSha, evidenceReference: "", asOf: "not-a-date", assertions: [""] };
+    }
     if (this.options.verification === "failed") {
       return this.options.verificationEvidence === "missing"
         ? { kind: "failed" as const, reason: "verification-failed" as const }
@@ -789,7 +793,7 @@ class ControlledDeploymentPromotionExecutor implements DeploymentPromotionExecut
       kind: "verified" as const,
       commitSha: input.candidate.exactCommitSha,
       evidenceReference: "verification:production:candidate",
-      asOf: "2026-09-02T10:05:00.000Z",
+      asOf: "2026-09-02T09:55:00.000Z",
       assertions: ["Production serves the approved candidate commit."],
     };
   }

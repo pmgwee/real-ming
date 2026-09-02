@@ -524,7 +524,16 @@ export function createDeploymentPromotionCoordinator(options: {
     }
     append({ ...base, state: "merged", mergeReference: merged.effectReference, verificationReference: null, rollbackReference: null, outcomeReport: null, failureReason: null, occurredAt: at });
     const verification = await options.executor.verifyProduction({ candidate, merge: merged });
-    if (verification.kind === "verified" && verification.commitSha === candidate.exactCommitSha && verification.evidenceReference !== undefined && verification.asOf !== undefined && (verification.assertions?.length ?? 0) > 0) {
+    const verificationIsTrustworthy = verification.kind === "verified" &&
+      verification.commitSha === candidate.exactCommitSha &&
+      verification.evidenceReference !== undefined &&
+      verification.evidenceReference.trim().length > 0 &&
+      verification.asOf !== undefined &&
+      Number.isFinite(Date.parse(verification.asOf)) &&
+      Date.parse(verification.asOf) <= Date.parse(now()) &&
+      (verification.assertions?.length ?? 0) > 0 &&
+      verification.assertions?.every((assertion) => assertion.trim().length > 0) === true;
+    if (verificationIsTrustworthy) {
       const report: DeploymentPromotionOutcomeReport = {
         id: `promotion-outcome:${runId}`,
         candidateId: candidate.id,

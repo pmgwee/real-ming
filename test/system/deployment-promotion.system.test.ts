@@ -29,7 +29,7 @@ describe("RM-28 exact Deployment Candidate promotion", () => {
   });
 
   async function start(
-    promotion?: { readonly merge?: "ok" | "failed"; readonly verification?: "verified" | "failed"; readonly verificationEvidence?: "present" | "missing"; readonly rollback?: "rolled-back" | "failed"; readonly freshness?: "current" | "drifted" },
+    promotion?: { readonly merge?: "ok" | "failed"; readonly verification?: "verified" | "failed"; readonly verificationEvidence?: "present" | "missing"; readonly verificationInvalid?: boolean; readonly rollback?: "rolled-back" | "failed"; readonly freshness?: "current" | "drifted" },
   ): Promise<{ readonly harness: RealMingSystemHarness; readonly directory: string; readonly setNow: (value: string) => void }> {
     const directory = mkdtempSync(join(tmpdir(), "real-ming-rm28-"));
     directories.push(directory);
@@ -218,6 +218,14 @@ describe("RM-28 exact Deployment Candidate promotion", () => {
     const approvals = await requestAndGrant(harness, selected.candidate.id);
     const result = await harness.promoteDeploymentCandidate({ candidateId: selected.candidate.id, codeApprovalId: approvals[0]!.id });
     expect(result).toMatchObject({ kind: "failed", record: { state: "merge-failed", failureReason: "candidate-drift" } });
+  });
+
+  it("does not call an unverifiable success a verified production outcome", async () => {
+    const { harness } = await start({ verificationInvalid: true });
+    const selected = await buildCandidate(harness);
+    const approvals = await requestAndGrant(harness, selected.candidate.id);
+    const result = await harness.promoteDeploymentCandidate({ candidateId: selected.candidate.id, codeApprovalId: approvals[0]!.id });
+    expect(result).toMatchObject({ kind: "rolled-back", record: { state: "rollback-completed", outcomeReport: { verification: { status: "failed" } } } });
   });
 
   it("rolls back the known production deployment when verification fails", async () => {
