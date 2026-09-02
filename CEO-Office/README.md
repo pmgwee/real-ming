@@ -12,8 +12,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **29 of 44** *(RM-28 closed; RM-29 next)* |
-| Startable by an agent right now | **RM-29 (#30)** — Connect personal and opportunity email read-and-draft |
+| Phase 3 tickets closed | **30 of 44** *(RM-29 closed; RM-31 next)* |
+| Startable by an agent right now | **RM-31 (#32)** — Coordinate one academic commitment end to end |
 | Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
@@ -168,6 +168,16 @@ the merge effect; success requires exact live verification and a final Outcome
 Report; failed verification records an auditable rollback. The production
 composition intentionally has no live promotion executor yet, so it refuses
 activation until a separately approved provider capability is installed.
+
+**RM-29 is complete in the controlled harness.** The Gmail adapter reads only
+the explicitly bound personal and opportunity mailboxes, returns mailbox and
+source provenance with an as-of time, quarantines credential-shaped content,
+and creates idempotent unsent drafts through a durable SQLite receipt ledger.
+Actionable mail becomes one bounded COO Work Item and cross-domain consumers
+receive only a body-free Approved Projection. Any mailbox crossover, changed
+recipient/content, or send attempt is refused. Production wiring is optional
+until the CEO supplies an authorized Gmail access token and both mailbox
+bindings; no send capability exists in this ticket.
 
 **RM-17’s CEO selection is recorded and the bounded Personal Context ingestion
 boundary is implemented and proven in the controlled harness.** The eventual

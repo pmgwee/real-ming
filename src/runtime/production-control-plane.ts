@@ -31,6 +31,9 @@ import {
   deploymentPromotionStatePath,
   SqliteDeploymentPromotionStore,
 } from "../portfolio/deployment-promotion.js";
+import type { GmailEmailAdapter } from "../providers/email-provider-adapter.js";
+import { createGmailEmailAdapter, SqliteEmailDraftLedger } from "../providers/email-provider-adapter.js";
+import type { EmailMailboxKind } from "../operations/email-operations.js";
 import { resolveControlPlaneCredentials } from "./credential-resolver.js";
 import {
   createDailyOperationsControlPlane,
@@ -68,6 +71,12 @@ export async function createProductionControlPlane(options: {
   readonly privateWorker?: ControlledWorker;
   /** Optional verifier paired with a supplied private-worker adapter. */
   readonly effectVerifier?: EffectVerifier;
+  /** Optional Gmail adapter supplied only after CEO mailbox authorization. */
+  readonly emailAdapter?: GmailEmailAdapter;
+  /** Optional already-authorized Gmail access token; no token is requested by default. */
+  readonly emailAccessToken?: string;
+  readonly emailDraftLedgerPath?: string;
+  readonly emailMailboxBindings?: Readonly<Record<EmailMailboxKind, string>>;
   readonly vaultName?: string;
   readonly dashboardHost?: string;
   readonly dashboardPort?: number;
@@ -77,6 +86,11 @@ export async function createProductionControlPlane(options: {
 }): Promise<DailyOperationsControlPlane> {
   const request = options.fetch ?? fetch;
   const now = options.now ?? (() => new Date().toISOString());
+  const emailAccessToken = optional(options.emailAccessToken);
+  const emailConfigured = emailAccessToken !== undefined || options.emailAdapter !== undefined;
+  if (emailConfigured && (options.emailMailboxBindings === undefined || options.emailMailboxBindings.personal.trim().length === 0 || options.emailMailboxBindings.opportunity.trim().length === 0)) {
+    throw new Error("Email operations require explicit personal and opportunity mailbox bindings.");
+  }
   const vaultName =
     optional(options.vaultName) ??
     optional(options.environment["REAL_MING_AZURE_KEY_VAULT_NAME"]);
@@ -144,6 +158,19 @@ export async function createProductionControlPlane(options: {
   const deploymentPromotionStore = new SqliteDeploymentPromotionStore(
     deploymentPromotionStatePath(options.statePath),
   );
+  const emailLedger = emailAccessToken === undefined
+    ? undefined
+    : new SqliteEmailDraftLedger(options.emailDraftLedgerPath ?? `${options.statePath}.email-drafts.sqlite`);
+  const emailAdapter = options.emailAdapter ?? (emailAccessToken === undefined
+    ? undefined
+    : createGmailEmailAdapter({
+        accessToken: emailAccessToken,
+        workspaceId: "workspace:real-ming",
+        accountReference: "gmail:real-ming",
+        ...(emailLedger === undefined ? {} : { draftLedger: emailLedger }),
+        fetch: request,
+        now,
+      }));
 
   try {
     for (const project of options.portfolioProjects ?? []) {
@@ -184,6 +211,8 @@ export async function createProductionControlPlane(options: {
       portfolio,
       deploymentCandidateStore,
       deploymentPromotionStore,
+      ...(emailAdapter === undefined ? {} : { emailAdapter }),
+      ...(options.emailMailboxBindings === undefined ? {} : { emailMailboxBindings: options.emailMailboxBindings }),
       ...(options.repositoryCenterAdapters === undefined
         ? {}
         : { refreshRepositoryCenters }),
@@ -247,6 +276,7 @@ export async function createProductionControlPlane(options: {
         controlPlane.requestDeploymentPromotionApproval(input),
       promoteDeploymentCandidate: (input) =>
         controlPlane.promoteDeploymentCandidate(input),
+      emailOperations: controlPlane.emailOperations,
       runCycle: () => controlPlane.runCycle(),
       run: () => controlPlane.run(),
       stop: () => controlPlane.stop(),
@@ -254,6 +284,7 @@ export async function createProductionControlPlane(options: {
         try {
           await controlPlane.close();
         } finally {
+          emailLedger?.close();
           portfolio.close();
           notionLedger.close();
         }
@@ -263,6 +294,7 @@ export async function createProductionControlPlane(options: {
     portfolio.close();
     deploymentCandidateStore.close();
     deploymentPromotionStore.close();
+    emailLedger?.close();
     notionLedger.close();
     throw error;
   }

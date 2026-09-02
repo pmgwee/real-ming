@@ -55,6 +55,12 @@ import {
   type DeploymentPromotionStore,
 } from "../portfolio/deployment-promotion.js";
 import {
+  createEmailOperationsCoordinator,
+  type EmailOperationsCoordinator,
+  type EmailMailboxKind,
+} from "../operations/email-operations.js";
+import type { GmailEmailAdapter } from "../providers/email-provider-adapter.js";
+import {
   createProjectEvidenceBroker,
   type AgentBrainEvidenceProvider,
   type ProjectEvidenceBindingRequest,
@@ -111,6 +117,7 @@ export interface DailyOperationsControlPlane {
   deploymentCandidate(id: string): DeploymentCandidate | undefined;
   requestDeploymentPromotionApproval(input: DeploymentPromotionApprovalRequest): Promise<DeploymentPromotionApprovalResult>;
   promoteDeploymentCandidate(input: DeploymentPromotionRequest): Promise<DeploymentPromotionResult>;
+  readonly emailOperations: EmailOperationsCoordinator | undefined;
   runCycle(): Promise<ControlPlaneCycle>;
   run(): Promise<void>;
   stop(): void;
@@ -137,6 +144,9 @@ export async function createDailyOperationsControlPlane(options: {
   readonly deploymentPromotionStore?: DeploymentPromotionStore;
   /** Explicitly supplied promotion capability; omitted in the cloud-only process. */
   readonly deploymentPromotionExecutor?: DeploymentPromotionExecutor;
+  /** Optional Gmail adapter; omitted until the CEO provisions mailbox OAuth. */
+  readonly emailAdapter?: GmailEmailAdapter;
+  readonly emailMailboxBindings?: Readonly<Record<EmailMailboxKind, string>>;
   readonly evidenceProvider?: AgentBrainEvidenceProvider;
   /** Optional Lenovo/private-worker adapter for Local-Only Work. */
   readonly privateWorker?: ControlledWorker;
@@ -256,8 +266,11 @@ export async function createDailyOperationsControlPlane(options: {
             ? {}
             : { executor: options.deploymentPromotionExecutor }),
           notify: (notification) => frontDoor.notify(notification),
-          now,
-        });
+        now,
+      });
+  const emailOperations = options.emailAdapter === undefined
+    ? undefined
+      : createEmailOperationsCoordinator({ adapter: options.emailAdapter, gateway, mailboxBindings: options.emailMailboxBindings ?? { personal: "personal@example.test", opportunity: "personal@example.test" } });
   const notices = createExceptionNoticeRhythm({
     state,
     notify: (notification) => frontDoor.notify(notification),
@@ -534,6 +547,7 @@ export async function createDailyOperationsControlPlane(options: {
       }
       return deploymentPromotion.promote(input);
     },
+    emailOperations,
     runCycle: () => supervisor.runCycle(),
     run: () => supervisor.run(),
     stop: () => supervisor.stop(),

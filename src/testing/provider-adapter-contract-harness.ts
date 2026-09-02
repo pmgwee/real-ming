@@ -54,6 +54,11 @@ import {
   createGoogleAccessTokens,
   type GoogleAccessTokens,
 } from "../runtime/google-access-token.js";
+import {
+  createGmailEmailAdapter,
+  type EmailDraftLedger,
+  type GmailEmailAdapter,
+} from "../providers/email-provider-adapter.js";
 import type { VaultSecretReader } from "../runtime/credential-resolver.js";
 import type {
   AgentBrainEvidenceProvider,
@@ -61,6 +66,45 @@ import type {
 } from "../evidence/evidence-broker.js";
 
 export const contractSecretFixture = "provider-secret-must-never-be-reported";
+
+export interface EmailProviderContractHarness {
+  readonly adapter: GmailEmailAdapter;
+  requests(): readonly string[];
+  externalEffectCount(): number;
+}
+
+/** Controlled Gmail edge for RM-29 contract tests; it never contacts Gmail. */
+export function createEmailProviderContractHarness(options: {
+  readonly responses: readonly (Response | (() => Response | Promise<Response>))[];
+  readonly accessToken?: string;
+  readonly now?: () => string;
+  readonly draftLedger?: EmailDraftLedger;
+}): EmailProviderContractHarness {
+  const requests: string[] = [];
+  let responseIndex = 0;
+  let externalEffects = 0;
+  const fetchImplementation: typeof fetch = async (input, init) => {
+    const url = String(input);
+    requests.push(url);
+    if ((init?.method ?? "GET") === "POST") externalEffects += 1;
+    const next = options.responses[responseIndex++];
+    if (next === undefined) return Response.json({ error: "controlled response exhausted" }, { status: 503 });
+    return typeof next === "function" ? await next() : next;
+  };
+  const adapterOptions = {
+    accessToken: options.accessToken ?? contractSecretFixture,
+    workspaceId: "workspace:real-ming",
+    accountReference: "gmail:real-ming",
+    fetch: fetchImplementation,
+    now: options.now ?? (() => "2026-09-02T15:00:00.000Z"),
+    ...(options.draftLedger === undefined ? {} : { draftLedger: options.draftLedger }),
+  };
+  return {
+    adapter: createGmailEmailAdapter(adapterOptions),
+    requests: () => [...requests],
+    externalEffectCount: () => externalEffects,
+  };
+}
 
 export interface AgentBrainEvidenceContractHarness {
   readonly provider: AgentBrainEvidenceProvider;

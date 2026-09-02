@@ -147,6 +147,17 @@ import {
   type DeploymentPromotionResult,
   type DeploymentPromotionRecord,
 } from "../portfolio/deployment-promotion.js";
+import {
+  createEmailOperationsCoordinator,
+  type EmailApprovedProjection,
+  type EmailCaptureResult,
+  type EmailMailboxKind,
+  type EmailOperationsCoordinator,
+  type EmailReadResult,
+  type EmailDraftResult,
+  type EmailSendResult,
+} from "../operations/email-operations.js";
+import type { EmailMessage, GmailEmailAdapter } from "../providers/email-provider-adapter.js";
 import type { CutoverBindings } from "../migration/master-tasks-cutover.js";
 
 import {
@@ -461,6 +472,34 @@ export interface RealMingSystemHarness {
     input: DeploymentPromotionRequest,
   ): Promise<DeploymentPromotionResult>;
   deploymentPromotion(candidateId: string): DeploymentPromotionRecord | undefined;
+  readEmailMailbox(request: {
+    readonly mailbox: string;
+    readonly mailboxKind: EmailMailboxKind;
+    readonly query?: string;
+  }): Promise<EmailReadResult>;
+  captureEmailActionable(input: {
+    readonly message: EmailMessage;
+    readonly mailboxKind: EmailMailboxKind;
+    readonly summary: string;
+    readonly workstream: Extract<Workstream, "Personal Life" | "Career Job">;
+    readonly idempotencyKey: string;
+  }): Promise<EmailCaptureResult>;
+  createEmailDraft(input: {
+    readonly mailbox: string;
+    readonly mailboxKind: EmailMailboxKind;
+    readonly to: readonly string[];
+    readonly cc?: readonly string[];
+    readonly subject: string;
+    readonly body: string;
+    readonly idempotencyKey: string;
+  }): Promise<EmailDraftResult>;
+  sendEmailDraft(input: {
+    readonly draft: import("../providers/email-provider-adapter.js").EmailDraft;
+    readonly to: readonly string[];
+    readonly subject: string;
+    readonly body: string;
+  }): Promise<EmailSendResult>;
+  emailProjection(input: Parameters<EmailOperationsCoordinator["projection"]>[0]): EmailApprovedProjection;
   editMasterTaskThroughView(
     request: EditMasterTaskThroughViewRequest,
   ): Promise<MasterTaskRecord>;
@@ -838,6 +877,9 @@ export function createRealMingSystemHarness(options: {
     readonly rollback?: "rolled-back" | "failed";
     readonly freshness?: "current" | "drifted";
   };
+  /** Optional controlled Gmail adapter for RM-29 system scenarios. */
+  readonly emailAdapter?: GmailEmailAdapter;
+  readonly emailMailboxBindings?: Readonly<Record<EmailMailboxKind, string>>;
   readonly now?: () => string;
   readonly telegram?: {
     readonly ceoTelegramId: string;
@@ -1234,6 +1276,13 @@ export function createRealMingSystemHarness(options: {
     notify: (notification) => telegramFrontDoor.notify(notification),
     now: clock,
   });
+  const emailOperations = options.emailAdapter === undefined
+    ? undefined
+    : createEmailOperationsCoordinator({
+        adapter: options.emailAdapter,
+        gateway,
+        mailboxBindings: options.emailMailboxBindings ?? { personal: "personal@example.test", opportunity: "personal@example.test" },
+      });
   const calendarId = options.morningBrief?.calendarId ?? "";
   const exceptionNoticeRhythm: ExceptionNoticeRhythm = createExceptionNoticeRhythm({
     state,
@@ -1507,6 +1556,26 @@ export function createRealMingSystemHarness(options: {
     requestDeploymentPromotionApproval: (input) => deploymentPromotion.requestApproval(input),
     promoteDeploymentCandidate: (input) => deploymentPromotion.promote(input),
     deploymentPromotion: (candidateId) => deploymentPromotionStore.latestForCandidate(candidateId),
+    readEmailMailbox: async (input) => {
+      if (emailOperations === undefined) return { kind: "failed", failure: { class: "unsupported-capability", retryable: false, message: "Email operations are not configured." } };
+      return emailOperations.readMailbox(input);
+    },
+    captureEmailActionable: async (input) => {
+      if (emailOperations === undefined) throw new Error("Email operations are not configured.");
+      return emailOperations.captureActionable(input);
+    },
+    createEmailDraft: async (input) => {
+      if (emailOperations === undefined) return { kind: "failed", failure: { class: "unsupported-capability", retryable: false, message: "Email operations are not configured." } };
+      return emailOperations.createDraft(input);
+    },
+    sendEmailDraft: async (input) => {
+      if (emailOperations === undefined) return { kind: "failed", failure: { class: "unsupported-capability", retryable: false, message: "Email operations are not configured." } };
+      return emailOperations.sendDraft(input);
+    },
+    emailProjection: (input) => {
+      if (emailOperations === undefined) throw new Error("Email operations are not configured.");
+      return emailOperations.projection(input);
+    },
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
     listCalendarEvents: ({ calendarId }) =>
       calendarAdapter.listEvents(calendarId),

@@ -21,6 +21,11 @@ function dashboardPort(): number {
   return parsed;
 }
 
+function optionalEnvironment(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
 function portfolioProjects(): readonly PortfolioProjectInput[] {
   const raw = process.env["REAL_MING_PORTFOLIO_PROJECTS_JSON"]?.trim();
   if (raw === undefined || raw.length === 0) return [];
@@ -94,12 +99,24 @@ async function main(): Promise<void> {
   mkdirSync(dirname(notionLedgerPath), { recursive: true });
 
   const projects = portfolioProjects();
+  const emailAccessToken = optionalEnvironment("REAL_MING_GMAIL_ACCESS_TOKEN");
+  const emailMailboxBindings = emailAccessToken === undefined
+    ? undefined
+    : {
+        personal: optionalEnvironment("REAL_MING_PERSONAL_MAILBOX") ?? "",
+        opportunity: optionalEnvironment("REAL_MING_OPPORTUNITY_MAILBOX") ?? "",
+      };
+  if (emailMailboxBindings !== undefined && (emailMailboxBindings.personal.length === 0 || emailMailboxBindings.opportunity.length === 0)) {
+    throw new Error("REAL_MING_PERSONAL_MAILBOX and REAL_MING_OPPORTUNITY_MAILBOX are required when Gmail email access is configured.");
+  }
   const controlPlane = await createProductionControlPlane({
     environment: process.env,
     statePath,
     notionLedgerPath,
     portfolioProjects: projects,
     repositoryCenterAdapters: repositoryCenterAdapters(projects),
+    ...(emailAccessToken === undefined ? {} : { emailAccessToken }),
+    ...(emailMailboxBindings === undefined ? {} : { emailMailboxBindings }),
     dashboardHost: "127.0.0.1",
     dashboardPort: dashboardPort(),
   });
