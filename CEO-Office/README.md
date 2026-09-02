@@ -12,8 +12,8 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **31 of 44** *(RM-30 closed; RM-31 next)* |
-| Startable by an agent right now | **RM-31 (#32)** — Coordinate one academic commitment end to end |
+| Phase 3 tickets closed | **30 of 44** *(RM-29 closed; RM-30 committed locally, GitHub closure pending)* |
+| Startable by an agent right now | **RM-30 (#31)** — Publish and close the committed entertainment/application email digest |
 | Waiting on you | Optional: the Azure budget alert and the Tracer 1 milestone PR review. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
@@ -179,7 +179,8 @@ recipient/content, or send attempt is refused. Production wiring is optional
 until the CEO supplies an authorized Gmail access token and both mailbox
 bindings; no send capability exists in this ticket.
 
-**RM-30 is complete in the controlled harness.** The entertainment/application
+**RM-30 is implemented and committed locally in `42b7d7b`; GitHub publication
+and issue closure are pending external connectivity.** The entertainment/application
 mailbox is an explicit third Gmail boundary. When Gmail is configured, a daily
 08:00 Kuala Lumpur scheduler occurrence produces a low-priority, metadata-only
 digest; `STARRED`, `IMPORTANT`, and `ACTIONABLE`
