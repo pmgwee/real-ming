@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { afterAll, describe, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
 
@@ -66,6 +68,46 @@ describe("RM-08 dashboard browser view", () => {
       observedAt: "2026-08-27T09:00:00.000Z",
       idempotencyKey: "browser:provider-observation:1",
     });
+    const server = await harness.startDashboard(credentials);
+    servers.push(server);
+    return { harness, server };
+  }
+
+  const knowledgeContent = "DuitSini deploys from main after preview verification.";
+
+  async function seedKnowledgeDashboard(): Promise<{
+    harness: RealMingSystemHarness;
+    server: DashboardServer;
+  }> {
+    const harness = createRealMingSystemHarness({
+      statePath: ":memory:",
+      now: () => "2026-08-27T09:00:00.000Z",
+      knowledgeVault: { encryptionKey: "browser-knowledge-key-not-a-real-secret" },
+    });
+    harnesses.push(harness);
+    const compiled = harness.compileKnowledgeCandidate({
+      id: "candidate:browser-knowledge",
+      sourceSystem: "agent-brain",
+      sourceIdentity: "agent-brain:ming-creatives",
+      sourceReference: "wiki/engineering/duitsini.md",
+      canonicalEvidenceId: "agent-brain:ming-creatives:evidence:browser",
+      capturedAt: "2026-08-27T08:30:00.000Z",
+      asOf: "2026-08-27T08:00:00.000Z",
+      contentHash: `sha256:${createHash("sha256").update(knowledgeContent, "utf8").digest("hex")}`,
+      trustDomain: "Ming Creatives",
+      sensitivity: "internal",
+      allowedRoles: ["CTO"],
+      retentionClass: "project-evidence-30d",
+      mode: "snapshot",
+      content: knowledgeContent,
+      citations: ["agent-brain://ming-creatives/evidence/browser"],
+      freshness: "current",
+    });
+    if (compiled.kind !== "compiled") {
+      throw new Error(`Expected a compiled generation, got ${compiled.kind}.`);
+    }
+    // Gives the knowledge row a retention timestamp and purge count to render.
+    await harness.runKnowledgeJob("knowledge-retention");
     const server = await harness.startDashboard(credentials);
     servers.push(server);
     return { harness, server };
@@ -295,6 +337,70 @@ describe("RM-08 dashboard browser view", () => {
         })),
       );
       expect(rendered.auditCount).toBe(overview.auditEvents.length);
+      expect(rendered.html).not.toContain(ceoToken);
+
+      await context.close();
+    },
+    30_000,
+  );
+
+  it.skipIf(browser === undefined)(
+    "renders the knowledge and portfolio views the operations state holds",
+    async () => {
+      if (browser === undefined) {
+        throw new Error(`Chromium did not launch: ${launchFailure ?? ""}`);
+      }
+
+      const { harness, server } = await seedKnowledgeDashboard();
+      const context = await browser.newContext();
+      await context.addCookies([
+        {
+          name: dashboardSessionCookie,
+          value: ceoToken,
+          domain: "127.0.0.1",
+          path: "/",
+        },
+      ]);
+      const page = await context.newPage();
+      await page.goto(server.origin, { waitUntil: "domcontentloaded" });
+
+      const rendered = await page.evaluate(() => {
+        const read = (row: Element, field: string): string =>
+          row.querySelector(`[data-field="${field}"]`)?.textContent ?? "";
+        return {
+          knowledge: [
+            ...document.querySelectorAll("#knowledge-health tr[data-knowledge-domain]"),
+          ].map((row) => ({
+            domain: row.getAttribute("data-knowledge-domain") ?? "",
+            status: read(row, "status"),
+            lastRetention: read(row, "lastRetention"),
+            purgedRecords: read(row, "purgedRecords"),
+            currentGeneration: read(row, "generation"),
+          })),
+          html: document.documentElement.outerHTML,
+        };
+      });
+
+      const overview = harness.dashboardOverview({
+        actorId: "ceo:ming",
+        workspaceId: "workspace:real-ming",
+      });
+
+      // Without a seeded domain this comparison is [] against [], which passes
+      // with the whole section deleted from the page.
+      expect(overview.knowledge.length).toBeGreaterThan(0);
+      expect(rendered.knowledge).toEqual(
+        overview.knowledge.map((health) => ({
+          domain: health.domain,
+          status: health.status,
+          lastRetention: health.lastRetention ?? "",
+          purgedRecords: String(health.purgedRecords),
+          currentGeneration: health.currentGenerationId ?? "",
+        })),
+      );
+      // Compiled Knowledge is served through Hermes against a Work Item, never
+      // rendered into a page that shows every Trust Domain at once.
+      expect(rendered.html).not.toContain(knowledgeContent);
       expect(rendered.html).not.toContain(ceoToken);
 
       await context.close();

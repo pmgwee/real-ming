@@ -2188,6 +2188,12 @@ export function createRealMingSystemHarness(options: {
         deploymentCandidates: deploymentCandidateStore,
         deploymentPromotion,
         schedulerJobs,
+        // Production wires this too. Without it the served page renders an
+        // empty Knowledge Health section whatever the state holds, so no
+        // browser check through this seam could ever prove the view.
+        ...(knowledgeOperations === undefined
+          ? {}
+          : { knowledgeHealth: () => knowledgeOperations.domainHealth }),
         ...(evidenceBroker === undefined ? {} : { projectEvidence: evidenceBroker }),
       }),
     reviewWorkItem: (request) => gateway.reviewWorkItem(request),
