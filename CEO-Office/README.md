@@ -12,9 +12,9 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **31 of 44** *(RM-30 closed with evidence)* |
-| Startable by an agent right now | **RM-31 (#32)** — Coordinate one academic commitment end to end |
-| Waiting on you | Optional: the Azure budget alert, the Tracer 1 milestone PR review, and two RM-30 questions below. Nothing here blocks the loop. |
+| Phase 3 tickets closed | **37 of 44** *(RM-31 through RM-36 closed with evidence)* |
+| Startable by an agent right now | **RM-37 (#38)** — Enforce Metered Platform Cost and model-routing policy |
+| Waiting on you | Nothing blocking. The milestone PR is the one item genuinely overdue. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
@@ -104,7 +104,8 @@ Two came out of the RM-30 reviews. Neither blocks anything; both change what you
 | Activate RM-15 candidate | Started image `sha256:0ed353723aa4…`; Telegram proven from a phone with the Lenovo shut. | Approved and executed 31 Aug. | ✅ Done |
 | Off-host backup | An Azure Storage account and a narrowly scoped role assignment, so the 33 Work Items survive losing the VM. | **Not yet.** Local backup meets every acceptance criterion, and a storage account is Azure-specific against your day-31 plan. Worth revisiting before teardown. | ⏳ Open |
 | Select RM-17 Personal Context item | One bounded file or allowlisted Notion page plus source metadata for the first Candidate Envelope. | Approved `personal-context/working-preferences.md` snapshot for COO daily planning. | ✅ Done in RM-17 |
-| Open Tracer 1 milestone PR | Reviewable `feat/tracer-1-daily-operations` increment containing RM-07…RM-16. | **Open a PR for review; do not merge to `main` without separate approval.** | ⏳ Waiting on CEO |
+| Open Tracer 1 milestone PR | Reviewable `feat/tracer-1-daily-operations` increment. It was scoped as RM-07…RM-16; the branch now carries through RM-36, so it is well past the size one PR was meant to stay. | **Open it now, and consider splitting the remainder into a second milestone PR.** Do not merge to `main` without separate approval. | ⏳ Overdue |
+| `ceo-confirmed` career claims are unverified | RM-33 accepts a claim labelled "CEO confirmed" at face value: there is no Approval record behind the label, so it is only as trustworthy as whatever gates the caller. | Bind it to a real Approval in its own ticket if you want the label to mean something. | ⏳ Open |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
