@@ -158,6 +158,11 @@ import {
   type EmailSendResult,
 } from "../operations/email-operations.js";
 import {
+  createContentWorkflowCoordinator,
+  type ContentWorkflowRequest,
+  type ContentWorkflowResult,
+} from "../operations/content-workflow-coordination.js";
+import {
   createAcademicCoordinator,
   type AcademicCoordinationRequest,
   type AcademicCoordinationResult,
@@ -518,6 +523,9 @@ export interface RealMingSystemHarness {
   coordinateAcademicCommitment(
     request: AcademicCoordinationRequest,
   ): Promise<AcademicCoordinationResult>;
+  coordinateContentWorkItem(
+    request: ContentWorkflowRequest,
+  ): Promise<ContentWorkflowResult>;
   attemptAcademicSubmission(request: {
     readonly courseId: string;
     readonly assignmentId: string;
@@ -1333,6 +1341,13 @@ export function createRealMingSystemHarness(options: {
             ? {}
             : { calendarId: options.academic.calendarId }),
         });
+  const contentWorkflowCoordinator = createContentWorkflowCoordinator({
+    portfolio,
+    gateway,
+    evidenceBroker,
+    actorId: "ceo:ming",
+    workspaceId: "workspace:real-ming",
+  });
   const calendarId = options.morningBrief?.calendarId ?? "";
   const exceptionNoticeRhythm: ExceptionNoticeRhythm = createExceptionNoticeRhythm({
     state,
@@ -1651,6 +1666,8 @@ export function createRealMingSystemHarness(options: {
       if (emailOperations === undefined) throw new Error("Email operations are not configured.");
       return emailOperations.projection(input);
     },
+    coordinateContentWorkItem: (request) =>
+      contentWorkflowCoordinator.coordinate(request),
     coordinateAcademicCommitment: async (request) => {
       if (academicCoordinator === undefined) {
         return {

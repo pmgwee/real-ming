@@ -28,6 +28,9 @@ export const portfolioSourceKinds = [
   "vercel",
   "agent-brain",
   "operating-instructions",
+  // The content workflow is authoritative for content projects the way GitHub
+  // is for code ones: Real-Ming links to its records rather than copying them.
+  "content-workflow",
 ] as const;
 export type PortfolioSourceKind = (typeof portfolioSourceKinds)[number];
 
