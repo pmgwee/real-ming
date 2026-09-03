@@ -26,6 +26,7 @@ import {
 import { readLegacyNotionTaskSources } from "../providers/notion-legacy-task-reader.js";
 import { createNotionCutoverWorkspace } from "../providers/notion-cutover-workspace.js";
 import { createCanvasAdapter, type CanvasAdapter } from "../providers/canvas-adapter.js";
+import { createDuitSiniAdapter, type DuitSiniAdapter } from "../providers/duitsini-adapter.js";
 import { createMicrosoft365Adapter, type Microsoft365Adapter } from "../providers/microsoft365-adapter.js";
 import {
   createGoogleCalendarAdapter,
@@ -1257,6 +1258,51 @@ export function createAcademicContractHarness(): AcademicContractHarness {
       now: () => "2026-09-03T01:00:00.000Z",
     }),
     networkCallCount: () => networkCalls,
+  };
+}
+
+export interface DuitSiniContractHarness {
+  readonly adapter: DuitSiniAdapter;
+  externalChangeCount(): number;
+}
+
+/**
+ * Controlled DuitSini. Only PATCH increments the counter, so a test can prove
+ * a retry issued no second live change rather than only that it returned
+ * deduplicated.
+ */
+export function createDuitSiniContractHarness(): DuitSiniContractHarness {
+  let externalChanges = 0;
+  const record = {
+    id: "subscription:1",
+    kind: "recurring-subscription",
+    label: "Netflix",
+    renewalSchedule: "monthly on the 4th",
+    paymentMethodLabel: "Visa ending 4242",
+    updatedAt: "2026-09-03T03:30:00.000Z",
+  };
+  const fetchImplementation = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    const method = init?.method ?? "GET";
+    if (method === "PATCH") {
+      externalChanges += 1;
+      return Response.json({ ...record, updatedAt: "2026-09-03T04:00:00.000Z" });
+    }
+    if (String(input).endsWith("/records")) return Response.json([record]);
+    return Response.json(record);
+  };
+  return {
+    adapter: createDuitSiniAdapter({
+      accessToken: contractSecretFixture,
+      baseUrl: "https://duitsini.test",
+      workspaceId: "workspace:real-ming",
+      accountReference: "duitsini:real-ming",
+      fetch: fetchImplementation,
+      now: () => "2026-09-03T04:00:00.000Z",
+    }),
+    externalChangeCount: () => externalChanges,
   };
 }
 

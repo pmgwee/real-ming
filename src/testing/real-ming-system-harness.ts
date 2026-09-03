@@ -158,6 +158,15 @@ import {
   type EmailSendResult,
 } from "../operations/email-operations.js";
 import {
+  createFinancialRecordChangeCoordinator,
+  type FinancialRecordChangeRequest,
+  type FinancialRecordChangeResult,
+} from "../operations/financial-record-change.js";
+import type {
+  DuitSiniAdapter,
+  DuitSiniRecord,
+} from "../providers/duitsini-adapter.js";
+import {
   createCareerGroundingCoordinator,
   type CareerFile,
   type CareerGroundingRequest,
@@ -535,6 +544,12 @@ export interface RealMingSystemHarness {
   groundCareerWorkItem(
     request: CareerGroundingRequest,
   ): Promise<CareerGroundingResult>;
+  readDuitSiniRecord(
+    id: string,
+  ): Promise<ProviderReadResult<DuitSiniRecord>>;
+  changeDuitSiniRecord(
+    request: FinancialRecordChangeRequest,
+  ): Promise<FinancialRecordChangeResult>;
   attemptAcademicSubmission(request: {
     readonly courseId: string;
     readonly assignmentId: string;
@@ -921,6 +936,7 @@ export function createRealMingSystemHarness(options: {
   readonly emailMailboxBindings?: Readonly<Record<EmailMailboxKind, string>>;
   readonly canvasAdapter?: CanvasAdapter;
   readonly microsoft365Adapter?: Microsoft365Adapter;
+  readonly duitsini?: { readonly adapter: DuitSiniAdapter };
   readonly career?: {
     readonly files: Readonly<Record<string, CareerFile>>;
   };
@@ -1353,6 +1369,16 @@ export function createRealMingSystemHarness(options: {
             ? {}
             : { calendarId: options.academic.calendarId }),
         });
+  const financialRecordChange =
+    options.duitsini === undefined
+      ? undefined
+      : createFinancialRecordChangeCoordinator({
+          adapter: options.duitsini.adapter,
+          gateway,
+          state,
+          actorId: "ceo:ming",
+          workspaceId: "workspace:real-ming",
+        });
   const careerGroundingCoordinator = createCareerGroundingCoordinator({
     gateway,
     files: options.career?.files ?? {},
@@ -1690,6 +1716,21 @@ export function createRealMingSystemHarness(options: {
     coordinateContentWorkItem: (request) =>
       contentWorkflowCoordinator.coordinate(request),
     groundCareerWorkItem: (request) => careerGroundingCoordinator.ground(request),
+    readDuitSiniRecord: async (id) => {
+      if (financialRecordChange === undefined) {
+        return {
+          kind: "failed",
+          failure: { class: "unsupported-capability", retryable: false, message: "DuitSini is not configured." },
+        };
+      }
+      return financialRecordChange.readRecord(id);
+    },
+    changeDuitSiniRecord: async (request) => {
+      if (financialRecordChange === undefined) {
+        return { kind: "denied", reason: "record-not-found" };
+      }
+      return financialRecordChange.change(request);
+    },
     coordinateAcademicCommitment: async (request) => {
       if (academicCoordinator === undefined) {
         return {
