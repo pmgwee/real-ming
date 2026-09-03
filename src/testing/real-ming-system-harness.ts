@@ -158,6 +158,11 @@ import {
   type EmailSendResult,
 } from "../operations/email-operations.js";
 import {
+  createFinancialReconciliationCoordinator,
+  type FinancialExportSource,
+  type FinancialReconciliationResult,
+} from "../operations/financial-reconciliation.js";
+import {
   createFinancialRecordChangeCoordinator,
   type FinancialRecordChangeRequest,
   type FinancialRecordChangeResult,
@@ -550,6 +555,7 @@ export interface RealMingSystemHarness {
   changeDuitSiniRecord(
     request: FinancialRecordChangeRequest,
   ): Promise<FinancialRecordChangeResult>;
+  reconcileFinancialExports(): Promise<FinancialReconciliationResult>;
   attemptAcademicSubmission(request: {
     readonly courseId: string;
     readonly assignmentId: string;
@@ -937,6 +943,9 @@ export function createRealMingSystemHarness(options: {
   readonly canvasAdapter?: CanvasAdapter;
   readonly microsoft365Adapter?: Microsoft365Adapter;
   readonly duitsini?: { readonly adapter: DuitSiniAdapter };
+  readonly financialExports?: {
+    readonly sources: readonly FinancialExportSource[];
+  };
   readonly career?: {
     readonly files: Readonly<Record<string, CareerFile>>;
   };
@@ -1369,6 +1378,13 @@ export function createRealMingSystemHarness(options: {
             ? {}
             : { calendarId: options.academic.calendarId }),
         });
+  const financialReconciliation = createFinancialReconciliationCoordinator({
+    sources: options.financialExports?.sources ?? [],
+    gateway,
+    actorId: "ceo:ming",
+    workspaceId: "workspace:real-ming",
+    now: clock,
+  });
   const financialRecordChange =
     options.duitsini === undefined
       ? undefined
@@ -1725,6 +1741,7 @@ export function createRealMingSystemHarness(options: {
       }
       return financialRecordChange.readRecord(id);
     },
+    reconcileFinancialExports: () => financialReconciliation.reconcile(),
     changeDuitSiniRecord: async (request) => {
       if (financialRecordChange === undefined) {
         return { kind: "denied", reason: "record-not-found" };
