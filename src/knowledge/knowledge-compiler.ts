@@ -1,10 +1,12 @@
 import { detectSensitiveFields } from "../operations/sensitive-secret.js";
 import type { CandidateEnvelope } from "../evidence/evidence-broker.js";
+import type { CompiledKnowledgePage } from "./hermes-projection.js";
 import type {
   KnowledgeVault,
   VaultGeneration,
   VaultRoot,
 } from "./knowledge-vault.js";
+import { vaultRoots } from "./knowledge-vault.js";
 
 export type KnowledgeCompilationResult =
   | {
@@ -25,6 +27,13 @@ export type KnowledgeCompilationResult =
 
 export interface KnowledgeCompiler {
   compile(candidate: CandidateEnvelope): KnowledgeCompilationResult;
+  /**
+   * What has actually been published, in the shape a projection can serve. It
+   * lives here rather than in the caller so a served brief cannot describe a
+   * page the compiler never wrote, or claim a page is uncontested while its
+   * contradiction sits in quarantine beside it.
+   */
+  pages(): readonly CompiledKnowledgePage[];
 }
 
 function pageNameFor(candidate: CandidateEnvelope): string {
@@ -76,17 +85,150 @@ export function createKnowledgeCompiler(options: {
   readonly actorId: string;
   readonly now: () => string;
 }): KnowledgeCompiler {
-  // Mirrors what has been published, so a compile can compare against the
-  // current page without decrypting the vault for every candidate.
+  const projectionIndexPath = "projection-index.json";
   const publishedPages = new Map<string, Map<string, string>>();
   const publishedHashes = new Map<string, string>();
   const logLines = new Map<string, string[]>();
+  const pageRecords = new Map<string, CompiledKnowledgePage>();
+  const loadedRoots = new Set<VaultRoot>();
+
+  type PersistedPageRecord = Omit<CompiledKnowledgePage, "text">;
+
+  const readProjectionIndex = (
+    root: VaultRoot,
+    raw: string | undefined,
+    files: Readonly<Record<string, string>>,
+  ): void => {
+    if (raw === undefined) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      !("pages" in parsed) ||
+      !Array.isArray(parsed.pages)
+    ) {
+      return;
+    }
+    for (const value of parsed.pages) {
+      if (typeof value !== "object" || value === null) continue;
+      const record = value as Partial<PersistedPageRecord>;
+      if (
+        record.root !== root ||
+        typeof record.path !== "string" ||
+        !record.path.startsWith("wiki/") ||
+        typeof record.sourceIdentity !== "string" ||
+        record.sourceIdentity.trim().length === 0 ||
+        !Array.isArray(record.allowedRoles) ||
+        record.allowedRoles.some((role) => typeof role !== "string") ||
+        typeof record.contentHash !== "string" ||
+        record.contentHash.trim().length === 0 ||
+        !Array.isArray(record.citations) ||
+        record.citations.some((citation) => typeof citation !== "string") ||
+        typeof record.asOf !== "string" ||
+        typeof record.generation !== "number" ||
+        !Number.isSafeInteger(record.generation) ||
+        (record.freshness !== "current" && record.freshness !== "stale") ||
+        typeof record.contested !== "boolean"
+      ) {
+        continue;
+      }
+      const text = files[record.path];
+      if (text === undefined) continue;
+      const generation = record.generation;
+      const page: CompiledKnowledgePage = {
+        root,
+        path: record.path,
+        sourceIdentity: record.sourceIdentity,
+        allowedRoles: [...record.allowedRoles] as CompiledKnowledgePage["allowedRoles"],
+        contentHash: record.contentHash,
+        text,
+        citations: [...record.citations],
+        asOf: record.asOf,
+        generation,
+        freshness: record.freshness,
+        contested: record.contested,
+      };
+      pageRecords.set(`${root}:${page.path}`, page);
+      publishedHashes.set(`${root}:${page.path}`, page.contentHash);
+    }
+  };
+
+  const ensureLoaded = (root: VaultRoot): void => {
+    if (loadedRoots.has(root)) return;
+    loadedRoots.add(root);
+    const files = options.vault.readCurrentFiles(root, options.actorId);
+    publishedPages.set(root, new Map(Object.entries(files)));
+    const persistedLog = files["log.md"]
+      ?.split(/\r?\n/u)
+      .filter((line) => line.startsWith("- generation "));
+    const log =
+      persistedLog === undefined
+        ? options.vault.log(root).map(
+            (entry) =>
+              `- generation ${entry.sequence} (published) ${entry.occurredAt} ${entry.actorId} ${entry.contentHash}`,
+          )
+        : persistedLog;
+    logLines.set(root, [...log]);
+    readProjectionIndex(root, files[projectionIndexPath], files);
+  };
+
+  const recordsForGeneration = (
+    root: VaultRoot,
+    generation: number,
+    replacement?: CompiledKnowledgePage,
+    contestedPath?: string,
+  ): CompiledKnowledgePage[] => {
+    const records = [...pageRecords.values()]
+      .filter((page) => page.root === root && page.path !== replacement?.path)
+      .map((page) => ({
+        ...page,
+        generation,
+        ...(contestedPath === page.path ? { contested: true } : {}),
+      }));
+    if (replacement !== undefined) records.push(replacement);
+    return records.sort((left, right) => left.path.localeCompare(right.path));
+  };
+
+  const serializeProjectionIndex = (
+    records: readonly CompiledKnowledgePage[],
+  ): string =>
+    `${JSON.stringify(
+      {
+        version: 1,
+        pages: records.map(({ text: _text, ...metadata }) => metadata),
+      },
+      null,
+      2,
+    )}\n`;
+
+  const applyPageRecords = (
+    root: VaultRoot,
+    records: readonly CompiledKnowledgePage[],
+  ): void => {
+    for (const [key, page] of pageRecords) {
+      if (page.root === root) pageRecords.delete(key);
+    }
+    for (const page of records) {
+      pageRecords.set(`${root}:${page.path}`, page);
+      publishedHashes.set(`${root}:${page.path}`, page.contentHash);
+    }
+  };
 
   return {
     compile(candidate): KnowledgeCompilationResult {
       const root = trustDomainRoot(candidate);
       const name = pageNameFor(candidate);
-      const pagePath = `wiki/${name}.md`;
+      // A source already under wiki/ keeps its section, because the section is
+      // what separates one role's task-scoped slice from another's inside the
+      // same Trust Domain.
+      const pagePath = candidate.sourceReference.startsWith("wiki/")
+        ? candidate.sourceReference
+        : `wiki/${name}.md`;
 
       // Checked before anything is written. A rejected candidate must not leave
       // a partial generation behind for someone to find later.
@@ -101,6 +243,7 @@ export function createKnowledgeCompiler(options: {
         };
       }
 
+      ensureLoaded(root);
       const pages = publishedPages.get(root) ?? new Map<string, string>();
       const priorHash = publishedHashes.get(`${root}:${pagePath}`);
       if (priorHash === candidate.contentHash) {
@@ -135,8 +278,20 @@ export function createKnowledgeCompiler(options: {
               "",
             ].join("\n"),
           );
+          const generationNumber = (logLines.get(root)?.length ?? 0) + 1;
+          const records = recordsForGeneration(
+            root,
+            generationNumber,
+            undefined,
+            pageRecords.has(`${root}:${pagePath}`) ? pagePath : undefined,
+          );
+          next.set(projectionIndexPath, serializeProjectionIndex(records));
+          const generation = this.publishFiles(root, next, candidate, "quarantine");
           publishedPages.set(root, next);
-          this.publishFiles(root, next, candidate, "quarantine");
+          applyPageRecords(root, records.map((page) => ({
+            ...page,
+            generation: generation.sequence,
+          })));
           return {
             kind: "quarantined",
             reason: "contradicts-published-page",
@@ -146,17 +301,44 @@ export function createKnowledgeCompiler(options: {
       }
 
       const next = new Map(pages);
-      next.set(pagePath, renderPage(candidate, name));
+      const renderedPage = renderPage(candidate, name);
+      next.set(pagePath, renderedPage);
       const wikiPages = [...next.keys()]
         .filter((path) => path.startsWith("wiki/"))
-        .map((path) => path.slice("wiki/".length).replace(/\.md$/u, ""))
+        .map((path) => (path.split("/").at(-1) ?? path).replace(/\.md$/u, ""))
         .sort();
       next.set("index.md", renderIndex(wikiPages));
 
+      const generationNumber = (logLines.get(root)?.length ?? 0) + 1;
+      const replacement: CompiledKnowledgePage = {
+        root,
+        path: pagePath,
+        sourceIdentity: candidate.sourceIdentity,
+        allowedRoles: [...candidate.allowedRoles],
+        contentHash: candidate.contentHash,
+        text: renderedPage,
+        citations: [...candidate.citations],
+        asOf: candidate.asOf,
+        generation: generationNumber,
+        freshness: candidate.freshness,
+        // A fresh compile of a page supersedes whatever dispute preceded it:
+        // the newer evidence is what the reader is now being shown.
+        contested: false,
+      };
+      const records = recordsForGeneration(root, generationNumber, replacement);
+      next.set(projectionIndexPath, serializeProjectionIndex(records));
       const generation = this.publishFiles(root, next, candidate, "compiled");
       publishedPages.set(root, next);
-      publishedHashes.set(`${root}:${pagePath}`, candidate.contentHash);
+      applyPageRecords(root, records.map((page) => ({
+        ...page,
+        generation: generation.sequence,
+      })));
       return { kind: "compiled", generation, pagePath };
+    },
+
+    pages(): readonly CompiledKnowledgePage[] {
+      for (const root of vaultRoots) ensureLoaded(root);
+      return [...pageRecords.values()];
     },
 
     /**

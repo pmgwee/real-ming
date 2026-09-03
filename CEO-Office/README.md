@@ -8,12 +8,12 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## 🚦 Current status
 
-*As of 2026-09-02 · run `npm run graph:status` for live truth*
+*As of 2026-09-03 · run `npm run graph:status` for live truth*
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **37 of 44** *(RM-31 through RM-36 closed with evidence)* |
-| Startable by an agent right now | **RM-37 (#38)** — Enforce Metered Platform Cost and model-routing policy |
+| Phase 3 tickets closed | **40 of 44** *(RM-42 closed; RM-43 is in final review)* |
+| Startable by an agent right now | **RM-43 (#44)** — Serve role-scoped Compiled Knowledge through Hermes |
 | Waiting on you | Nothing blocking. The milestone PR is the one item genuinely overdue. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
@@ -286,8 +286,8 @@ One long-lived branch would grow into a 44-ticket, 100-plus-file pull request no
 | # | Branch | Contents | Review checkpoint | Status |
 | --- | --- | --- | --- | --- |
 | 1 | `docs/final-architecture-v1` | RM-01…RM-05, RM-08, RM-41 + tooling | foundation | ✅ **merged** |
-| 2 | `feat/tracer-1-daily-operations` | RM-07 … RM-16 | Tracer 1 proven | ✅ **ready for review** |
-| 3 | `feat/context-and-portfolio` | RM-17 … RM-23, RM-42 | Context Vault + portfolio live | next |
+| 2 | `feat/tracer-1-daily-operations` | RM-07 … RM-42 | Daily Operations + Context Vault + Knowledge Compiler | ✅ **ready for review** |
+| 3 | `feat/context-and-portfolio` | RM-17 … RM-23, RM-42 | Context Vault + portfolio + Knowledge Compiler | carried on branch 2 |
 | 4 | `feat/microsaas-loop` | RM-25 … RM-28, RM-34 | DuitSini promotion proven | waiting |
 | 5 | `feat/domain-loops` | remainder → RM-40 | Full v1.1 readiness | waiting |
 

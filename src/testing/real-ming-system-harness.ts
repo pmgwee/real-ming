@@ -158,6 +158,12 @@ import {
   type EmailSendResult,
 } from "../operations/email-operations.js";
 import {
+  createHermesProjectionBroker,
+  type CompiledKnowledgePage,
+  type CompiledKnowledgeQuery,
+  type CompiledKnowledgeResult,
+} from "../knowledge/hermes-projection.js";
+import {
   createKnowledgeCompiler,
   type KnowledgeCompilationResult,
 } from "../knowledge/knowledge-compiler.js";
@@ -632,6 +638,9 @@ export interface RealMingSystemHarness {
   ): KnowledgeCompilationResult;
   readVaultPage(root: VaultRoot, path: string): string | undefined;
   vaultGenerations(root: VaultRoot): readonly VaultGeneration[];
+  serveCompiledKnowledge(
+    query: CompiledKnowledgeQuery,
+  ): CompiledKnowledgeResult;
   attemptAcademicSubmission(request: {
     readonly courseId: string;
     readonly assignmentId: string;
@@ -1019,7 +1028,10 @@ export function createRealMingSystemHarness(options: {
   readonly canvasAdapter?: CanvasAdapter;
   readonly microsoft365Adapter?: Microsoft365Adapter;
   readonly duitsini?: { readonly adapter: DuitSiniAdapter };
-  readonly knowledgeVault?: { readonly encryptionKey: string };
+  readonly knowledgeVault?: {
+    readonly encryptionKey: string;
+    readonly statePath?: string;
+  };
   readonly evidenceEnablement?: {
     readonly candidates: readonly EvidenceEnablementCandidate[];
     readonly healthFailureFor?: string;
@@ -1463,7 +1475,7 @@ export function createRealMingSystemHarness(options: {
     options.knowledgeVault === undefined
       ? undefined
       : createKnowledgeVault({
-          statePath: ":memory:",
+          statePath: options.knowledgeVault.statePath ?? ":memory:",
           encryptionKey: options.knowledgeVault.encryptionKey,
           ...(options.now === undefined ? {} : { now: options.now }),
         });
@@ -1475,6 +1487,11 @@ export function createRealMingSystemHarness(options: {
           actorId: "ceo:ming",
           now: clock,
         });
+
+  const hermesProjection = createHermesProjectionBroker({
+    state,
+    pages: () => knowledgeCompiler?.pages() ?? [],
+  });
   const evidenceEnablement = createEvidenceEnablementCoordinator({
     candidates: options.evidenceEnablement?.candidates ?? [],
     portfolio,
@@ -1892,6 +1909,7 @@ export function createRealMingSystemHarness(options: {
     readVaultPage: (root, path) =>
       knowledgeVault?.readForCeo(root, path, "ceo:ming"),
     vaultGenerations: (root) => knowledgeVault?.generations(root) ?? [],
+    serveCompiledKnowledge: (query) => hermesProjection.serve(query),
     changeDuitSiniRecord: async (request) => {
       if (financialRecordChange === undefined) {
         return { kind: "denied", reason: "record-not-found" };
@@ -2151,6 +2169,7 @@ export function createRealMingSystemHarness(options: {
       portfolio.close();
       deploymentCandidateStore.close();
       deploymentPromotionStore.close();
+      knowledgeVault?.close();
       state.close();
     },
   };
