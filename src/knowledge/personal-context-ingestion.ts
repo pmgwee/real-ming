@@ -162,6 +162,16 @@ export interface PersonalContextCandidate {
   readonly purgeState: PersonalContextPurgeState;
 }
 
+/** Payload-free, append-only proof that a Context Vault payload was deleted. */
+export interface PersonalContextPurgeEvent {
+  readonly candidateId: string;
+  readonly purgedAt: string;
+  readonly contentHash: string | null;
+  readonly trustDomain: TrustDomain | null;
+  readonly eligibleAt: string | null;
+  readonly retentionClass: string | null;
+}
+
 export type PersonalContextIngestionResult =
   | {
       readonly kind: "verified-ingestion";
@@ -184,6 +194,7 @@ export interface PersonalContextIngestion {
   read(candidateId: string, executive: ExecutiveRole): PersonalContextRead;
   stagingFiles(): readonly string[];
   purgeExpired(at?: string): readonly string[];
+  purgeEvents(): readonly PersonalContextPurgeEvent[];
   close(): void;
 }
 
@@ -294,6 +305,15 @@ interface CandidateRow {
   state: PersonalContextCandidateState;
   quarantine_reasons_json: string;
   purge_eligible_at: string;
+}
+
+interface PurgeEventRow {
+  candidate_id: string;
+  purged_at: string;
+  content_hash: string | null;
+  trust_domain: TrustDomain | null;
+  purge_eligible_at: string | null;
+  retention_class: string | null;
 }
 
 function assertManifest(entry: PersonalContextManifestEntry): void {
@@ -871,6 +891,28 @@ export function createPersonalContextIngestion(options: {
         }
       }
       return purged;
+    },
+
+    purgeEvents(): readonly PersonalContextPurgeEvent[] {
+      const rows = database
+        .prepare(
+          `SELECT events.candidate_id, events.purged_at,
+                  candidates.content_hash, candidates.trust_domain,
+                  candidates.purge_eligible_at, candidates.retention_class
+           FROM personal_context_purge_events AS events
+           LEFT JOIN personal_context_candidates AS candidates
+             ON candidates.id = events.candidate_id
+           ORDER BY events.purged_at ASC, events.candidate_id ASC`,
+        )
+        .all() as unknown as PurgeEventRow[];
+      return rows.map((row) => ({
+        candidateId: row.candidate_id,
+        purgedAt: row.purged_at,
+        contentHash: row.content_hash,
+        trustDomain: row.trust_domain,
+        eligibleAt: row.purge_eligible_at,
+        retentionClass: row.retention_class,
+      }));
     },
 
     close(): void {

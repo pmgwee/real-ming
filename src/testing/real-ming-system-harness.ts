@@ -62,6 +62,7 @@ import { OperationsState } from "../operations/operations-state.js";
 import type {
   ProviderObservation,
   ProviderObservationTransition,
+  RetentionPurgeEvent,
 } from "../operations/operations-state.js";
 import { createCommandClassifier } from "../operations/command-classifier.js";
 import {
@@ -653,9 +654,12 @@ export interface RealMingSystemHarness {
   knowledgeStagedCandidates(): readonly CandidateEnvelope[];
   compiledKnowledgePages(): readonly CompiledKnowledgePage[];
   operationalKnowledgeOutputs(): readonly KnowledgeOperationalRecord[];
+  retentionPurgeEvidence(): readonly RetentionPurgeEvent[];
   runKnowledgeJob(job: KnowledgeJobDefinition["job"]): Promise<void>;
   readVaultPage(root: VaultRoot, path: string): string | undefined;
   vaultGenerations(root: VaultRoot): readonly VaultGeneration[];
+  vaultPurgeEvents(root?: VaultRoot): readonly import("../knowledge/knowledge-vault.js").VaultPurgeEvent[];
+  vaultGenerationFileCount(root: VaultRoot, generationId: string): number;
   serveCompiledKnowledge(
     query: CompiledKnowledgeQuery,
   ): CompiledKnowledgeResult;
@@ -1054,6 +1058,7 @@ export function createRealMingSystemHarness(options: {
     readonly sources?: readonly KnowledgeSource[];
     readonly outputs?: readonly KnowledgeOperationalOutput[];
     readonly backup?: () => Promise<void>;
+    readonly purgeBackups?: (at: string) => Promise<readonly import("../operations/retention-policy.js").RetentionBackupPurgeResult[]>;
     readonly runnerTimeoutMs?: number;
     readonly retentionRequired?: boolean;
   };
@@ -1686,6 +1691,9 @@ export function createRealMingSystemHarness(options: {
       ...(options.knowledgeOperations?.backup === undefined
         ? {}
         : { backup: options.knowledgeOperations.backup }),
+      ...(options.knowledgeOperations?.purgeBackups === undefined
+        ? {}
+        : { purgeBackups: options.knowledgeOperations.purgeBackups }),
       ...(options.knowledgeOperations?.runnerTimeoutMs === undefined
         ? {}
         : { runnerTimeoutMs: options.knowledgeOperations.runnerTimeoutMs }),
@@ -1989,6 +1997,7 @@ export function createRealMingSystemHarness(options: {
     knowledgeStagedCandidates: () => knowledgeOperations?.stagedCandidates ?? [],
     compiledKnowledgePages: () => knowledgeCompiler?.pages() ?? [],
     operationalKnowledgeOutputs: () => knowledgeCompiler?.operationalOutputs() ?? [],
+    retentionPurgeEvidence: () => state.retentionPurgeEvents(),
     runKnowledgeJob: async (job) => {
       if (knowledgeOperations === undefined) {
         throw new Error("Knowledge Operations are not configured.");
@@ -1998,6 +2007,9 @@ export function createRealMingSystemHarness(options: {
     readVaultPage: (root, path) =>
       knowledgeVault?.readForCeo(root, path, "ceo:ming"),
     vaultGenerations: (root) => knowledgeVault?.generations(root) ?? [],
+    vaultPurgeEvents: (root) => knowledgeVault?.purgeEvents(root) ?? [],
+    vaultGenerationFileCount: (root, generationId) =>
+      knowledgeVault?.generationFileCount(root, generationId) ?? 0,
     serveCompiledKnowledge: (query) => hermesProjection.serve(query),
     changeDuitSiniRecord: async (request) => {
       if (financialRecordChange === undefined) {

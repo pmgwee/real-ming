@@ -1,3 +1,4 @@
+import type { RetentionBackupPurgeResult } from "../operations/retention-policy.js";
 import { createAzureKeyVaultReader } from "../providers/azure-key-vault-reader.js";
 import {
   createEphemeralCalendarWriteLedger,
@@ -93,6 +94,7 @@ export async function createProductionControlPlane(options: {
     readonly sources?: readonly KnowledgeSource[];
     readonly outputs?: readonly KnowledgeOperationalOutput[];
     readonly backup?: () => Promise<void>;
+    readonly purgeBackups?: (at: string) => Promise<readonly RetentionBackupPurgeResult[]>;
     readonly runnerTimeoutMs?: number;
     readonly personalContext?: PersonalContextIngestion;
     readonly retentionRequired?: boolean;
@@ -132,6 +134,7 @@ export async function createProductionControlPlane(options: {
         ...(options.knowledgeOperations.sources === undefined ? {} : { sources: options.knowledgeOperations.sources }),
         ...(options.knowledgeOperations.outputs === undefined ? {} : { outputs: options.knowledgeOperations.outputs }),
         ...(options.knowledgeOperations.backup === undefined ? {} : { backup: options.knowledgeOperations.backup }),
+        ...(options.knowledgeOperations.purgeBackups === undefined ? {} : { purgeBackups: options.knowledgeOperations.purgeBackups }),
         ...(options.knowledgeOperations.runnerTimeoutMs === undefined ? {} : { runnerTimeoutMs: options.knowledgeOperations.runnerTimeoutMs }),
         ...(options.knowledgeOperations.personalContext === undefined ? {} : { personalContext: options.knowledgeOperations.personalContext }),
         retentionRequired: options.knowledgeOperations.retentionRequired ?? true,

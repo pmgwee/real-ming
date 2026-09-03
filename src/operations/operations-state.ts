@@ -22,6 +22,7 @@ import type {
   WorkerEffect,
   WorkerReceipt,
 } from "./contracts.js";
+import { trustDomains } from "./contracts.js";
 import type {
   TelegramAuditEvent,
   TelegramOutboundMessage,
@@ -37,6 +38,12 @@ import {
   type ProviderObservationStatus,
 } from "../providers/provider-health.js";
 import { detectSensitiveFields } from "./sensitive-secret.js";
+import {
+  retentionClassDuration,
+  retentionPurgeKinds,
+  type KnowledgeCandidateRetentionRecord,
+  type RetentionPurgeEvidence,
+} from "./retention-policy.js";
 
 const clearedPriorityLedgerValue = "cleared";
 
@@ -193,6 +200,31 @@ export interface ControlPlaneHealth {
   readonly lastRecoveredAt: string | null;
 }
 
+export interface RetentionPurgeEvent extends RetentionPurgeEvidence {}
+
+interface RetentionPurgeEventRow {
+  idempotency_key: string;
+  kind: RetentionPurgeEvidence["kind"];
+  record_id: string;
+  trust_domain: TrustDomain;
+  content_hash: string | null;
+  eligible_at: string;
+  policy: string;
+  purged_at: string;
+}
+
+interface KnowledgeCandidateRetentionRow {
+  candidate_id: string;
+  source_identity: string;
+  source_reference: string;
+  canonical_evidence_id: string;
+  trust_domain: TrustDomain;
+  captured_at: string;
+  as_of: string;
+  content_hash: string;
+  retention_class: string;
+}
+
 export interface ProviderObservation {
   readonly observationId: string;
   readonly signature: string;
@@ -255,6 +287,46 @@ interface OutcomeEffectMigrationRow {
 
 function parseJson<T>(value: string): T {
   return JSON.parse(value) as T;
+}
+
+/**
+ * Flattens to field/value pairs so the detector sees the real field names.
+ * Serialising first hid every name behind one key called "payload", which
+ * silently disabled the half of the detector that matches names such as
+ * `password` or `apiKey`.
+ */
+function flattenForInspection(
+  value: unknown,
+  path: string,
+  into: Record<string, string>,
+): void {
+  if (value === null || value === undefined) return;
+  if (typeof value === "object") {
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      flattenForInspection(nested, path === "" ? key : `${path}.${key}`, into);
+    }
+    return;
+  }
+  into[path === "" ? "value" : path] = String(value);
+}
+
+function assertNoSensitiveData(label: string, payload: unknown): void {
+  const flattened: Record<string, string> = {};
+  flattenForInspection(payload, "", flattened);
+  // The whole serialisation carries the value patterns, so a secret split
+  // across the structure is still caught.
+  const inspected: Record<string, string> = { payload: JSON.stringify(payload) ?? "" };
+  for (const [field, value] of Object.entries(flattened)) {
+    // A name match only means something when the value could hold a secret.
+    // `secretSafe: true` and `tokenCount: 42` describe a record; they are not
+    // credentials inside it, and rejecting them would block ordinary work.
+    if (value.length >= 6 && !/^\d+$/u.test(value)) {
+      inspected[field] = value;
+    }
+  }
+  if (detectSensitiveFields(inspected).length > 0) {
+    throw new Error(`${label} cannot contain a Sensitive Secret.`);
+  }
 }
 
 function mapWorkItem(row: WorkItemRow): WorkItem {
@@ -632,6 +704,53 @@ export class OperationsState {
         consecutive_failures INTEGER NOT NULL,
         last_recovered_at TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS retention_purge_events (
+        idempotency_key TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        trust_domain TEXT NOT NULL,
+        content_hash TEXT,
+        eligible_at TEXT NOT NULL,
+        policy TEXT NOT NULL,
+        purged_at TEXT NOT NULL
+      );
+
+      CREATE TRIGGER IF NOT EXISTS retention_purge_events_reject_update
+      BEFORE UPDATE ON retention_purge_events
+      BEGIN
+        SELECT RAISE(ABORT, 'retention_purge_events are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS retention_purge_events_reject_delete
+      BEFORE DELETE ON retention_purge_events
+      BEGIN
+        SELECT RAISE(ABORT, 'retention_purge_events are append-only');
+      END;
+
+      CREATE TABLE IF NOT EXISTS knowledge_candidate_retention (
+        candidate_id TEXT PRIMARY KEY,
+        source_identity TEXT NOT NULL,
+        source_reference TEXT NOT NULL,
+        canonical_evidence_id TEXT NOT NULL,
+        trust_domain TEXT NOT NULL,
+        captured_at TEXT NOT NULL,
+        as_of TEXT NOT NULL,
+        content_hash TEXT NOT NULL,
+        retention_class TEXT NOT NULL
+      );
+
+      CREATE TRIGGER IF NOT EXISTS knowledge_candidate_retention_reject_update
+      BEFORE UPDATE ON knowledge_candidate_retention
+      BEGIN
+        SELECT RAISE(ABORT, 'knowledge candidate retention records are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS knowledge_candidate_retention_reject_delete
+      BEFORE DELETE ON knowledge_candidate_retention
+      BEGIN
+        SELECT RAISE(ABORT, 'knowledge candidate retention records are append-only');
+      END;
 
       /*
        * Provider events are append-only receipts keyed by the caller's stable
@@ -1381,6 +1500,16 @@ export class OperationsState {
   }
 
   createWorkItem(action: NormalizedCeoAction, occurredAt: string): WorkItem {
+    assertNoSensitiveData("A Work Item", {
+      actorId: action.actorId,
+      workspaceId: action.workspaceId,
+      idempotencyKey: action.idempotencyKey,
+      intent: action.intent,
+      expectedEffect: action.expectedEffect,
+      accountableExecutive: action.accountableExecutive,
+      workstream: action.workstream,
+      collaboratingExecutives: action.collaboratingExecutives,
+    });
     const id = randomUUID();
     const accountableExecutive = action.accountableExecutive ?? "COO";
     const collaboratorRoles = new Set<string>();
@@ -1462,6 +1591,7 @@ export class OperationsState {
     request: ImportMigratedWorkItemRequest,
     occurredAt: string,
   ): WorkItem {
+    assertNoSensitiveData("A migrated Work Item", request);
     const existing = this.findWorkItemByCommand(
       request.workspaceId,
       request.sourceReference,
@@ -2294,6 +2424,186 @@ export class OperationsState {
   }
 
   /**
+   * Keep only Candidate Envelope provenance needed for a later purge. The
+   * content itself is deliberately absent, and the row is immutable so a
+   * restart can still produce the same purge tombstone after compilation.
+   */
+  recordKnowledgeCandidate(
+    record: KnowledgeCandidateRetentionRecord,
+  ): "recorded" | "unchanged" {
+    if (
+      record.candidateId.trim().length === 0 ||
+      record.sourceIdentity.trim().length === 0 ||
+      record.sourceReference.trim().length === 0 ||
+      record.canonicalEvidenceId.trim().length === 0 ||
+      !trustDomains.includes(record.trustDomain) ||
+      !Number.isFinite(Date.parse(record.capturedAt)) ||
+      !Number.isFinite(Date.parse(record.asOf)) ||
+      !/^sha256:[0-9a-f]{64}$/u.test(record.contentHash) ||
+      record.retentionClass.trim().length === 0
+    ) {
+      throw new Error("Knowledge Candidate retention metadata is invalid.");
+    }
+    try {
+      retentionClassDuration(record.retentionClass);
+    } catch {
+      throw new Error("Knowledge Candidate retention metadata requires a finite retention class.");
+    }
+    if (
+      detectSensitiveFields({
+        candidateId: record.candidateId,
+        sourceIdentity: record.sourceIdentity,
+        sourceReference: record.sourceReference,
+        canonicalEvidenceId: record.canonicalEvidenceId,
+        contentHash: record.contentHash,
+        retentionClass: record.retentionClass,
+      }).length > 0
+    ) {
+      throw new Error("Knowledge Candidate retention metadata contains a Sensitive Secret.");
+    }
+    const existing = this.#database
+      .prepare("SELECT * FROM knowledge_candidate_retention WHERE candidate_id = ?")
+      .get(record.candidateId) as unknown as KnowledgeCandidateRetentionRow | undefined;
+    if (existing !== undefined) {
+      const same =
+        existing.source_identity === record.sourceIdentity &&
+        existing.source_reference === record.sourceReference &&
+        existing.canonical_evidence_id === record.canonicalEvidenceId &&
+        existing.trust_domain === record.trustDomain &&
+        existing.captured_at === record.capturedAt &&
+        existing.as_of === record.asOf &&
+        existing.content_hash === record.contentHash &&
+        existing.retention_class === record.retentionClass;
+      if (!same) throw new Error("Knowledge Candidate retention identity was reused for different metadata.");
+      return "unchanged";
+    }
+    this.#database
+      .prepare(
+        `INSERT INTO knowledge_candidate_retention (
+           candidate_id, source_identity, source_reference,
+           canonical_evidence_id, trust_domain, captured_at, as_of,
+           content_hash, retention_class
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        record.candidateId,
+        record.sourceIdentity,
+        record.sourceReference,
+        record.canonicalEvidenceId,
+        record.trustDomain,
+        record.capturedAt,
+        record.asOf,
+        record.contentHash,
+        record.retentionClass,
+      );
+    return "recorded";
+  }
+
+  knowledgeCandidateRetention(): readonly KnowledgeCandidateRetentionRecord[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT candidate_id, source_identity, source_reference,
+                canonical_evidence_id, trust_domain, captured_at, as_of,
+                content_hash, retention_class
+         FROM knowledge_candidate_retention ORDER BY captured_at ASC, candidate_id ASC`,
+      )
+      .all() as unknown as KnowledgeCandidateRetentionRow[];
+    return rows.map((row) => ({
+      candidateId: row.candidate_id,
+      sourceIdentity: row.source_identity,
+      sourceReference: row.source_reference,
+      canonicalEvidenceId: row.canonical_evidence_id,
+      trustDomain: row.trust_domain,
+      capturedAt: row.captured_at,
+      asOf: row.as_of,
+      contentHash: row.content_hash,
+      retentionClass: row.retention_class,
+    }));
+  }
+
+  /**
+   * Record deletion evidence without retaining the deleted payload. The
+   * idempotency key is the only mutable-looking input: once a row exists, a
+   * replay must describe the exact same purge or fail closed.
+   */
+  recordRetentionPurge(
+    event: RetentionPurgeEvidence,
+  ): "recorded" | "unchanged" {
+    if (
+      event.idempotencyKey.trim().length === 0 ||
+      event.recordId.trim().length === 0 ||
+      event.policy.trim().length === 0 ||
+      !retentionPurgeKinds.includes(event.kind) ||
+      !trustDomains.includes(event.trustDomain) ||
+      !Number.isFinite(Date.parse(event.eligibleAt)) ||
+      !Number.isFinite(Date.parse(event.purgedAt)) ||
+      Date.parse(event.eligibleAt) > Date.parse(event.purgedAt) ||
+      (event.contentHash !== null && !/^sha256:[0-9a-f]{64}$/u.test(event.contentHash)) ||
+      detectSensitiveFields({
+        idempotencyKey: event.idempotencyKey,
+        recordId: event.recordId,
+        policy: event.policy,
+        contentHash: event.contentHash ?? "",
+      }).length > 0
+    ) {
+      throw new Error("Retention purge evidence is invalid or contains a Sensitive Secret.");
+    }
+    const existing = this.#database
+      .prepare("SELECT * FROM retention_purge_events WHERE idempotency_key = ?")
+      .get(event.idempotencyKey) as unknown as RetentionPurgeEventRow | undefined;
+    if (existing !== undefined) {
+      const same =
+        existing.kind === event.kind &&
+        existing.record_id === event.recordId &&
+        existing.trust_domain === event.trustDomain &&
+        existing.content_hash === event.contentHash &&
+        existing.eligible_at === event.eligibleAt &&
+        existing.policy === event.policy &&
+        existing.purged_at === event.purgedAt;
+      if (!same) throw new Error("Retention purge idempotency key was reused for different evidence.");
+      return "unchanged";
+    }
+    this.#database
+      .prepare(
+        `INSERT INTO retention_purge_events (
+           idempotency_key, kind, record_id, trust_domain, content_hash,
+           eligible_at, policy, purged_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        event.idempotencyKey,
+        event.kind,
+        event.recordId,
+        event.trustDomain,
+        event.contentHash,
+        event.eligibleAt,
+        event.policy,
+        event.purgedAt,
+      );
+    return "recorded";
+  }
+
+  retentionPurgeEvents(): readonly RetentionPurgeEvent[] {
+    const rows = this.#database
+      .prepare(
+        `SELECT idempotency_key, kind, record_id, trust_domain, content_hash,
+                eligible_at, policy, purged_at
+         FROM retention_purge_events ORDER BY purged_at ASC, idempotency_key ASC`,
+      )
+      .all() as unknown as RetentionPurgeEventRow[];
+    return rows.map((row) => ({
+      idempotencyKey: row.idempotency_key,
+      kind: row.kind,
+      recordId: row.record_id,
+      trustDomain: row.trust_domain,
+      contentHash: row.content_hash,
+      eligibleAt: row.eligible_at,
+      policy: row.policy,
+      purgedAt: row.purged_at,
+    }));
+  }
+
+  /**
    * An Exception Notice deferred by do-not-disturb is stored, not dropped.
    * Holding it in memory would make "held" a silent drop that survives only
    * until the next restart.
@@ -2884,6 +3194,7 @@ export class OperationsState {
       requiredDecisions: ["CEO review required before completion."],
       createdAt: occurredAt,
     };
+    assertNoSensitiveData("An Outcome Report", outcomeReport);
 
     this.#database.exec("BEGIN IMMEDIATE;");
     try {
@@ -3133,6 +3444,7 @@ export class OperationsState {
     occurredAt: string,
     details: Readonly<Record<string, unknown>>,
   ): number {
+    assertNoSensitiveData("An audit event", details);
     const result = this.#database
       .prepare(
         `INSERT INTO audit_events (
@@ -3180,6 +3492,7 @@ export class OperationsState {
     occurredAt: string,
     details: Readonly<Record<string, unknown>>,
   ): void {
+    assertNoSensitiveData("A Telegram audit event", details);
     this.#database
       .prepare(
         `INSERT INTO telegram_audit_events (

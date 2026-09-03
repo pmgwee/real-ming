@@ -23,8 +23,32 @@ const sensitiveValuePatterns: readonly RegExp[] = [
   // prefix means a word-boundary-before-digits pattern misses the secret.
   /(?:\bbot)?\d{5,12}:[A-Za-z0-9_-]{20,}\b/,
   /-----BEGIN [A-Z ]*PRIVATE KEY-----/,
-  /\b(?:\d[ -]?){13,19}\b/,
 ];
+
+/**
+ * Card and account numbers are commonly written in separated groups, so the
+ * heuristic has to treat spaces and hyphens as part of the number.
+ */
+const accountNumberPattern = /\b(?:\d[ -]?){13,19}\b/;
+
+/** 8-4-4-4-12 hex: the shape every record id in this system is written in. */
+const recordIdentifierPattern =
+  /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/gi;
+
+/**
+ * A numeric-heavy identifier reads as a grouped account number once its
+ * hyphens count as separators -- about one id in seven hundred and fifty.
+ * Ids are removed before the heuristic runs, because refusing one blocks the
+ * audit event and therefore the Work Item behind it.
+ */
+function looksLikeAccountNumber(value: string): boolean {
+  const withoutIds = value.replace(recordIdentifierPattern, (match) =>
+    // An id with no hex letter in it is indistinguishable from a grouped
+    // account number, so it keeps its place in the string.
+    /[a-f]/iu.test(match) ? " " : match,
+  );
+  return accountNumberPattern.test(withoutIds);
+}
 
 export function detectSensitiveFields(
   payload: Readonly<Record<string, string>> | undefined,
@@ -37,7 +61,8 @@ export function detectSensitiveFields(
     .filter(
       ([field, value]) =>
         sensitiveFieldPatterns.some((pattern) => pattern.test(field)) ||
-        sensitiveValuePatterns.some((pattern) => pattern.test(value)),
+        sensitiveValuePatterns.some((pattern) => pattern.test(value)) ||
+        looksLikeAccountNumber(value),
     )
     .map(([field]) => field);
 }

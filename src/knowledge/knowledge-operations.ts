@@ -23,6 +23,16 @@ import type {
 } from "./knowledge-compiler.js";
 import { sourceIdentityTrustDomain } from "./knowledge-compiler.js";
 import type { KnowledgeVault, VaultRoot } from "./knowledge-vault.js";
+import {
+  addRetentionDuration,
+  compiledGenerationRetentionByDomain,
+  retentionClassDuration,
+  retentionCutoff,
+  retentionPolicy,
+  type RetentionBackupPurgeResult,
+  type RetentionPurgeCandidate,
+  type RetentionPurgeEvidence,
+} from "../operations/retention-policy.js";
 
 export const knowledgeIngestJobName = "knowledge-ingest";
 export const knowledgeCompileJobName = "knowledge-compile";
@@ -64,7 +74,7 @@ export interface KnowledgeJobDefinition extends SchedulerJobDefinition {
   readonly domainAccountability: Readonly<Partial<Record<VaultRoot, ExecutiveRole>>>;
 }
 
-const allKnowledgeRoots: readonly VaultRoot[] = [
+const allKnowledgeRoots: readonly Exclude<VaultRoot, "CEO">[] = [
   "Personal",
   "Ming Creatives",
   "Academic",
@@ -170,7 +180,7 @@ export const knowledgeJobInventory: readonly KnowledgeJobDefinition[] = [
     "RetentionReport/v1",
     "knowledge-retention",
     ["context-vault"],
-    "verified raw candidates purge after 30 days; provenance retained",
+    "raw candidates/payloads purge after 30d; Personal superseded projections 12m; deleted backups 30d; financial snapshots/approvals/outcomes/audit indefinite",
     "purge tombstones and retained provenance",
   ),
   definition(
@@ -202,6 +212,8 @@ export interface KnowledgeDomainHealth {
   readonly lastCompile: string | null;
   readonly lastPublish: string | null;
   readonly lastLint: string | null;
+  readonly lastRetention: string | null;
+  readonly purgedRecords: number;
   readonly currentGeneration: number | null;
   readonly currentGenerationId: string | null;
   readonly backlog: number;
@@ -225,6 +237,7 @@ export interface KnowledgeOperations {
   readonly stagedCandidates: readonly CandidateEnvelope[];
   readonly jobHealth: readonly KnowledgeJobHealth[];
   readonly domainHealth: readonly KnowledgeDomainHealth[];
+  readonly retentionEvidence: readonly RetentionPurgeEvidence[];
   runJob(job: KnowledgeJobName): Promise<void>;
 }
 
@@ -260,6 +273,8 @@ export function createKnowledgeOperations(options: {
   readonly outputs?: readonly KnowledgeOperationalOutput[];
   readonly personalContext?: PersonalContextIngestion;
   readonly backup?: () => Promise<void>;
+  /** Deletes external Context/Knowledge backup objects and proves the deletion. */
+  readonly purgeBackups?: (at: string) => Promise<readonly RetentionBackupPurgeResult[]>;
   readonly admitExceptionNotice?: Parameters<typeof createDailyOperationsScheduler>[0]["admitExceptionNotice"];
   readonly recordExceptionNoticeRecovery?: Parameters<typeof createDailyOperationsScheduler>[0]["recordExceptionNoticeRecovery"];
   readonly runnerTimeoutMs?: number;
@@ -377,6 +392,21 @@ export function createKnowledgeOperations(options: {
             sourceDenied = true;
             continue;
           }
+          // Persist provenance-only retention metadata before exposing the
+          // bounded payload to the ephemeral staging map. The payload never
+          // enters OperationsState, while the identity/hash survives a
+          // compile or process restart for the later purge sweep.
+          options.state.recordKnowledgeCandidate({
+            candidateId: candidate.id,
+            sourceIdentity: candidate.sourceIdentity,
+            sourceReference: candidate.sourceReference,
+            canonicalEvidenceId: candidate.canonicalEvidenceId,
+            trustDomain: candidate.trustDomain,
+            capturedAt: candidate.capturedAt,
+            asOf: candidate.asOf,
+            contentHash: candidate.contentHash,
+            retentionClass: candidate.retentionClass,
+          });
           staged.set(candidate.id, candidate);
         }
         if (!sourceDenied) setDomainHealth(source.trustDomain, knowledgeIngestJobName, "healthy", options.now());
@@ -422,7 +452,9 @@ export function createKnowledgeOperations(options: {
         }
         processed.push(candidate.id);
       }
-      for (const candidateId of processed) staged.delete(candidateId);
+      for (const candidateId of processed) {
+        staged.delete(candidateId);
+      }
       compileCitationFailures = citationFailures;
       setHealth(knowledgeCompileJobName, status, options.now());
     } catch (error) {
@@ -517,11 +549,136 @@ export function createKnowledgeOperations(options: {
 
   const retention = async (): Promise<void> => {
     try {
-      if (options.retentionRequired === true && options.personalContext === undefined) {
-        setHealth(knowledgeRetentionJobName, "unavailable", options.now(), "Personal Context purge capability is not configured");
-        throw new Error("Personal Context purge capability is not configured.");
+      if (
+        options.retentionRequired === true &&
+        (options.personalContext === undefined || options.purgeBackups === undefined)
+      ) {
+        const reason = "Personal Context and backup purge capabilities are not configured";
+        setHealth(knowledgeRetentionJobName, "unavailable", options.now(), reason);
+        throw new Error(reason);
       }
-      options.personalContext?.purgeExpired(options.now());
+      const purgedAt = options.now();
+      const recorded = new Map(
+        options.state.retentionPurgeEvents().map((event) => [event.idempotencyKey, event]),
+      );
+      const record = (candidate: RetentionPurgeCandidate): void => {
+        const idempotencyKey = `retention:${candidate.kind}:${candidate.recordId}`;
+        const existing = recorded.get(idempotencyKey);
+        if (existing !== undefined) {
+          if (
+            existing.kind !== candidate.kind ||
+            existing.recordId !== candidate.recordId ||
+            existing.trustDomain !== candidate.trustDomain ||
+            existing.contentHash !== candidate.contentHash ||
+            existing.eligibleAt !== candidate.eligibleAt ||
+            existing.policy !== candidate.policy
+          ) {
+            throw new Error("Retention purge evidence drifted for an existing idempotency key.");
+          }
+          return;
+        }
+        const evidence: RetentionPurgeEvidence = {
+          ...candidate,
+          idempotencyKey,
+          purgedAt,
+        };
+        options.state.recordRetentionPurge(evidence);
+        recorded.set(idempotencyKey, evidence);
+      };
+
+      options.personalContext?.purgeExpired(purgedAt);
+      for (const event of options.personalContext?.purgeEvents() ?? []) {
+        if (event.trustDomain === null || event.trustDomain === undefined) {
+          // Orphaned staging payloads keep their evidence in the Personal
+          // Context store's own append-only log. Naming a Trust Domain here
+          // would be a guess, and the guess lands on a CEO dashboard count.
+          continue;
+        }
+        record({
+          kind: "personal-context-payload",
+          recordId: event.candidateId,
+          trustDomain: event.trustDomain,
+          contentHash: event.contentHash,
+          eligibleAt: event.eligibleAt ?? event.purgedAt,
+          policy:
+            event.retentionClass ??
+            `personal-context-${retentionPolicy.personalContextPayloadDays}d`,
+        });
+      }
+
+      const recordedRawCandidates = new Set(
+        options.state
+          .retentionPurgeEvents()
+          .filter((event) => event.kind === "raw-candidate")
+          .map((event) => event.recordId),
+      );
+      for (const metadata of options.state.knowledgeCandidateRetention()) {
+        if (recordedRawCandidates.has(metadata.candidateId)) continue;
+        // An unreadable class is refused when the row is written, so this
+        // cannot throw for stored metadata. If it ever does, the outer catch
+        // fails the job rather than inventing a window for a payload.
+        const eligibleAt = addRetentionDuration(
+          metadata.capturedAt,
+          retentionClassDuration(metadata.retentionClass),
+        );
+        if (Date.parse(eligibleAt) > Date.parse(purgedAt)) continue;
+        record({
+          kind: "raw-candidate",
+          recordId: metadata.candidateId,
+          trustDomain: metadata.trustDomain,
+          contentHash: metadata.contentHash,
+          eligibleAt,
+          // Preserve a stricter source/Trust-Domain class in the evidence;
+          // the calculated eligibility above is the enforcement boundary.
+          policy: metadata.retentionClass,
+        });
+        // Delete the bounded payload only after the hash-only tombstone is
+        // durably recorded.  A failed evidence write must never erase the
+        // only payload that can be retried safely.
+        staged.delete(metadata.candidateId);
+      }
+
+      for (const root of allKnowledgeRoots) {
+        const duration = compiledGenerationRetentionByDomain[root];
+        const months = duration.months;
+        const before = retentionCutoff(
+          purgedAt,
+          duration,
+        );
+        const policy = months === undefined
+          ? `compiled-${root}-superseded-${duration.days}d`
+          : `compiled-${root}-superseded-${months}m`;
+        options.vault.purgeSuperseded({
+          root,
+          before,
+          purgedAt,
+          policy,
+          eligibility: duration,
+        });
+        // The vault owns its append-only purge log. Replaying every local
+        // event makes central evidence reconciliation restart-safe if the
+        // control-plane database was unavailable after the vault committed.
+        for (const event of options.vault.purgeEvents(root)) {
+          record({
+            kind: "compiled-generation",
+            recordId: event.generationId,
+            trustDomain: root,
+            contentHash: event.contentHash,
+            eligibleAt: event.eligibleAt,
+            policy: event.policy,
+          });
+        }
+      }
+
+      for (const result of await options.purgeBackups?.(purgedAt) ?? []) {
+        if (result.deleted !== true || result.verified !== true) {
+          throw new Error("Backup purge did not prove deletion.");
+        }
+        record(result.candidate);
+      }
+      for (const root of allKnowledgeRoots) {
+        setDomainHealth(root, knowledgeRetentionJobName, "healthy", purgedAt);
+      }
       setHealth(knowledgeRetentionJobName, "healthy", options.now());
     } catch (error) {
       if (
@@ -529,6 +686,9 @@ export function createKnowledgeOperations(options: {
         health.get(knowledgeRetentionJobName)?.status !== "denied"
       ) {
         setHealth(knowledgeRetentionJobName, "failed", options.now(), failureText(error));
+        for (const root of allKnowledgeRoots) {
+          setDomainHealth(root, knowledgeRetentionJobName, "failed", options.now(), failureText(error));
+        }
       }
       throw error;
     }
@@ -610,6 +770,9 @@ export function createKnowledgeOperations(options: {
         },
       );
     },
+    get retentionEvidence() {
+      return options.state.retentionPurgeEvents();
+    },
     get domainHealth() {
       return allKnowledgeRoots.map((domain) => {
         const pages = options.compiler.pages().filter((page) => page.root === domain);
@@ -617,6 +780,10 @@ export function createKnowledgeOperations(options: {
         const latest = (job: KnowledgeJobName): string | null =>
           snapshots.get(job)?.checkedAt ?? null;
         const lintSnapshot = lastLint.get(domain);
+        const retentionSnapshot = snapshots.get(knowledgeRetentionJobName);
+        const purgeEvidence = options.state
+          .retentionPurgeEvents()
+          .filter((event) => event.trustDomain === domain);
         const lintCounts = {
           stale: lintSnapshot?.stale ?? pages.filter((page) => page.freshness === "stale").length,
           citations: (lintSnapshot?.citations ?? pages.filter((page) => page.citations.length === 0).length) + (compileCitationFailures.get(domain) ?? 0),
@@ -628,11 +795,11 @@ export function createKnowledgeOperations(options: {
         const lintState = snapshots.get(knowledgeLintJobName)?.status;
         const publishState = snapshots.get(knowledgePublishJobName)?.status;
         const hasHeartbeat = snapshots.size > 0 || generation !== undefined;
-        const failedHeartbeat = [ingestState, compileState, publishState, lintState].includes("failed");
+        const failedHeartbeat = [ingestState, compileState, publishState, lintState, retentionSnapshot?.status].includes("failed");
         const status: KnowledgeJobStatus =
-          ingestState === "denied" || compileState === "denied" || publishState === "denied" || lintState === "denied"
+          ingestState === "denied" || compileState === "denied" || publishState === "denied" || lintState === "denied" || retentionSnapshot?.status === "denied"
               ? "denied"
-                : ingestState === "unavailable" || compileState === "unavailable" || publishState === "unavailable" || lintState === "unavailable"
+                : ingestState === "unavailable" || compileState === "unavailable" || publishState === "unavailable" || lintState === "unavailable" || retentionSnapshot?.status === "unavailable"
                 ? "unavailable"
                 : lintCounts.citations > 0 || failedHeartbeat || compileState === "failed" || ingestState === "failed" || lintState === "failed"
                   ? "failed"
@@ -649,6 +816,8 @@ export function createKnowledgeOperations(options: {
           lastCompile: latest(knowledgeCompileJobName),
           lastPublish: latest(knowledgePublishJobName),
           lastLint: latest(knowledgeLintJobName),
+          lastRetention: latest(knowledgeRetentionJobName),
+          purgedRecords: purgeEvidence.length,
           currentGeneration: generation?.sequence ?? null,
           currentGenerationId: generation?.id ?? null,
           backlog: [...staged.values()].filter((candidate) => candidate.trustDomain === domain).length,

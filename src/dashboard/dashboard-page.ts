@@ -118,11 +118,13 @@ export function renderDashboardPage(overview: DashboardOverview): string {
         `<td data-field="lastCompile">${escapeHtml(health.lastCompile ?? "")}</td>` +
         `<td data-field="lastPublish">${escapeHtml(health.lastPublish ?? "")}</td>` +
         `<td data-field="lastLint">${escapeHtml(health.lastLint ?? "")}</td>` +
+        `<td data-field="lastRetention">${escapeHtml(health.lastRetention ?? "")}</td>` +
         `<td data-field="generation">${escapeHtml(health.currentGenerationId ?? "")}</td>` +
         `<td data-field="backlog">${health.backlog}</td>` +
         `<td data-field="stalePages">${health.stalePages}</td>` +
         `<td data-field="citationFailures">${health.citationFailures}</td>` +
         `<td data-field="quarantinedConflicts">${health.quarantinedConflicts}</td>` +
+        `<td data-field="purgedRecords">${health.purgedRecords}</td>` +
         `</tr>`,
     )
     .join("");

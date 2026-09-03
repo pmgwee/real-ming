@@ -22,6 +22,7 @@ const now = "2026-09-02T10:00:00.000Z";
 describe("RM-28 exact Deployment Candidate promotion", () => {
   const harnesses: RealMingSystemHarness[] = [];
   const directories: string[] = [];
+  let candidateSequence = 0;
 
   afterEach(() => {
     for (const harness of harnesses.splice(0)) harness.close();
@@ -50,7 +51,7 @@ describe("RM-28 exact Deployment Candidate promotion", () => {
     const acknowledgement = await harness.acknowledgeCeoAction({
       actorId: "ceo:ming",
       workspaceId: "workspace:real-ming",
-      idempotencyKey: `rm28:${Math.random()}`,
+      idempotencyKey: `rm28:build-candidate:${candidateSequence++}`,
       intent: "Add OpenCode and CommandCode as provider presets in the Add Subscription modal.",
       expectedEffect: { kind: "duitsini-provider-presets", value: "opencode-commandcode" },
       accountableExecutive: "CTO",

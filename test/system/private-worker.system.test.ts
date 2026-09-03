@@ -240,7 +240,7 @@ describe("RM-21 Lenovo private worker", () => {
       state: "queued",
     });
 
-    const secretWork = await harness.submitCeoCommand({
+    await expect(harness.submitCeoCommand({
       actorId: "ceo:ming",
       workspaceId: "workspace:real-ming",
       idempotencyKey: "rm21:secret",
@@ -250,9 +250,7 @@ describe("RM-21 Lenovo private worker", () => {
         kind: "local-credential",
         value: githubTokenFixture,
       },
-    });
-    if (secretWork.kind !== "work-item-acknowledgement") throw new Error("Expected acknowledgement.");
-    await expect(harness.executeWorkItem(secretWork.workItem.id)).rejects.toThrow();
+    })).rejects.toThrow(/Sensitive Secret/);
     expect(harness.privateWorkerJobs()).toHaveLength(1);
   });
 
