@@ -25,6 +25,8 @@ import {
 } from "../providers/notion-provider-adapter.js";
 import { readLegacyNotionTaskSources } from "../providers/notion-legacy-task-reader.js";
 import { createNotionCutoverWorkspace } from "../providers/notion-cutover-workspace.js";
+import { createCanvasAdapter, type CanvasAdapter } from "../providers/canvas-adapter.js";
+import { createMicrosoft365Adapter, type Microsoft365Adapter } from "../providers/microsoft365-adapter.js";
 import {
   createGoogleCalendarAdapter,
   type GoogleCalendarAdapter,
@@ -1170,6 +1172,91 @@ export function createCutoverWorkspaceContractHarness(options: {
         Status: { type: "status", status: { name: "To Do" } },
       };
     },
+  };
+}
+
+export interface AcademicContractHarness {
+  readonly canvas: CanvasAdapter;
+  readonly microsoft365: Microsoft365Adapter;
+  networkCallCount(): number;
+}
+
+/**
+ * Controlled Canvas and Microsoft 365. Every request increments one counter, so
+ * a test can prove that a refused submission or send never reached the network
+ * rather than only that it returned a failure.
+ */
+export function createAcademicContractHarness(): AcademicContractHarness {
+  let networkCalls = 0;
+  const fetchImplementation = async (
+    input: string | URL | Request,
+  ): Promise<Response> => {
+    networkCalls += 1;
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/files")) {
+      return Response.json([
+        { id: 1, display_name: "brief.pdf", updated_at: "2026-09-01T02:00:00.000Z" },
+      ]);
+    }
+    if (url.pathname.endsWith("/discussion_topics")) {
+      return Response.json([
+        { id: 2, title: "Deadline moved", message: "Moved to 12 September.", posted_at: "2026-09-02T02:00:00.000Z" },
+      ]);
+    }
+    if (url.pathname.includes("/drive/root/children")) {
+      return Response.json({
+        value: [
+          { id: "f1", name: "notes.docx", lastModifiedDateTime: "2026-09-02T01:00:00.000Z" },
+          { id: "f2", name: "api_key=sk-live-abcdefghijklmnop", lastModifiedDateTime: "2026-09-02T01:30:00.000Z" },
+        ],
+      });
+    }
+    if (url.pathname.includes("/channels/messages")) {
+      return Response.json({
+        value: [
+          {
+            id: "t1",
+            body: { content: "Please confirm the moved deadline." },
+            from: { user: { displayName: "Supervisor" } },
+            createdDateTime: "2026-09-02T03:00:00.000Z",
+          },
+        ],
+      });
+    }
+    if (url.pathname.endsWith("/messages")) {
+      return Response.json({
+        value: [
+          {
+            id: "m1",
+            subject: "Assignment 3",
+            body: { content: "Confirm the new deadline." },
+            from: { emailAddress: { address: "supervisor@university.test" } },
+            receivedDateTime: "2026-09-02T03:30:00.000Z",
+          },
+        ],
+      });
+    }
+    return Response.json({ value: [] });
+  };
+
+  return {
+    canvas: createCanvasAdapter({
+      accessToken: contractSecretFixture,
+      baseUrl: "https://canvas.test",
+      workspaceId: "workspace:real-ming",
+      accountReference: "canvas:real-ming",
+      fetch: fetchImplementation,
+      now: () => "2026-09-03T01:00:00.000Z",
+    }),
+    microsoft365: createMicrosoft365Adapter({
+      accessToken: contractSecretFixture,
+      workspaceId: "workspace:real-ming",
+      accountReference: "m365:real-ming",
+      baseUrl: "https://graph.test/v1.0",
+      fetch: fetchImplementation,
+      now: () => "2026-09-03T01:00:00.000Z",
+    }),
+    networkCallCount: () => networkCalls,
   };
 }
 

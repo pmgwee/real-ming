@@ -158,6 +158,14 @@ import {
   type EmailSendResult,
 } from "../operations/email-operations.js";
 import {
+  createAcademicCoordinator,
+  type AcademicCoordinationRequest,
+  type AcademicCoordinationResult,
+  type AcademicSubmissionResult,
+} from "../operations/academic-coordination.js";
+import type { CanvasAdapter } from "../providers/canvas-adapter.js";
+import type { Microsoft365Adapter } from "../providers/microsoft365-adapter.js";
+import {
   createEntertainmentEmailDigestRunner,
   type EntertainmentEmailDigestRunResult,
 } from "../operations/entertainment-email-digest.js";
@@ -507,6 +515,13 @@ export interface RealMingSystemHarness {
   }): Promise<EmailSendResult>;
   emailProjection(input: Parameters<EmailOperationsCoordinator["projection"]>[0]): EmailApprovedProjection;
   runEntertainmentEmailDigest(): Promise<EntertainmentEmailDigestRunResult>;
+  coordinateAcademicCommitment(
+    request: AcademicCoordinationRequest,
+  ): Promise<AcademicCoordinationResult>;
+  attemptAcademicSubmission(request: {
+    readonly courseId: string;
+    readonly assignmentId: string;
+  }): Promise<AcademicSubmissionResult>;
   editMasterTaskThroughView(
     request: EditMasterTaskThroughViewRequest,
   ): Promise<MasterTaskRecord>;
@@ -887,6 +902,14 @@ export function createRealMingSystemHarness(options: {
   /** Optional controlled Gmail adapter for RM-29 system scenarios. */
   readonly emailAdapter?: GmailEmailAdapter;
   readonly emailMailboxBindings?: Readonly<Record<EmailMailboxKind, string>>;
+  readonly canvasAdapter?: CanvasAdapter;
+  readonly microsoft365Adapter?: Microsoft365Adapter;
+  readonly academic?: {
+    readonly courseId: string;
+    readonly mailbox: string;
+    readonly teamsChannel?: string;
+    readonly calendarId?: string;
+  };
   readonly now?: () => string;
   readonly telegram?: {
     readonly ceoTelegramId: string;
@@ -1290,6 +1313,26 @@ export function createRealMingSystemHarness(options: {
         gateway,
         mailboxBindings: options.emailMailboxBindings ?? { personal: "personal@example.test", opportunity: "personal@example.test", entertainment: "personal@example.test" },
       });
+  const academicCoordinator =
+    options.canvasAdapter === undefined ||
+    options.microsoft365Adapter === undefined ||
+    options.academic === undefined
+      ? undefined
+      : createAcademicCoordinator({
+          canvas: options.canvasAdapter,
+          microsoft365: options.microsoft365Adapter,
+          gateway,
+          state,
+          courseId: options.academic.courseId,
+          mailbox: options.academic.mailbox,
+          teamsChannel: options.academic.teamsChannel ?? "academic",
+          actorId: "ceo:ming",
+          workspaceId: "workspace:real-ming",
+          calendar: calendarReconciler,
+          ...(options.academic.calendarId === undefined
+            ? {}
+            : { calendarId: options.academic.calendarId }),
+        });
   const calendarId = options.morningBrief?.calendarId ?? "";
   const exceptionNoticeRhythm: ExceptionNoticeRhythm = createExceptionNoticeRhythm({
     state,
@@ -1607,6 +1650,21 @@ export function createRealMingSystemHarness(options: {
     emailProjection: (input) => {
       if (emailOperations === undefined) throw new Error("Email operations are not configured.");
       return emailOperations.projection(input);
+    },
+    coordinateAcademicCommitment: async (request) => {
+      if (academicCoordinator === undefined) {
+        return {
+          kind: "failed",
+          failure: { class: "unsupported-capability", retryable: false, message: "Academic coordination is not configured." },
+        };
+      }
+      return academicCoordinator.coordinate(request);
+    },
+    attemptAcademicSubmission: async (request) => {
+      if (academicCoordinator === undefined) {
+        return { kind: "denied", reason: "submission-excluded" };
+      }
+      return academicCoordinator.attemptSubmission(request);
     },
     runEntertainmentEmailDigest: async () => {
       if (entertainmentEmailDigest === undefined) return { kind: "failed", failure: { class: "unsupported-capability", retryable: false, message: "Email operations are not configured." } };
