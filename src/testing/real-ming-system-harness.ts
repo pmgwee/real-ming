@@ -158,6 +158,12 @@ import {
   type EmailSendResult,
 } from "../operations/email-operations.js";
 import {
+  createCareerGroundingCoordinator,
+  type CareerFile,
+  type CareerGroundingRequest,
+  type CareerGroundingResult,
+} from "../operations/career-grounding.js";
+import {
   createContentWorkflowCoordinator,
   type ContentWorkflowRequest,
   type ContentWorkflowResult,
@@ -526,6 +532,9 @@ export interface RealMingSystemHarness {
   coordinateContentWorkItem(
     request: ContentWorkflowRequest,
   ): Promise<ContentWorkflowResult>;
+  groundCareerWorkItem(
+    request: CareerGroundingRequest,
+  ): Promise<CareerGroundingResult>;
   attemptAcademicSubmission(request: {
     readonly courseId: string;
     readonly assignmentId: string;
@@ -912,6 +921,9 @@ export function createRealMingSystemHarness(options: {
   readonly emailMailboxBindings?: Readonly<Record<EmailMailboxKind, string>>;
   readonly canvasAdapter?: CanvasAdapter;
   readonly microsoft365Adapter?: Microsoft365Adapter;
+  readonly career?: {
+    readonly files: Readonly<Record<string, CareerFile>>;
+  };
   readonly academic?: {
     readonly courseId: string;
     readonly mailbox: string;
@@ -1341,6 +1353,15 @@ export function createRealMingSystemHarness(options: {
             ? {}
             : { calendarId: options.academic.calendarId }),
         });
+  const careerGroundingCoordinator = createCareerGroundingCoordinator({
+    gateway,
+    files: options.career?.files ?? {},
+    privateWorker,
+    evidenceBroker,
+    actorId: "ceo:ming",
+    workspaceId: "workspace:real-ming",
+    now: clock,
+  });
   const contentWorkflowCoordinator = createContentWorkflowCoordinator({
     portfolio,
     gateway,
@@ -1668,6 +1689,7 @@ export function createRealMingSystemHarness(options: {
     },
     coordinateContentWorkItem: (request) =>
       contentWorkflowCoordinator.coordinate(request),
+    groundCareerWorkItem: (request) => careerGroundingCoordinator.ground(request),
     coordinateAcademicCommitment: async (request) => {
       if (academicCoordinator === undefined) {
         return {
