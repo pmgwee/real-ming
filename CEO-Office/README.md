@@ -12,14 +12,20 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **41 of 44** *(RM-43 closed with evidence)* |
-| Startable by an agent right now | **RM-44 (#45)** — Operate scheduled knowledge compilation and linting |
+| Phase 3 tickets closed | **42 of 44** *(RM-44 closed with evidence)* |
+| Startable by an agent right now | **RM-38 (#39)** — Enforce retention and ingestion purge policy |
 | Waiting on you | Nothing blocking. The milestone PR is the one item genuinely overdue. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
 07:30 Morning Brief, 21:30 Executive Roll-Up, do-not-disturb, weekend rhythm and
 error grouping all work.
+
+**RM-44 is complete.** The scheduled Knowledge Compiler pipeline now runs
+through the Daily Operations scheduler with durable heartbeats, bounded retry,
+restart-safe quarantine and operational-output filing. Its production adapters
+remain opt-in until their separately approved source, output, and backup
+bindings are supplied.
 
 **Azure is fully provisioned.** You did every step that needed you:
 
@@ -286,7 +292,7 @@ One long-lived branch would grow into a 44-ticket, 100-plus-file pull request no
 | # | Branch | Contents | Review checkpoint | Status |
 | --- | --- | --- | --- | --- |
 | 1 | `docs/final-architecture-v1` | RM-01…RM-05, RM-08, RM-41 + tooling | foundation | ✅ **merged** |
-| 2 | `feat/tracer-1-daily-operations` | RM-07 … RM-43 | Daily Operations + Context Vault + Hermes projection | ✅ **ready for review** |
+| 2 | `feat/tracer-1-daily-operations` | RM-07 … RM-44 | Daily Operations + Context Vault + Hermes projection + Knowledge Compiler | ✅ **ready for review** |
 | 3 | `feat/context-and-portfolio` | RM-17 … RM-23, RM-42 … RM-43 | Context Vault + portfolio + Knowledge Compiler + Hermes projection | carried on branch 2 |
 | 4 | `feat/microsaas-loop` | RM-25 … RM-28, RM-34 | DuitSini promotion proven | waiting |
 | 5 | `feat/domain-loops` | remainder → RM-40 | Full v1.1 readiness | waiting |
