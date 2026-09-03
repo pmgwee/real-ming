@@ -12,14 +12,39 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 | | |
 | --- | --- |
-| Phase 3 tickets closed | **42 of 44** *(RM-44 closed with evidence)* |
-| Startable by an agent right now | **RM-38 (#39)** — Enforce retention and ingestion purge policy |
+| Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
+| Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
 | Waiting on you | Nothing blocking. The milestone PR is the one item genuinely overdue. |
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
 07:30 Morning Brief, 21:30 Executive Roll-Up, do-not-disturb, weekend rhythm and
 error grouping all work.
+
+**RM-38 is complete.** Retention now runs on a schedule: raw Candidate
+Envelope payloads age out on their own retention class, compiled generations
+follow their Trust Domain's window, backup purges are recorded only when the
+adapter proves the deletion, and Financial Snapshots, Approvals, Outcome
+Reports and audit events are never purged.
+
+Testing that boundary uncovered a defect worth naming, because it would have
+bitten in production rather than in a test. The Sensitive Secret detector
+treats hyphens as digit separators when looking for card numbers, so it
+matched ordinary record identifiers — measured at **one in every 750**. RM-38
+newly applies that detector to audit events, and a refused audit event blocks
+the Work Item behind it. Roughly one operation in 750 would have failed at
+random, with no obvious cause. Fixed, measured at zero, with card numbers
+still caught.
+
+**Four residual risks are carried into RM-40 rather than closed quietly.** The
+30-day backup rule is enforced by the backup adapter, not by the control
+plane, which cannot see inside the backup store. The append-only database
+triggers are real but unproven, because exercising them needs direct database
+access that neither approved test seam provides. The 12-month window for
+superseded Personal projections runs from publication rather than from
+supersession — **this one needs your decision**, since matching the natural
+reading of the rule means a schema change. And the field-name hardening added
+to the secret guard cannot be reached through the test seams today.
 
 **RM-44 is complete.** The scheduled Knowledge Compiler pipeline now runs
 through the Daily Operations scheduler with durable heartbeats, bounded retry,
