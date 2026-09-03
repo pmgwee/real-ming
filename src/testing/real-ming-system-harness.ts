@@ -158,6 +158,16 @@ import {
   type EmailSendResult,
 } from "../operations/email-operations.js";
 import {
+  createMeteredCostLedger,
+  type CostBudget,
+  type CostBudgetScope,
+  type CostGroupings,
+  type CostObservationInput,
+  type ModelRoutingRequest,
+  type ModelRoutingResult,
+  type RecordCostObservationResult,
+} from "../operations/metered-cost.js";
+import {
   createFinancialSnapshotLedger,
   type CompleteFinancialSnapshotResult,
   type FinancialSnapshot,
@@ -580,6 +590,26 @@ export interface RealMingSystemHarness {
   ): Promise<CompleteFinancialSnapshotResult>;
   financialSnapshot(id: string): FinancialSnapshot | undefined;
   financialSnapshots(): readonly FinancialSnapshot[];
+  recordCostObservation(input: CostObservationInput): RecordCostObservationResult;
+  costByGrouping(period: string): CostGroupings;
+  proposeCostBudget(request: {
+    readonly scope: CostBudgetScope;
+    readonly key: string;
+    readonly amount: string;
+  }): { readonly kind: "proposed"; readonly budget: CostBudget };
+  requestCostBudgetApproval(budgetId: string): Promise<
+    | { readonly kind: "approval-required"; readonly approvalId: string }
+    | { readonly kind: "refused"; readonly reason: "unknown-budget" }
+  >;
+  confirmCostBudget(budgetId: string): Promise<
+    | { readonly kind: "approved"; readonly budget: CostBudget }
+    | {
+        readonly kind: "refused";
+        readonly reason: "unknown-budget" | "approval-not-granted";
+      }
+  >;
+  costBudget(scope: CostBudgetScope, key: string): CostBudget | undefined;
+  routeModelWork(request: ModelRoutingRequest): ModelRoutingResult;
   attemptAcademicSubmission(request: {
     readonly courseId: string;
     readonly assignmentId: string;
@@ -1402,6 +1432,12 @@ export function createRealMingSystemHarness(options: {
             ? {}
             : { calendarId: options.academic.calendarId }),
         });
+  const meteredCost = createMeteredCostLedger({
+    gateway,
+    actorId: "ceo:ming",
+    workspaceId: "workspace:real-ming",
+    now: clock,
+  });
   const financialSnapshots = createFinancialSnapshotLedger({
     gateway,
     actorId: "ceo:ming",
@@ -1780,6 +1816,14 @@ export function createRealMingSystemHarness(options: {
       financialSnapshots.complete(snapshotId),
     financialSnapshot: (id) => financialSnapshots.snapshot(id),
     financialSnapshots: () => financialSnapshots.snapshots(),
+    recordCostObservation: (input) => meteredCost.record(input),
+    costByGrouping: (period) => meteredCost.grouping(period),
+    proposeCostBudget: (request) => meteredCost.proposeBudget(request),
+    requestCostBudgetApproval: (budgetId) =>
+      meteredCost.requestBudgetApproval(budgetId),
+    confirmCostBudget: (budgetId) => meteredCost.confirmBudget(budgetId),
+    costBudget: (scope, key) => meteredCost.budget(scope, key),
+    routeModelWork: (request) => meteredCost.route(request),
     changeDuitSiniRecord: async (request) => {
       if (financialRecordChange === undefined) {
         return { kind: "denied", reason: "record-not-found" };
