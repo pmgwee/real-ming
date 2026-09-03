@@ -158,6 +158,11 @@ import {
   type EmailSendResult,
 } from "../operations/email-operations.js";
 import {
+  createEvidenceEnablementCoordinator,
+  type EvidenceEnablementCandidate,
+  type EvidenceEnablementResult,
+} from "../operations/evidence-enablement.js";
+import {
   createMeteredCostLedger,
   type CostBudget,
   type CostBudgetScope,
@@ -610,6 +615,7 @@ export interface RealMingSystemHarness {
   >;
   costBudget(scope: CostBudgetScope, key: string): CostBudget | undefined;
   routeModelWork(request: ModelRoutingRequest): ModelRoutingResult;
+  enableProjectEvidence(): Promise<EvidenceEnablementResult>;
   attemptAcademicSubmission(request: {
     readonly courseId: string;
     readonly assignmentId: string;
@@ -997,6 +1003,10 @@ export function createRealMingSystemHarness(options: {
   readonly canvasAdapter?: CanvasAdapter;
   readonly microsoft365Adapter?: Microsoft365Adapter;
   readonly duitsini?: { readonly adapter: DuitSiniAdapter };
+  readonly evidenceEnablement?: {
+    readonly candidates: readonly EvidenceEnablementCandidate[];
+    readonly healthFailureFor?: string;
+  };
   readonly financialExports?: {
     readonly sources: readonly FinancialExportSource[];
   };
@@ -1432,6 +1442,21 @@ export function createRealMingSystemHarness(options: {
             ? {}
             : { calendarId: options.academic.calendarId }),
         });
+  const evidenceEnablement = createEvidenceEnablementCoordinator({
+    candidates: options.evidenceEnablement?.candidates ?? [],
+    portfolio,
+    evidenceBroker,
+    gateway,
+    actorId: "ceo:ming",
+    workspaceId: "workspace:real-ming",
+    inspector: {
+      restart: async () => true,
+      healthy: async (evidenceIdentity) =>
+        evidenceIdentity !== options.evidenceEnablement?.healthFailureFor,
+      storageInspected: async () => true,
+    },
+    now: clock,
+  });
   const meteredCost = createMeteredCostLedger({
     gateway,
     actorId: "ceo:ming",
@@ -1824,6 +1849,7 @@ export function createRealMingSystemHarness(options: {
     confirmCostBudget: (budgetId) => meteredCost.confirmBudget(budgetId),
     costBudget: (scope, key) => meteredCost.budget(scope, key),
     routeModelWork: (request) => meteredCost.route(request),
+    enableProjectEvidence: () => evidenceEnablement.enable(),
     changeDuitSiniRecord: async (request) => {
       if (financialRecordChange === undefined) {
         return { kind: "denied", reason: "record-not-found" };
