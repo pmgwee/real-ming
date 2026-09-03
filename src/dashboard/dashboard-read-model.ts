@@ -7,6 +7,20 @@ import type {
   WorkItemState,
 } from "../operations/contracts.js";
 import type { OperationsState } from "../operations/operations-state.js";
+import type {
+  ControlPlaneHealth,
+  ProviderObservation,
+} from "../operations/operations-state.js";
+import {
+  schedulerHealth,
+  schedulerJobInventory,
+  type SchedulerJobHealth,
+  type SchedulerJobDefinition,
+} from "../operations/daily-operations-scheduler.js";
+import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
+import type { RepositoryCenterView } from "../portfolio/repository-center.js";
+import type { DeploymentCandidate, DeploymentCandidateStore } from "../portfolio/deployment-candidate.js";
+import type { KnowledgeDomainHealth } from "../knowledge/knowledge-operations.js";
 
 export interface DashboardWorkItemView {
   readonly id: string;
@@ -47,6 +61,33 @@ export interface DashboardOutcomeReportView {
   readonly createdAt: string;
 }
 
+export interface DashboardDeploymentCandidateView {
+  readonly id: string;
+  readonly projectId: string;
+  readonly projectName: string;
+  readonly workItemId: string;
+  readonly exactCommitSha: string;
+  readonly productionBranch: string;
+  readonly repositorySourceReference: string;
+  readonly pullRequestSourceReference: string;
+  readonly pullRequestNumber: number;
+  readonly previewDeploymentId: string;
+  readonly previewDomain: string;
+  readonly verificationStatus: DeploymentCandidate["previewVerification"]["status"];
+  readonly rollbackCommitSha: string;
+  readonly requiredDecisions: readonly string[];
+  readonly approvals: readonly {
+    readonly id: string;
+    readonly scope: Approval["scope"];
+    readonly targetType: string;
+    readonly targetIdentity: string;
+    readonly targetVersion: string;
+    readonly state: Approval["state"];
+    readonly expiresAt: string | null;
+  }[];
+  readonly createdAt: string;
+}
+
 export interface DashboardAuditView {
   readonly sequence: number;
   readonly workItemId: string;
@@ -61,14 +102,53 @@ export interface DashboardExecutiveView {
   readonly readyForCeoReview: number;
 }
 
+export interface DashboardPortfolioProjectView {
+  readonly id: string;
+  readonly name: string;
+  readonly portfolioState: string;
+  readonly repository: string | null;
+  readonly productionBranch: string | null;
+  readonly deploymentIdentifiers: Readonly<{
+    readonly github: string | null;
+    readonly vercel: string | null;
+  }>;
+  readonly evidenceIdentity: string | null;
+  readonly operatingInstructions: string | null;
+  readonly responsibleRoles: readonly ExecutiveRole[];
+  readonly sensitivity: string;
+  readonly health: string;
+  readonly remoteReady: boolean;
+  readonly remoteReadyReasons: readonly string[];
+  readonly reconciled: boolean;
+  readonly reconciliationIssues: readonly string[];
+  readonly sourceLinks: readonly {
+    readonly kind: string;
+    readonly reference: string;
+    readonly asOf: string;
+    readonly freshness: "current" | "stale";
+  }[];
+  readonly sourceFreshness: Readonly<Record<string, "current" | "stale">>;
+  /** Read-only GitHub/Git lineage when the provider observations are available. */
+  readonly repositoryCenter: RepositoryCenterView | null;
+  readonly updatedAt: string;
+}
+
 export interface DashboardOverview {
   readonly actorId: string;
   readonly workspaceId: string;
   readonly workItems: readonly DashboardWorkItemView[];
   readonly pendingApprovals: readonly DashboardApprovalView[];
   readonly outcomeReports: readonly DashboardOutcomeReportView[];
+  readonly deploymentCandidates: readonly DashboardDeploymentCandidateView[];
   readonly auditEvents: readonly DashboardAuditView[];
   readonly executives: readonly DashboardExecutiveView[];
+  readonly projectPortfolio: readonly DashboardPortfolioProjectView[];
+  readonly scheduler: readonly SchedulerJobHealth[];
+  readonly controlPlane: readonly ControlPlaneHealth[];
+  /** Provider degradation is separate from binary process health. */
+  readonly providerObservations: readonly ProviderObservation[];
+  /** Payload-free per-domain Knowledge Compiler health. */
+  readonly knowledge: readonly KnowledgeDomainHealth[];
 }
 
 const executiveRoles: readonly ExecutiveRole[] = [
@@ -85,7 +165,22 @@ const blockedStates: readonly WorkItemState[] = [
   "Changes Requested",
 ];
 
-function blockersFor(
+/**
+ * The one definition of "this Approval is waiting on the CEO", shared by the
+ * dashboard, the Morning Brief and the Executive Roll-Up so the three can never
+ * disagree about what he still owes a decision on.
+ */
+export function pendingApprovalsFor(
+  approvals: readonly Approval[],
+): readonly Approval[] {
+  return approvals.filter((approval) => approval.state === "requested");
+}
+
+/**
+ * Shared with the Morning Brief so the dashboard and the 07:30 message never
+ * give two different answers to "is this waiting on me, and why".
+ */
+export function blockersFor(
   workItem: WorkItem,
   approvals: readonly Approval[],
   auditEvents: readonly AuditEvent[],
@@ -118,7 +213,17 @@ function blockersFor(
 
 export function buildDashboardOverview(
   state: OperationsState,
-  session: { readonly actorId: string; readonly workspaceId: string },
+  session: {
+    readonly actorId: string;
+    readonly workspaceId: string;
+    /** The operating clock, so scheduler health can name the next run. */
+    readonly now?: string;
+  },
+  portfolio?: ProjectPortfolio,
+  repositoryCenters?: ReadonlyMap<string, RepositoryCenterView>,
+  deploymentCandidates?: DeploymentCandidateStore,
+  schedulerJobs: readonly SchedulerJobDefinition[] = schedulerJobInventory,
+  knowledge: readonly KnowledgeDomainHealth[] = [],
 ): DashboardOverview {
   const workItems = state
     .workItems()
@@ -152,9 +257,7 @@ export function buildDashboardOverview(
   });
 
   const pendingApprovals = workItems.flatMap((workItem) =>
-    state
-      .approvals(workItem.id)
-      .filter((approval) => approval.state === "requested")
+    pendingApprovalsFor(state.approvals(workItem.id))
       .map(
         (approval) =>
           ({
@@ -188,6 +291,37 @@ export function buildDashboardOverview(
     ),
   );
 
+  const deploymentCandidateViews = (deploymentCandidates?.candidates() ?? [])
+    .filter((candidate) => workItems.some((workItem) => workItem.id === candidate.workItemId))
+    .map((candidate) => ({
+      id: candidate.id,
+      projectId: candidate.projectId,
+      projectName: candidate.projectName,
+      workItemId: candidate.workItemId,
+      exactCommitSha: candidate.exactCommitSha,
+      productionBranch: candidate.productionBranch,
+      repositorySourceReference: candidate.taskBranch.sourceReference,
+      pullRequestSourceReference: candidate.pullRequest.sourceReference,
+      pullRequestNumber: candidate.pullRequest.number,
+      previewDeploymentId: candidate.preview.deploymentId,
+      previewDomain: candidate.preview.domain,
+      verificationStatus: candidate.previewVerification.status,
+      rollbackCommitSha: candidate.rollback.commitSha,
+      requiredDecisions: candidate.outcomeReport.requiredDecisions,
+      approvals: state.approvals(candidate.workItemId)
+        .filter((approval) => approval.targetIdentity === candidate.id)
+        .map((approval) => ({
+          id: approval.id,
+          scope: approval.scope,
+          targetType: approval.targetType,
+          targetIdentity: approval.targetIdentity,
+          targetVersion: approval.targetVersion,
+          state: approval.state,
+          expiresAt: approval.expiresAt,
+        })),
+      createdAt: candidate.createdAt,
+    } satisfies DashboardDeploymentCandidateView));
+
   const auditEvents = workItems
     .flatMap((workItem) => state.auditTrail(workItem.id))
     .sort((left, right) => left.sequence - right.sequence)
@@ -217,13 +351,46 @@ export function buildDashboardOverview(
     } satisfies DashboardExecutiveView;
   });
 
+  const projectPortfolio = (portfolio?.projects() ?? []).map((project) => {
+    const reconciliation = portfolio?.reconcile(project.id);
+    return {
+      id: project.id,
+      name: project.name,
+      portfolioState: project.portfolioState,
+      repository: project.repository,
+      productionBranch: project.productionBranch,
+      deploymentIdentifiers: project.deploymentIdentifiers,
+      evidenceIdentity: project.evidenceIdentity,
+      operatingInstructions: project.operatingInstructions,
+      responsibleRoles: project.responsibleRoles,
+      sensitivity: project.sensitivity,
+      health: project.health,
+      remoteReady: project.remoteReady.ready,
+      remoteReadyReasons: project.remoteReady.reasons,
+      reconciled: reconciliation?.reconciled ?? true,
+      reconciliationIssues: reconciliation?.issues.map((issue) => issue.code) ?? [],
+      sourceLinks: project.sourceLinks,
+      sourceFreshness: Object.fromEntries(
+        project.sourceLinks.map((source) => [source.kind, source.freshness]),
+      ),
+      repositoryCenter: repositoryCenters?.get(project.id) ?? null,
+      updatedAt: project.updatedAt,
+    } satisfies DashboardPortfolioProjectView;
+  });
+
   return {
     actorId: session.actorId,
     workspaceId: session.workspaceId,
     workItems: views,
     pendingApprovals,
     outcomeReports,
+    deploymentCandidates: deploymentCandidateViews,
     auditEvents,
     executives,
+    projectPortfolio,
+    scheduler: schedulerHealth(state, session.now ?? new Date().toISOString(), schedulerJobs),
+    controlPlane: state.controlPlaneHealth(),
+    providerObservations: state.providerObservations(),
+    knowledge,
   };
 }

@@ -74,6 +74,13 @@ export interface ProviderAdapter<TValue = unknown> {
   write(request: ProviderWriteRequest): Promise<ProviderWriteResult>;
 }
 
+/**
+ * Provider data older than this is reported as stale rather than current. It
+ * lives here so no adapter can quietly drift to a different definition of
+ * fresh from the one the contract harness asserts.
+ */
+export const providerStalenessThresholdMs = 24 * 60 * 60 * 1000;
+
 const retryableFailureClasses: readonly ProviderFailureClass[] = [
   "rate-limited",
   "unavailable",

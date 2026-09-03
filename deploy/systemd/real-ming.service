@@ -1,0 +1,19 @@
+[Unit]
+Description=Real-Ming always-on control plane
+After=docker.service network-online.target
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=10
+TimeoutStopSec=45
+EnvironmentFile=/etc/real-ming/release.env
+ExecStartPre=/usr/bin/install -d -o 1000 -g 1000 -m 0700 /var/lib/real-ming /var/lib/real-ming/backups
+ExecStartPre=-/usr/bin/docker rm -f real-ming-control-plane
+ExecStart=/usr/bin/docker run --name real-ming-control-plane --network host --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --cap-drop ALL --security-opt no-new-privileges --volume /var/lib/real-ming:/var/lib/real-ming --env REAL_MING_AZURE_KEY_VAULT_NAME=real-ming-vault --env REAL_MING_STATE_PATH=/var/lib/real-ming/state.sqlite --env REAL_MING_NOTION_LEDGER_PATH=/var/lib/real-ming/notion-write-ledger.sqlite --env REAL_MING_DASHBOARD_PORT=8787 ${REAL_MING_IMAGE}
+ExecStop=/usr/bin/docker stop --time 30 real-ming-control-plane
+
+[Install]
+WantedBy=multi-user.target

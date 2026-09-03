@@ -1,0 +1,12 @@
+.git
+.github
+.codegraph
+.env*
+CEO-Office
+docs
+node_modules
+test
+var
+*.sqlite
+*.sqlite-*
+*.log

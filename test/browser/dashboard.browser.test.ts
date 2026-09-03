@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { afterAll, describe, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
 
@@ -43,6 +45,69 @@ describe("RM-08 dashboard browser view", () => {
       now: () => "2026-08-27T09:00:00.000Z",
     });
     harnesses.push(harness);
+    // Seed both health components, so the rendered-section assertion compares
+    // real rows. Without a row the comparison is [] against [], which passes
+    // even when the section is deleted from the page.
+    harness.recordControlPlaneHealth({
+      component: "telegram-ingress",
+      outcome: "healthy",
+      checkedAt: "2026-08-27T09:00:00.000Z",
+    });
+    harness.recordControlPlaneHealth({
+      component: "daily-scheduler",
+      outcome: "failed",
+      checkedAt: "2026-08-27T09:00:00.000Z",
+    });
+    await harness.recordProviderObservation({
+      provider: "notion",
+      accountReference: "notion:real-ming",
+      sourceReference: "master-tasks:browser",
+      status: "unavailable",
+      failureClass: "unavailable",
+      retryable: true,
+      observedAt: "2026-08-27T09:00:00.000Z",
+      idempotencyKey: "browser:provider-observation:1",
+    });
+    const server = await harness.startDashboard(credentials);
+    servers.push(server);
+    return { harness, server };
+  }
+
+  const knowledgeContent = "DuitSini deploys from main after preview verification.";
+
+  async function seedKnowledgeDashboard(): Promise<{
+    harness: RealMingSystemHarness;
+    server: DashboardServer;
+  }> {
+    const harness = createRealMingSystemHarness({
+      statePath: ":memory:",
+      now: () => "2026-08-27T09:00:00.000Z",
+      knowledgeVault: { encryptionKey: "browser-knowledge-key-not-a-real-secret" },
+    });
+    harnesses.push(harness);
+    const compiled = harness.compileKnowledgeCandidate({
+      id: "candidate:browser-knowledge",
+      sourceSystem: "agent-brain",
+      sourceIdentity: "agent-brain:ming-creatives",
+      sourceReference: "wiki/engineering/duitsini.md",
+      canonicalEvidenceId: "agent-brain:ming-creatives:evidence:browser",
+      capturedAt: "2026-08-27T08:30:00.000Z",
+      asOf: "2026-08-27T08:00:00.000Z",
+      contentHash: `sha256:${createHash("sha256").update(knowledgeContent, "utf8").digest("hex")}`,
+      trustDomain: "Ming Creatives",
+      sensitivity: "internal",
+      allowedRoles: ["CTO"],
+      retentionClass: "project-evidence-30d",
+      mode: "snapshot",
+      content: knowledgeContent,
+      citations: ["agent-brain://ming-creatives/evidence/browser"],
+      freshness: "current",
+    });
+    if (compiled.kind !== "compiled") {
+      throw new Error(`Expected a compiled generation, got ${compiled.kind}.`);
+    }
+    // Gives the knowledge row a retention timestamp and purge count to render.
+    await harness.runKnowledgeJob("knowledge-retention");
     const server = await harness.startDashboard(credentials);
     servers.push(server);
     return { harness, server };
@@ -157,6 +222,35 @@ describe("RM-08 dashboard browser view", () => {
             blockers: read(row, "blockers"),
             outcomeReportRevision: read(row, "outcomeReportRevision"),
           })),
+          controlPlane: [
+            ...document.querySelectorAll(
+              "#control-plane-health tr[data-control-plane-component]",
+            ),
+          ].map((row) => ({
+            component: row.getAttribute("data-control-plane-component") ?? "",
+            lastOutcome: read(row, "lastOutcome"),
+            consecutiveFailures: read(row, "consecutiveFailures"),
+          })),
+          scheduler: [
+            ...document.querySelectorAll("#scheduler-health tr[data-scheduler-job]"),
+          ].map((row) => ({
+            job: row.getAttribute("data-scheduler-job") ?? "",
+            provider: read(row, "provider"),
+            criticality: read(row, "criticality"),
+             accountableExecutive: read(row, "accountableExecutive"),
+             failureStreak: read(row, "failureStreak"),
+             failureHistory: read(row, "failureHistory"),
+          })),
+          providerObservations: [
+            ...document.querySelectorAll(
+              "#provider-observations tr[data-provider-observation-id]",
+            ),
+          ].map((row) => ({
+            id: row.getAttribute("data-provider-observation-id") ?? "",
+            provider: read(row, "provider"),
+            sourceReference: read(row, "sourceReference"),
+            status: read(row, "status"),
+          })),
           approvals: [
             ...document.querySelectorAll(
               "#pending-approvals tr[data-approval-id]",
@@ -212,7 +306,101 @@ describe("RM-08 dashboard browser view", () => {
           readyForCeoReview: String(executive.readyForCeoReview),
         })),
       );
+      // Criterion 4 asks for health visible in the dashboard. The JSON API was
+      // proven; the rendered page was not, so the whole section could have been
+      // deleted with every test still passing.
+      expect(rendered.controlPlane).toEqual(
+        overview.controlPlane.map((component) => ({
+          component: component.component,
+          lastOutcome: component.lastOutcome,
+          consecutiveFailures: String(component.consecutiveFailures),
+        })),
+      );
+      expect(rendered.providerObservations).toEqual(
+        overview.providerObservations.map((observation) => ({
+          id: observation.observationId,
+          provider: observation.provider,
+          sourceReference: observation.sourceReference,
+          status: observation.status,
+        })),
+      );
+      expect(rendered.scheduler).toEqual(
+        overview.scheduler.map((job) => ({
+          job: job.job,
+          provider: job.provider,
+          criticality: job.criticality,
+           accountableExecutive: job.accountableExecutive,
+           failureStreak: String(job.failureStreak),
+           failureHistory: job.failureHistory
+             .map((failure) => `${failure.occurrenceDate} (${failure.evidenceLink})`)
+             .join(", "),
+        })),
+      );
       expect(rendered.auditCount).toBe(overview.auditEvents.length);
+      expect(rendered.html).not.toContain(ceoToken);
+
+      await context.close();
+    },
+    30_000,
+  );
+
+  it.skipIf(browser === undefined)(
+    "renders the knowledge and portfolio views the operations state holds",
+    async () => {
+      if (browser === undefined) {
+        throw new Error(`Chromium did not launch: ${launchFailure ?? ""}`);
+      }
+
+      const { harness, server } = await seedKnowledgeDashboard();
+      const context = await browser.newContext();
+      await context.addCookies([
+        {
+          name: dashboardSessionCookie,
+          value: ceoToken,
+          domain: "127.0.0.1",
+          path: "/",
+        },
+      ]);
+      const page = await context.newPage();
+      await page.goto(server.origin, { waitUntil: "domcontentloaded" });
+
+      const rendered = await page.evaluate(() => {
+        const read = (row: Element, field: string): string =>
+          row.querySelector(`[data-field="${field}"]`)?.textContent ?? "";
+        return {
+          knowledge: [
+            ...document.querySelectorAll("#knowledge-health tr[data-knowledge-domain]"),
+          ].map((row) => ({
+            domain: row.getAttribute("data-knowledge-domain") ?? "",
+            status: read(row, "status"),
+            lastRetention: read(row, "lastRetention"),
+            purgedRecords: read(row, "purgedRecords"),
+            currentGeneration: read(row, "generation"),
+          })),
+          html: document.documentElement.outerHTML,
+        };
+      });
+
+      const overview = harness.dashboardOverview({
+        actorId: "ceo:ming",
+        workspaceId: "workspace:real-ming",
+      });
+
+      // Without a seeded domain this comparison is [] against [], which passes
+      // with the whole section deleted from the page.
+      expect(overview.knowledge.length).toBeGreaterThan(0);
+      expect(rendered.knowledge).toEqual(
+        overview.knowledge.map((health) => ({
+          domain: health.domain,
+          status: health.status,
+          lastRetention: health.lastRetention ?? "",
+          purgedRecords: String(health.purgedRecords),
+          currentGeneration: health.currentGenerationId ?? "",
+        })),
+      );
+      // Compiled Knowledge is served through Hermes against a Work Item, never
+      // rendered into a page that shows every Trust Domain at once.
+      expect(rendered.html).not.toContain(knowledgeContent);
       expect(rendered.html).not.toContain(ceoToken);
 
       await context.close();

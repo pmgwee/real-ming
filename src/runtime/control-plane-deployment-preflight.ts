@@ -1,0 +1,113 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
+export type DeploymentPreflightResult =
+  | { readonly kind: "passed"; readonly failures: readonly [] }
+  | { readonly kind: "failed"; readonly failures: readonly string[] };
+
+type RequiredFragment = readonly [name: string, fragment: string];
+
+async function inspect(
+  root: string,
+  path: string,
+  requirements: readonly RequiredFragment[],
+  failures: string[],
+): Promise<void> {
+  let content: string;
+  try {
+    content = await readFile(join(root, path), "utf8");
+  } catch {
+    failures.push(`${path}:missing`);
+    return;
+  }
+  for (const [name, fragment] of requirements) {
+    if (!content.includes(fragment)) failures.push(`${path}:${name}`);
+  }
+}
+
+/** Verify the deployment package that `npm run check` is about to ship. */
+export async function verifyControlPlaneDeployment(
+  repositoryRoot: string,
+): Promise<DeploymentPreflightResult> {
+  const failures: string[] = [];
+  await inspect(
+    repositoryRoot,
+    "Dockerfile",
+    [
+      ["non-root-runtime", "USER node"],
+      ["production-entrypoint", 'CMD ["node", "dist/config/control-plane-cli.js"]'],
+    ],
+    failures,
+  );
+  await inspect(
+    repositoryRoot,
+    "deploy/systemd/real-ming.service",
+    [
+      ["restart-policy", "Restart=always"],
+      ["persistent-state", "--volume /var/lib/real-ming:/var/lib/real-ming"],
+      ["vault-identity", "REAL_MING_AZURE_KEY_VAULT_NAME=real-ming-vault"],
+      ["immutable-release", "${REAL_MING_IMAGE}"],
+      ["release-binding", "EnvironmentFile=/etc/real-ming/release.env"],
+    ],
+    failures,
+  );
+  await inspect(
+    repositoryRoot,
+    "deploy/systemd/real-ming-backup.service",
+    [
+      ["boot-ordering", "After=real-ming.service"],
+      ["root-owned-helper", "/usr/local/libexec/real-ming-backup"],
+      ["release-binding", "EnvironmentFile=/etc/real-ming/release.env"],
+      // The backup stops the control plane. These two are what guarantee it
+      // comes back: a bounded start, and a restart that runs however the
+      // backup ended -- including killed on timeout.
+      ["bounded-start", "TimeoutStartSec="],
+      ["unconditional-restart", "ExecStopPost=-/usr/bin/systemctl --no-block start real-ming.service"],
+    ],
+    failures,
+  );
+  await inspect(
+    repositoryRoot,
+    "deploy/backup-control-plane.sh",
+    [
+      ["detect-running-service", "systemctl is-active --quiet real-ming.service"],
+      ["quiesce-writes", "systemctl stop real-ming.service"],
+      // Bash skips an EXIT trap when it dies on an untrapped signal, so the
+      // signals must be named or a systemd timeout strands the service.
+      ["restart-on-exit", "trap restart_control_plane EXIT INT TERM"],
+      ["bounded-container-run", "timeout --signal=TERM"],
+      ["run-live-backup", "control-plane-backup-cli.js --live"],
+      ["immutable-release", "${REAL_MING_IMAGE}"],
+      ["operations-state", "REAL_MING_STATE_PATH=/var/lib/real-ming/state.sqlite"],
+      ["notion-ledger", "REAL_MING_NOTION_LEDGER_PATH=/var/lib/real-ming/notion-write-ledger.sqlite"],
+    ],
+    failures,
+  );
+  await inspect(
+    repositoryRoot,
+    "deploy/verify-deployment.sh",
+    [
+      ["repository-gates", "npm run check"],
+      ["container-build", "docker build"],
+      // The smoke CLI without --live only proves the file exists. What must be
+      // asserted is that the production composition actually loads in the image.
+      ["container-composition-load", "production-control-plane.js"],
+      ["browser-dependency", "playwright install --with-deps chromium"],
+      ["unit-validation", "systemd-analyze verify"],
+      ["immutable-image-evidence", "docker image inspect"],
+    ],
+    failures,
+  );
+  await inspect(
+    repositoryRoot,
+    "deploy/systemd/real-ming-backup.timer",
+    [
+      ["daily-schedule", "OnCalendar=*-*-* 03:15:00 Asia/Kuala_Lumpur"],
+      ["missed-run-recovery", "Persistent=true"],
+    ],
+    failures,
+  );
+  return failures.length === 0
+    ? { kind: "passed", failures: [] }
+    : { kind: "failed", failures };
+}

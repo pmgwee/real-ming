@@ -11,10 +11,17 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run test && npm run build",
+    "check": "npm run typecheck && npm run test && npm run build && node dist/config/control-plane-deployment-preflight-cli.js",
     "graph:status": "npm run build --silent && node dist/phase3/graph-status-cli.js",
     "secrets:preflight": "npm run build --silent && node --env-file-if-exists=.env dist/config/secret-preflight-cli.js",
-    "google:refresh-token": "npm run build --silent && node --env-file-if-exists=.env dist/config/google-refresh-token-cli.js"
+    "google:refresh-token": "npm run build --silent && node --env-file-if-exists=.env dist/config/google-refresh-token-cli.js",
+    "notion:provision-master-tasks": "npm run build --silent && node --env-file-if-exists=.env dist/config/notion-master-tasks-cli.js",
+    "notion:rehearse-task-migration": "npm run build --silent && node --env-file-if-exists=.env dist/config/notion-task-migration-rehearsal-cli.js",
+    "notion:cutover-master-tasks": "npm run build --silent && node --env-file-if-exists=.env dist/config/notion-master-tasks-cutover-cli.js",
+    "control-plane:start": "npm run build --silent && node --env-file-if-exists=.env dist/config/control-plane-cli.js",
+    "control-plane:backup": "npm run build --silent && node dist/config/control-plane-backup-cli.js",
+    "control-plane:smoke": "npm run build --silent && node --env-file-if-exists=.env dist/config/control-plane-smoke-cli.js",
+    "control-plane:deployment-preflight": "npm run build --silent && node dist/config/control-plane-deployment-preflight-cli.js"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

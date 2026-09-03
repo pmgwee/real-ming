@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Real-Ming state backup every day
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 Asia/Kuala_Lumpur
+Persistent=true
+RandomizedDelaySec=15m
+Unit=real-ming-backup.service
+
+[Install]
+WantedBy=timers.target

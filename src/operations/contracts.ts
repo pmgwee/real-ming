@@ -1,34 +1,28 @@
-export type WorkItemState =
-  | "Captured"
-  | "Triaged"
-  | "Planned"
-  | "Awaiting Approval"
-  | "Executing"
-  | "Verifying"
-  | "Waiting/Blocked"
-  | "Ready for CEO Review"
-  | "Changes Requested"
-  | "Cancelled"
-  | "Completed";
+export const workItemStates = [
+  "Captured", "Triaged", "Planned", "Awaiting Approval", "Executing",
+  "Verifying", "Waiting/Blocked", "Ready for CEO Review",
+  "Changes Requested", "Cancelled", "Completed",
+] as const;
+export type WorkItemState = (typeof workItemStates)[number];
 
-export type ExecutiveRole = "COO" | "CTO" | "Personal CFO" | "CAO" | "CMO";
+export const executiveRoles = ["COO", "CTO", "Personal CFO", "CAO", "CMO"] as const;
+export type ExecutiveRole = (typeof executiveRoles)[number];
 
-export type Workstream =
-  | "Personal Life"
-  | "Career Job"
-  | "Finance"
-  | "Academic"
-  | "MicroSaaS"
-  | "Content Creation";
+export const workstreams = [
+  "Personal Life", "Career Job", "Finance", "Academic", "MicroSaaS",
+  "Content Creation",
+] as const;
+export type Workstream = (typeof workstreams)[number];
 
-export type TrustDomain =
-  | "Personal"
-  | "Ming Creatives"
-  | "Academic"
-  | "Entertainment"
-  | "Finance";
+export const trustDomains = [
+  "Personal", "Ming Creatives", "Academic", "Entertainment", "Finance",
+] as const;
+export type TrustDomain = (typeof trustDomains)[number];
 
-export type RiskClass = "low" | "medium" | "high";
+export const riskClasses = ["low", "medium", "high"] as const;
+export type RiskClass = (typeof riskClasses)[number];
+export const workItemPriorities = ["Low", "Medium", "High", "Critical"] as const;
+export type WorkItemPriority = (typeof workItemPriorities)[number];
 
 export type ActionOperation =
   | "read"
@@ -227,9 +221,48 @@ export interface WorkItem {
   readonly collaboratingExecutives: readonly CollaboratingExecutiveAssignment[];
   readonly confirmedCommitment: ConfirmedCommitment | null;
   readonly proposedCommitment: ProposedCommitment | null;
+  readonly priority: WorkItemPriority | null;
   readonly state: WorkItemState;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface RecordWorkItemPriorityRequest {
+  readonly workItemId: string;
+  readonly priority: WorkItemPriority | null;
+  readonly idempotencyKey: string;
+}
+
+/**
+ * A CEO-approved migration is an authorized origin of canonical state, like a
+ * CEO action is. It may only land a record in a state the CEO reconciled: no
+ * controlled effect ever ran for an imported record, so it can never arrive
+ * Executing, Verifying, or Completed.
+ */
+export const migratedWorkItemStates = [
+  "Captured",
+  "Planned",
+  "Waiting/Blocked",
+  "Ready for CEO Review",
+] as const satisfies readonly WorkItemState[];
+export type MigratedWorkItemState = (typeof migratedWorkItemStates)[number];
+
+export type MigratedCommitmentProvenance =
+  | "none-in-source"
+  | "source-date"
+  | "ceo-set-date";
+
+export interface ImportMigratedWorkItemRequest {
+  readonly actorId: string;
+  readonly workspaceId: string;
+  readonly sourceReference: string;
+  readonly intent: string;
+  readonly lifecycle: MigratedWorkItemState;
+  readonly workstream: Workstream;
+  readonly accountableExecutive: ExecutiveRole;
+  readonly legacyStatus: string;
+  readonly commitmentProvenance: MigratedCommitmentProvenance;
+  readonly approvalReference: string;
 }
 
 export interface CeoSetCommitment {
@@ -289,7 +322,7 @@ interface CeoReviewRequestBase {
 export type CeoReviewRequest =
   | (CeoReviewRequestBase & { readonly decision: "complete" })
   | (CeoReviewRequestBase & {
-      readonly decision: "request-changes" | "cancel";
+      readonly decision: "request-changes" | "reject" | "cancel";
       readonly reason: string;
     });
 
@@ -305,6 +338,23 @@ export interface WorkerEffect {
 export interface WorkerReceipt {
   readonly effect: WorkerEffect;
   readonly evidence: Readonly<Record<string, string>>;
+}
+
+/** A worker can refuse execution because its private host is unavailable. */
+export class WorkerUnavailableError extends Error {
+  readonly kind = "worker-unavailable" as const;
+
+  constructor(
+    readonly reason:
+      | "private-worker-offline"
+      | "unsupported-capability"
+      | "lease-held"
+      | "deadline-expired"
+      | "retry-exhausted"
+      | "retry-deferred",
+  ) {
+    super(reason);
+  }
 }
 
 export interface EffectVerification {
@@ -356,12 +406,20 @@ export interface AuditEvent {
     | "work-item.transition-rejected"
     | "work-item.commitment-recorded"
     | "work-item.commitment-rejected"
+    | "work-item.priority-recorded"
     | "policy.permitted"
     | "policy.denied"
     | "approval.requested"
     | "approval.granted"
     | "approval.invalidated"
-    | "standing-authority.granted";
+    | "standing-authority.granted"
+    | "provider.observed"
+    | "provider.recovered"
+    | "project-evidence.bound"
+    | "project-evidence.served"
+    | "project-evidence.candidate-captured"
+    | "personal-context.projection-served"
+    | "personal-context.raw-drilldown";
   readonly occurredAt: string;
   readonly details: Readonly<Record<string, unknown>>;
 }
@@ -384,6 +442,7 @@ export interface EffectVerifier {
   verify(
     receipt: WorkerReceipt,
     expectedEffect: ExpectedEffect,
+    expectedWorkerEffect?: WorkerEffect,
   ): Promise<VerifierResult>;
 }
 

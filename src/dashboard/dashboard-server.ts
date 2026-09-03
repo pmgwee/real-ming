@@ -9,10 +9,31 @@ import {
   type DashboardOverview,
 } from "./dashboard-read-model.js";
 import { renderDashboardPage } from "./dashboard-page.js";
+import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
+import type { ProjectEvidenceBroker } from "../evidence/evidence-broker.js";
+import type { RepositoryCenterView } from "../portfolio/repository-center.js";
+import type { DeploymentCandidateStore } from "../portfolio/deployment-candidate.js";
+import type {
+  DeploymentPromotionApprovalRequest,
+  DeploymentPromotionCoordinator,
+  DeploymentPromotionRequest,
+} from "../portfolio/deployment-promotion.js";
+import type { SchedulerJobDefinition } from "../operations/daily-operations-scheduler.js";
+import type { KnowledgeDomainHealth } from "../knowledge/knowledge-operations.js";
 
 export const dashboardSessionCookie = "real_ming_session";
 
 const maxRequestBodyBytes = 64 * 1024;
+// Fetch refuses these otherwise valid TCP destinations. An operating system
+// may assign one when tests or a smoke process request port 0.
+const fetchForbiddenPorts = new Set([
+  1, 7, 9, 11, 13, 15, 17, 19, 20, 21, 22, 23, 25, 37, 42, 43, 53, 69, 77,
+  79, 87, 95, 101, 102, 103, 104, 109, 110, 111, 113, 115, 117, 119, 123,
+  135, 137, 139, 143, 161, 179, 389, 427, 465, 512, 513, 514, 515, 526, 530,
+  531, 532, 540, 548, 554, 556, 563, 587, 601, 636, 989, 990, 993, 995,
+  1719, 1720, 1723, 2049, 3659, 4045, 5060, 5061, 6000, 6566, 6665, 6666,
+  6667, 6668, 6669, 6697, 10080,
+]);
 
 class RequestBodyError extends Error {
   constructor(
@@ -149,10 +170,42 @@ function sendUnauthorized(response: ServerResponse): void {
 export function createDashboardServer(options: {
   readonly state: OperationsState;
   readonly gateway: OperationsGateway;
+  readonly portfolio?: ProjectPortfolio;
+  /** Controlled, read-only GitHub/Git lineage projections for portfolio projects. */
+  readonly repositoryCenters?: ReadonlyMap<string, RepositoryCenterView>;
+  /** Refreshes provider-backed Repository Center snapshots for each read. */
+  readonly refreshRepositoryCenters?: () => Promise<ReadonlyMap<string, RepositoryCenterView>>;
+  /** Optional CEO-governed binding and evidence capture boundary. */
+  readonly projectEvidence?: ProjectEvidenceBroker;
+  readonly deploymentCandidates?: DeploymentCandidateStore;
+  readonly deploymentPromotion?: DeploymentPromotionCoordinator;
+  readonly schedulerJobs?: readonly SchedulerJobDefinition[];
+  readonly knowledgeHealth?: () => readonly KnowledgeDomainHealth[];
   readonly credentials: readonly DashboardCredential[];
+  /**
+   * The operating clock. Without it the dashboard would report scheduler
+   * timing against wall-clock time while the rest of the system runs on the
+   * injected one, so the two would disagree about when a job next runs.
+   */
+  readonly now?: () => string;
+  readonly host?: string;
+  readonly port?: number;
 }): Promise<DashboardServer> {
-  const overviewFor = (session: DashboardSession): DashboardOverview =>
-    buildDashboardOverview(options.state, session);
+  const now = options.now ?? (() => new Date().toISOString());
+  const host = options.host ?? "127.0.0.1";
+  const port = options.port ?? 0;
+  const overviewFor = async (session: DashboardSession): Promise<DashboardOverview> =>
+    buildDashboardOverview(
+      options.state,
+      { ...session, now: now() },
+      options.portfolio,
+      options.refreshRepositoryCenters === undefined
+        ? options.repositoryCenters
+        : await options.refreshRepositoryCenters(),
+      options.deploymentCandidates,
+      options.schedulerJobs,
+      options.knowledgeHealth?.() ?? [],
+    );
 
   const server: Server = createServer((request, response) => {
     void (async () => {
@@ -171,7 +224,7 @@ export function createDashboardServer(options: {
 
       try {
         if (request.method === "GET" && url.pathname === "/") {
-          const page = renderDashboardPage(overviewFor(session));
+          const page = renderDashboardPage(await overviewFor(session));
           response.writeHead(200, {
             "content-type": "text/html; charset=utf-8",
             "cache-control": "no-store",
@@ -182,7 +235,51 @@ export function createDashboardServer(options: {
         }
 
         if (request.method === "GET" && url.pathname === "/api/overview") {
-          sendJson(response, 200, overviewFor(session));
+          sendJson(response, 200, await overviewFor(session));
+          return;
+        }
+
+        const candidateApprovalMatch = url.pathname.match(/^\/api\/deployment-candidates\/([^/]+)\/approval$/u);
+        if (request.method === "POST" && candidateApprovalMatch !== null) {
+          if (options.deploymentPromotion === undefined) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const candidateId = decodeURIComponent(candidateApprovalMatch[1] ?? "");
+          const candidate = options.deploymentCandidates?.candidate(candidateId);
+          if (candidate === undefined || !ownsWorkItem(candidate.workItemId)) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const body = await readJsonBody(request);
+          const result = await options.deploymentPromotion.requestApproval({
+            candidateId,
+            ...(Array.isArray(body["additionalPlans"])
+              ? { additionalPlans: body["additionalPlans"] as NonNullable<DeploymentPromotionApprovalRequest["additionalPlans"]> }
+              : {}),
+          });
+          sendJson(response, 200, result);
+          return;
+        }
+
+        const candidatePromotionMatch = url.pathname.match(/^\/api\/deployment-candidates\/([^/]+)\/promote$/u);
+        if (request.method === "POST" && candidatePromotionMatch !== null) {
+          if (options.deploymentPromotion === undefined) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const candidateId = decodeURIComponent(candidatePromotionMatch[1] ?? "");
+          const candidate = options.deploymentCandidates?.candidate(candidateId);
+          if (candidate === undefined || !ownsWorkItem(candidate.workItemId)) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const body = await readJsonBody(request);
+          const result = await options.deploymentPromotion.promote({
+            ...(body as unknown as DeploymentPromotionRequest),
+            candidateId,
+          });
+          sendJson(response, 200, result);
           return;
         }
 
@@ -229,6 +326,31 @@ export function createDashboardServer(options: {
           return;
         }
 
+        if (
+          request.method === "POST" &&
+          url.pathname === "/api/project-evidence-bindings"
+        ) {
+          if (options.projectEvidence === undefined) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const body = await readJsonBody(request);
+          if (!ownsWorkItem(body["workItemId"])) {
+            sendJson(response, 404, { error: "not-found" });
+            return;
+          }
+          const workItemId = String(body["workItemId"]);
+          const portfolioProjectId = String(body["portfolioProjectId"]);
+          options.projectEvidence.bind({
+            actorId: session.actorId,
+            workspaceId: session.workspaceId,
+            workItemId,
+            portfolioProjectId,
+          });
+          sendJson(response, 200, { workItemId, portfolioProjectId });
+          return;
+        }
+
         sendJson(response, 404, { error: "not-found" });
       } catch (error) {
         if (error instanceof RequestBodyError) {
@@ -245,21 +367,33 @@ export function createDashboardServer(options: {
 
   return new Promise((resolve, reject) => {
     server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => {
+    const resolveListeningServer = (): void => {
       const address = server.address();
       if (address === null || typeof address === "string") {
         reject(new Error("The dashboard server did not bind a port."));
         return;
       }
 
+      if (port === 0 && fetchForbiddenPorts.has(address.port)) {
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          server.listen(0, host, resolveListeningServer);
+        });
+        return;
+      }
+
       resolve({
         port: address.port,
-        origin: `http://127.0.0.1:${address.port}`,
+        origin: `http://${host === "0.0.0.0" ? "127.0.0.1" : host}:${address.port}`,
         close: () =>
           new Promise<void>((done, fail) => {
             server.close((error) => (error ? fail(error) : done()));
           }),
       });
-    });
+    };
+    server.listen(port, host, resolveListeningServer);
   });
 }

@@ -11,18 +11,25 @@ import type {
   CeoCommandResult,
   CommandClassifier,
   EffectVerifier,
+  ImportMigratedWorkItemRequest,
   NormalizedCeoAction,
   OperationsResult,
   QuestionResponder,
   RecordWorkItemCommitmentRequest,
+  RecordWorkItemPriorityRequest,
   WorkItem,
   WorkItemAcknowledgement,
   WorkItemState,
   WorkerEffect,
 } from "./contracts.js";
+import { WorkerUnavailableError } from "./contracts.js";
+import { migratedWorkItemStates } from "./contracts.js";
 import { OperationsState } from "./operations-state.js";
 import { isCeoActor } from "./actor-identity.js";
-import { routeAccountableExecutive } from "./executive-role-router.js";
+import {
+  routeAccountableExecutive,
+  workstreamRoutes,
+} from "./executive-role-router.js";
 import { lifecyclePathTo } from "./work-item-lifecycle.js";
 import { evaluateAction, findEffectiveApproval } from "./policy-engine.js";
 import { detectSensitiveFields } from "./sensitive-secret.js";
@@ -30,20 +37,36 @@ import { detectSensitiveFields } from "./sensitive-secret.js";
 const reviewTargetStates = {
   complete: "Completed",
   "request-changes": "Changes Requested",
+  reject: "Cancelled",
   cancel: "Cancelled",
 } as const satisfies Readonly<
   Record<CeoReviewRequest["decision"], WorkItemState>
 >;
 
+export type MaterialBlockerReason =
+  | "collaborator-execution-failed"
+  | "effect-verification-failed"
+  | "worker-execution-failed"
+  | "private-worker-offline"
+  | "unsupported-capability"
+  | "lease-held"
+  | "deadline-expired"
+  | "retry-exhausted"
+  | "retry-deferred";
+
 export interface OperationsGateway {
   acknowledgeCeoAction(
     action: NormalizedCeoAction,
   ): Promise<WorkItemAcknowledgement>;
+  importMigratedWorkItem(
+    request: ImportMigratedWorkItemRequest,
+  ): Promise<WorkItem>;
   executeWorkItem(workItemId: string): Promise<OperationsResult>;
   reworkWorkItem(workItemId: string): Promise<OperationsResult>;
   recordWorkItemCommitment(
     request: RecordWorkItemCommitmentRequest,
   ): Promise<WorkItem>;
+  recordWorkItemPriority(request: RecordWorkItemPriorityRequest): Promise<WorkItem>;
   requestAction(action: RequestedAction): Promise<PolicyDecision>;
   grantApproval(request: GrantApprovalRequest): Promise<Approval>;
   grantStandingAuthority(
@@ -62,6 +85,27 @@ export function createOperationsGateway(options: {
   readonly questionResponder: QuestionResponder;
   readonly commandClassifier: CommandClassifier;
   readonly now?: () => string;
+  readonly workItemChanged?: (workItem: WorkItem) => Promise<void>;
+  /** Identifies provider failures safe for one idempotent projection retry. */
+  readonly workItemProjectionRetryable?: (error: unknown) => boolean;
+  /** Called after a bounded projection retry also fails. */
+  readonly workItemProjectionFailed?: (workItem: WorkItem) => Promise<void>;
+  /**
+   * Raised when a Work Item is blocked by a failure it cannot recover from on
+   * its own. CONTEXT.md counts a material blocker among the four things that
+   * may interrupt the CEO directly, and until this existed nothing did: the
+   * only callers of the Exception Notice rhythm were the 07:30 brief and the
+   * 21:30 roll-up, so work that blocked at 08:00 sat silent for the rest of
+   * the day while the CEO had no reason to look.
+   *
+   * The gateway does not know what a notice is, deliberately. It reports the
+   * fact; the composition decides who hears about it.
+   */
+  readonly materialBlocker?: (
+    workItem: WorkItem,
+    reason: MaterialBlockerReason,
+  ) => Promise<void>;
+  readonly materialBlockerRecovered?: (workItem: WorkItem) => Promise<void>;
 }): OperationsGateway {
   const now = options.now ?? (() => new Date().toISOString());
 
@@ -69,6 +113,29 @@ export function createOperationsGateway(options: {
     const workItem = options.state.workItem(workItemId);
     if (workItem === undefined) {
       throw new Error("The Work Item does not exist.");
+    }
+    return workItem;
+  };
+
+  const publish = async (workItem: WorkItem): Promise<WorkItem> => {
+    if (options.workItemChanged !== undefined) {
+      try {
+        await options.workItemChanged(workItem);
+      } catch (firstError) {
+        if (options.workItemProjectionRetryable?.(firstError) !== true) {
+          await options.workItemProjectionFailed?.(workItem).catch(() => undefined);
+          throw firstError;
+        }
+        // Master Tasks upsert is idempotent. A single bounded retry closes the
+        // transient provider outage without allowing projection drift to be
+        // silently accepted forever.
+        try {
+          await options.workItemChanged(workItem);
+        } catch (secondError) {
+          await options.workItemProjectionFailed?.(workItem).catch(() => undefined);
+          throw secondError instanceof Error ? secondError : firstError;
+        }
+      }
     }
     return workItem;
   };
@@ -101,13 +168,23 @@ export function createOperationsGateway(options: {
     return current;
   };
 
-  const blockAfterWorkerFailure = (
+  const blockAfterWorkerFailure = async (
     workItemId: string,
-    reason: "collaborator-execution-failed" | "worker-execution-failed",
+    reason: Exclude<MaterialBlockerReason, "effect-verification-failed">,
     message: string,
-  ): never => {
-    options.state.recordWorkerFailure(workItemId, now());
-    options.state.transition(workItemId, "Waiting/Blocked", now(), { reason });
+  ): Promise<never> => {
+    options.state.recordWorkerFailure(workItemId, now(), reason);
+    const blocked = options.state.transition(workItemId, "Waiting/Blocked", now(), {
+      reason,
+    });
+    // Raised after the block is durable, so the CEO is never told about a
+    // state the database does not already hold. A failure to notify must not
+    // undo the block or mask the original fault, so it is swallowed here and
+    // remains visible in the Work Item's own state and audit trail.
+    await options.materialBlocker?.(blocked, reason).catch(() => undefined);
+    // Projection failure is correlated with worker/provider failure and must
+    // not prevent the direct blocker notice or replace the original error.
+    await publish(blocked).catch(() => undefined);
     throw new Error(message);
   };
 
@@ -120,10 +197,12 @@ export function createOperationsGateway(options: {
   ) => {
     try {
       return await options.worker.execute(effect);
-    } catch {
-      return blockAfterWorkerFailure(
+    } catch (error) {
+      const reason =
+        error instanceof WorkerUnavailableError ? error.reason : failureReason;
+      return await blockAfterWorkerFailure(
         effect.workItemId,
-        failureReason,
+        reason,
         failureMessage,
       );
     }
@@ -138,7 +217,10 @@ export function createOperationsGateway(options: {
     );
 
     if (existing !== undefined) {
-      return { kind: "work-item-acknowledgement", workItem: existing };
+      return {
+        kind: "work-item-acknowledgement",
+        workItem: await publish(existing),
+      };
     }
 
     const routedAction: NormalizedCeoAction = {
@@ -151,7 +233,7 @@ export function createOperationsGateway(options: {
 
     return {
       kind: "work-item-acknowledgement",
-      workItem: options.state.createWorkItem(routedAction, now()),
+      workItem: await publish(options.state.createWorkItem(routedAction, now())),
     };
   };
 
@@ -185,6 +267,7 @@ export function createOperationsGateway(options: {
         workItem.id,
         contributionReceipt,
         now(),
+        contributionEffect,
       );
     }
 
@@ -201,7 +284,7 @@ export function createOperationsGateway(options: {
       "worker-execution-failed",
       "Controlled work failed before verification.",
     );
-    options.state.recordWorkerEffect(workItem.id, receipt, now());
+    options.state.recordWorkerEffect(workItem.id, receipt, now(), effect);
 
     workItem = options.state.transition(workItem.id, "Verifying", now());
     let verifierResult;
@@ -209,12 +292,17 @@ export function createOperationsGateway(options: {
       verifierResult = await options.verifier.verify(
         receipt,
         workItem.expectedEffect,
+        effect,
       );
     } catch {
       options.state.recordVerificationFailure(workItem.id, now());
-      options.state.transition(workItem.id, "Waiting/Blocked", now(), {
+      const blocked = options.state.transition(workItem.id, "Waiting/Blocked", now(), {
         reason: "effect-verification-failed",
       });
+      await options.materialBlocker
+        ?.(blocked, "effect-verification-failed")
+        .catch(() => undefined);
+      await publish(blocked).catch(() => undefined);
       throw new Error("Controlled work could not be verified.");
     }
     const verification = {
@@ -226,12 +314,17 @@ export function createOperationsGateway(options: {
     } as const;
     options.state.recordVerification(workItem.id, verification, now());
 
-    return options.state.recordReviewReadyOutcome(
+    const result = options.state.recordReviewReadyOutcome(
       workItem,
       receipt,
       verification,
       now(),
     );
+    if (entryWorkItem.state === "Waiting/Blocked") {
+      await options.materialBlockerRecovered?.(result.workItem).catch(() => undefined);
+    }
+    await publish(result.workItem);
+    return result;
   };
 
   const executeWorkItem: OperationsGateway["executeWorkItem"] = async (
@@ -245,7 +338,10 @@ export function createOperationsGateway(options: {
         storedWorkItem.state === "Ready for CEO Review" ||
         storedWorkItem.state === "Completed"
       ) {
-        return { workItem: storedWorkItem, outcomeReport: existingOutcome };
+        return {
+          workItem: await publish(storedWorkItem),
+          outcomeReport: existingOutcome,
+        };
       }
 
       options.state.recordRejectedTransition(
@@ -386,6 +482,10 @@ export function createOperationsGateway(options: {
           basis: "approval",
           operation: action.operation,
           approvalId: outcome.approval.id,
+          scope: outcome.approval.scope,
+          targetType: outcome.approval.targetType,
+          targetIdentity: outcome.approval.targetIdentity,
+          targetVersion: outcome.approval.targetVersion,
         },
         now(),
       );
@@ -436,6 +536,7 @@ export function createOperationsGateway(options: {
       },
       now(),
     );
+    await publish(requireWorkItem(workItem.id));
 
     return {
       kind: "approval-required",
@@ -526,6 +627,7 @@ export function createOperationsGateway(options: {
       return options.state.transition(workItem.id, target, now(), {
         actorId: request.actorId,
         from: workItem.state,
+        decision: request.decision,
       });
     }
 
@@ -539,6 +641,7 @@ export function createOperationsGateway(options: {
     return options.state.transition(workItem.id, target, now(), {
       actorId: request.actorId,
       from: workItem.state,
+      decision: request.decision,
       reason: request.reason,
     });
   };
@@ -617,6 +720,41 @@ export function createOperationsGateway(options: {
       );
     };
 
+  const importMigratedWorkItem: OperationsGateway["importMigratedWorkItem"] =
+    async (request) => {
+      if (request.approvalReference.trim() === "") {
+        throw new Error(
+          "A migrated Work Item requires the exact cutover Approval reference.",
+        );
+      }
+      if (!migratedWorkItemStates.includes(request.lifecycle)) {
+        throw new Error(
+          `A migration may not create a Work Item in ${request.lifecycle}.`,
+        );
+      }
+      const expectedExecutive =
+        workstreamRoutes[request.workstream].executive;
+      if (request.accountableExecutive !== expectedExecutive) {
+        throw new Error(
+          `Workstream ${request.workstream} is accountable to ${expectedExecutive}, not ${request.accountableExecutive}.`,
+        );
+      }
+      return publish(
+        options.state.importMigratedWorkItem(request, now()),
+      );
+    };
+
+  const recordWorkItemPriority: OperationsGateway["recordWorkItemPriority"] =
+    async (request) => {
+      requireWorkItem(request.workItemId);
+      return publish(options.state.recordPriority(
+        request.workItemId,
+        request.priority,
+        request.idempotencyKey,
+        now(),
+      ));
+    };
+
   const submitCeoAction: OperationsGateway["submitCeoAction"] = async (
     action,
   ) => {
@@ -626,14 +764,18 @@ export function createOperationsGateway(options: {
 
   return {
     acknowledgeCeoAction,
+    importMigratedWorkItem,
     executeWorkItem,
     reworkWorkItem,
     requestAction,
     grantApproval,
     grantStandingAuthority,
-    recordWorkItemCommitment,
-    reviewWorkItem,
-    stageWorkItemForApproval,
+    recordWorkItemCommitment: async (request) =>
+      publish(await recordWorkItemCommitment(request)),
+    recordWorkItemPriority,
+    reviewWorkItem: async (request) => publish(await reviewWorkItem(request)),
+    stageWorkItemForApproval: async (workItemId) =>
+      publish(await stageWorkItemForApproval(workItemId)),
     submitCeoAction,
 
     async submitCeoCommand(command: CeoCommand): Promise<CeoCommandResult> {

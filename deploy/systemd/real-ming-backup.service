@@ -1,0 +1,26 @@
+[Unit]
+Description=Back up Real-Ming durable state
+After=docker.service network-online.target
+After=real-ming.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+# Optional: holds REAL_MING_BACKUP_STORAGE_ACCOUNT and _CONTAINER when
+# off-host backup is enabled. The leading "-" makes its absence fine, because
+# a local-only backup is a supported mode rather than a misconfiguration.
+EnvironmentFile=-/etc/real-ming/backup.env
+EnvironmentFile=/etc/real-ming/release.env
+ExecStartPre=/usr/bin/install -d -o 1000 -g 1000 -m 0700 /var/lib/real-ming/backups
+ExecStart=/usr/local/libexec/real-ming-backup
+# Type=oneshot disables the start timeout by default, so a hung backup would
+# hold the stopped control plane down indefinitely.
+TimeoutStartSec=1500
+# The last line of defence. ExecStopPost runs however ExecStart ended --
+# success, failure, or killed on timeout -- so the control plane comes back
+# even if the script never reached its own trap.
+ExecStopPost=-/usr/bin/systemctl --no-block start real-ming.service
+
+[Install]
+WantedBy=multi-user.target
