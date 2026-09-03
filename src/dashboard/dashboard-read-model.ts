@@ -20,6 +20,7 @@ import {
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 import type { DeploymentCandidate, DeploymentCandidateStore } from "../portfolio/deployment-candidate.js";
+import type { KnowledgeDomainHealth } from "../knowledge/knowledge-operations.js";
 
 export interface DashboardWorkItemView {
   readonly id: string;
@@ -146,6 +147,8 @@ export interface DashboardOverview {
   readonly controlPlane: readonly ControlPlaneHealth[];
   /** Provider degradation is separate from binary process health. */
   readonly providerObservations: readonly ProviderObservation[];
+  /** Payload-free per-domain Knowledge Compiler health. */
+  readonly knowledge: readonly KnowledgeDomainHealth[];
 }
 
 const executiveRoles: readonly ExecutiveRole[] = [
@@ -220,6 +223,7 @@ export function buildDashboardOverview(
   repositoryCenters?: ReadonlyMap<string, RepositoryCenterView>,
   deploymentCandidates?: DeploymentCandidateStore,
   schedulerJobs: readonly SchedulerJobDefinition[] = schedulerJobInventory,
+  knowledge: readonly KnowledgeDomainHealth[] = [],
 ): DashboardOverview {
   const workItems = state
     .workItems()
@@ -387,5 +391,6 @@ export function buildDashboardOverview(
     scheduler: schedulerHealth(state, session.now ?? new Date().toISOString(), schedulerJobs),
     controlPlane: state.controlPlaneHealth(),
     providerObservations: state.providerObservations(),
+    knowledge,
   };
 }

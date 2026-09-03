@@ -79,6 +79,15 @@ import {
   type ControlPlaneCycle,
 } from "./control-plane-supervisor.js";
 import { pollTelegramUpdates } from "./telegram-ingress.js";
+import {
+  createKnowledgeOperations,
+  knowledgeJobInventory,
+  type KnowledgeOperations,
+  type KnowledgeSource,
+} from "../knowledge/knowledge-operations.js";
+import { createKnowledgeCompiler, type KnowledgeOperationalOutput } from "../knowledge/knowledge-compiler.js";
+import { createKnowledgeVault, type KnowledgeVault } from "../knowledge/knowledge-vault.js";
+import type { PersonalContextIngestion } from "../knowledge/personal-context-ingestion.js";
 
 const workspaceId = "workspace:real-ming";
 
@@ -172,6 +181,17 @@ export async function createDailyOperationsControlPlane(options: {
   ) => Promise<ProviderReadResult<readonly CalendarEvent[]>>;
   readonly now?: () => string;
   readonly wait?: () => Promise<void>;
+  /** Optional scheduled Knowledge Compiler runtime backed by an encrypted vault. */
+  readonly knowledgeOperations?: {
+    readonly statePath?: string;
+    readonly encryptionKey: string;
+    readonly sources?: readonly KnowledgeSource[];
+    readonly outputs?: readonly KnowledgeOperationalOutput[];
+    readonly backup?: () => Promise<void>;
+    readonly runnerTimeoutMs?: number;
+    readonly personalContext?: PersonalContextIngestion;
+    readonly retentionRequired?: boolean;
+  };
 }): Promise<DailyOperationsControlPlane> {
   const now = options.now ?? (() => new Date().toISOString());
   const state = new OperationsState(options.statePath);
@@ -338,7 +358,45 @@ export async function createDailyOperationsControlPlane(options: {
         admit: admitTracked,
         now,
       });
-  const schedulerJobs = entertainmentEmailDigest === undefined
+  const knowledgeVault: KnowledgeVault | undefined = options.knowledgeOperations === undefined
+    ? undefined
+    : createKnowledgeVault({
+        statePath: options.knowledgeOperations.statePath ?? `${options.statePath}.knowledge.sqlite`,
+        encryptionKey: options.knowledgeOperations.encryptionKey,
+        now,
+      });
+  const knowledgeCompiler = knowledgeVault === undefined
+    ? undefined
+    : createKnowledgeCompiler({ vault: knowledgeVault, actorId: "ceo:ming", now });
+  const knowledgeRuntime: KnowledgeOperations | undefined =
+    knowledgeVault === undefined || knowledgeCompiler === undefined
+      ? undefined
+      : createKnowledgeOperations({
+          state,
+          compiler: knowledgeCompiler,
+          vault: knowledgeVault,
+          now,
+          ...(options.knowledgeOperations?.sources === undefined ? {} : { sources: options.knowledgeOperations.sources }),
+          ...(options.knowledgeOperations?.outputs === undefined ? {} : { outputs: options.knowledgeOperations.outputs }),
+          ...(options.knowledgeOperations?.backup === undefined ? {} : { backup: options.knowledgeOperations.backup }),
+          ...(options.knowledgeOperations?.runnerTimeoutMs === undefined ? {} : { runnerTimeoutMs: options.knowledgeOperations.runnerTimeoutMs }),
+          ...(options.knowledgeOperations?.personalContext === undefined ? {} : { personalContext: options.knowledgeOperations.personalContext }),
+          ...(options.knowledgeOperations?.retentionRequired === undefined ? {} : { retentionRequired: options.knowledgeOperations.retentionRequired }),
+          admitExceptionNotice: admitTracked,
+          recordExceptionNoticeRecovery: async (signature, details) => {
+            const admission = await notices.recordRecovery(signature, details);
+            recordExceptionNoticeHealth(admission);
+            return admission;
+          },
+        });
+  const schedulerJobs = entertainmentEmailDigest === undefined && knowledgeRuntime === undefined
+    ? schedulerJobInventory
+    : [
+        ...schedulerJobInventory,
+        ...(entertainmentEmailDigest === undefined ? [] : [entertainmentEmailDigestJobDefinition]),
+        ...(knowledgeRuntime === undefined ? [] : knowledgeJobInventory),
+      ];
+  const primarySchedulerJobs = entertainmentEmailDigest === undefined
     ? schedulerJobInventory
     : [...schedulerJobInventory, entertainmentEmailDigestJobDefinition];
   const runEntertainmentEmailDigest = async (): Promise<void> => {
@@ -422,8 +480,16 @@ export async function createDailyOperationsControlPlane(options: {
       ...(entertainmentEmailDigest === undefined
         ? {}
         : { [entertainmentEmailDigestJobName]: runEntertainmentEmailDigest }),
+      ...(knowledgeRuntime === undefined
+        ? {}
+        : Object.fromEntries(
+            knowledgeJobInventory.map((definition) => [
+              definition.job,
+              () => knowledgeRuntime.runJob(definition.job),
+            ]),
+          )),
     },
-    jobs: schedulerJobs,
+    jobs: primarySchedulerJobs,
   });
   const dashboard: DashboardServer = await createDashboardServer({
     state,
@@ -439,6 +505,7 @@ export async function createDailyOperationsControlPlane(options: {
           ...(deploymentPromotion === undefined ? {} : { deploymentPromotion }),
         }),
     schedulerJobs,
+    ...(knowledgeRuntime === undefined ? {} : { knowledgeHealth: () => knowledgeRuntime.domainHealth }),
     credentials: [
       {
         actorId: "ceo:ming",
@@ -528,7 +595,13 @@ export async function createDailyOperationsControlPlane(options: {
         throw new Error("Telegram delivery recovery remains unresolved.");
       }
     },
-    tickSchedule: () => scheduler.tick(),
+    tickSchedule: async () => {
+      const primary = await scheduler.tick();
+      const knowledge = await knowledgeRuntime?.scheduler.tick();
+      if (primary.failed.length > 0 || (knowledge?.failed.length ?? 0) > 0) {
+        throw new Error("A scheduled operations job failed.");
+      }
+    },
     now,
     onCycle: (cycle) => {
       if (cycle.telegram.kind !== "stopped") {
@@ -593,6 +666,7 @@ export async function createDailyOperationsControlPlane(options: {
       await dashboard.close();
       options.deploymentCandidateStore?.close();
       options.deploymentPromotionStore?.close();
+      knowledgeVault?.close();
       state.close();
     },
   };

@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,6 +17,9 @@ describe("RM-42 Knowledge Compiler", () => {
   const harnesses: RealMingSystemHarness[] = [];
   const directories: string[] = [];
 
+  const contentHash = (content: string): string =>
+    `sha256:${createHash("sha256").update(content, "utf8").digest("hex")}`;
+
   afterEach(() => {
     for (const harness of harnesses.splice(0)) harness.close();
     for (const directory of directories.splice(0)) {
@@ -31,7 +35,7 @@ describe("RM-42 Knowledge Compiler", () => {
     canonicalEvidenceId: "agent-brain:personal:evidence:7",
     capturedAt: "2026-09-03T08:30:00.000Z",
     asOf: "2026-09-03T08:00:00.000Z",
-    contentHash: "sha256:working-preferences-v1",
+    contentHash: contentHash("Ming plans deep work before 11:00 and protects Friday afternoons."),
     trustDomain: "Personal",
     sensitivity: "internal",
     allowedRoles: ["COO"],
@@ -45,10 +49,17 @@ describe("RM-42 Knowledge Compiler", () => {
   function start(): RealMingSystemHarness {
     const directory = mkdtempSync(join(tmpdir(), "real-ming-rm42-"));
     directories.push(directory);
+    return startInDirectory(directory);
+  }
+
+  function startInDirectory(directory: string): RealMingSystemHarness {
     const harness = createRealMingSystemHarness({
       statePath: join(directory, "state.sqlite"),
       now: () => now,
-      knowledgeVault: { encryptionKey: "rm42-compiler-key-not-a-real-secret" },
+      knowledgeVault: {
+        statePath: join(directory, "knowledge.sqlite"),
+        encryptionKey: "rm42-compiler-key-not-a-real-secret",
+      },
     });
     harnesses.push(harness);
     return harness;
@@ -67,7 +78,7 @@ describe("RM-42 Knowledge Compiler", () => {
 
     const page = harness.readVaultPage("Personal", result.pagePath);
     expect(page).toContain("agent-brain://personal/evidence/7");
-    expect(page).toContain("sha256:working-preferences-v1");
+    expect(page).toContain(candidate.contentHash);
     // A Wikilink back to the source keeps the page navigable in Obsidian.
     expect(page).toContain("[[working-preferences]]");
   });
@@ -103,6 +114,18 @@ describe("RM-42 Knowledge Compiler", () => {
     expect(harness.vaultGenerations("Personal")).toHaveLength(0);
   });
 
+  it("rejects a candidate whose content hash does not match its payload", () => {
+    const harness = start();
+
+    const refused = harness.compileKnowledgeCandidate({
+      ...candidate,
+      content: "A changed claim with the old provenance hash.",
+    });
+
+    expect(refused).toEqual({ kind: "rejected", reason: "invalid-provenance" });
+    expect(harness.vaultGenerations("Personal")).toHaveLength(0);
+  });
+
   it("labels a stale candidate rather than compiling it as current", () => {
     const harness = start();
 
@@ -125,7 +148,7 @@ describe("RM-42 Knowledge Compiler", () => {
     const contradicting = harness.compileKnowledgeCandidate({
       ...candidate,
       id: "candidate:working-preferences-v2",
-      contentHash: "sha256:working-preferences-v2",
+       contentHash: contentHash("Ming plans deep work after 15:00 and works Friday afternoons."),
       content: "Ming plans deep work after 15:00 and works Friday afternoons.",
     });
 
@@ -137,9 +160,45 @@ describe("RM-42 Knowledge Compiler", () => {
     expect(harness.readVaultPage("Personal", "wiki/working-preferences.md")).toContain(
       "before 11:00",
     );
-    expect(harness.readVaultPage("Personal", "quarantine/working-preferences.md")).toContain(
+    if (contradicting.kind !== "quarantined") return;
+    expect(harness.readVaultPage("Personal", contradicting.quarantinePath)).toContain(
       "after 15:00",
     );
+  });
+
+  it("does not create duplicate quarantine generations after restart", () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm42-quarantine-replay-"));
+    directories.push(directory);
+    const first = startInDirectory(directory);
+    first.compileKnowledgeCandidate(candidate);
+    const conflictA = {
+      ...candidate,
+      id: "candidate:working-preferences-conflict-a",
+      canonicalEvidenceId: "agent-brain:personal:evidence:8",
+      content: "Ming starts deep work after 15:00.",
+      contentHash: contentHash("Ming starts deep work after 15:00."),
+      citations: ["agent-brain://personal/evidence/8"],
+    };
+    const conflictB = {
+      ...candidate,
+      id: "candidate:working-preferences-conflict-b",
+      canonicalEvidenceId: "agent-brain:personal:evidence:9",
+      content: "Ming starts deep work after 17:00.",
+      contentHash: contentHash("Ming starts deep work after 17:00."),
+      citations: ["agent-brain://personal/evidence/9"],
+    };
+    expect(first.compileKnowledgeCandidate(conflictA).kind).toBe("quarantined");
+    expect(first.compileKnowledgeCandidate(conflictB).kind).toBe("quarantined");
+    expect(first.vaultGenerations("Personal")).toHaveLength(3);
+    first.close();
+    harnesses.splice(harnesses.indexOf(first), 1);
+
+    const restored = startInDirectory(directory);
+    expect(restored.compileKnowledgeCandidate(conflictA)).toEqual({
+      kind: "unchanged",
+      pagePath: expect.stringContaining("quarantine/"),
+    });
+    expect(restored.vaultGenerations("Personal")).toHaveLength(3);
   });
 
   it("supersedes with a new generation and leaves the predecessor traceable", () => {
@@ -151,7 +210,7 @@ describe("RM-42 Knowledge Compiler", () => {
     const second = harness.compileKnowledgeCandidate({
       ...candidate,
       id: "candidate:working-preferences-extended",
-      contentHash: "sha256:working-preferences-v1b",
+       contentHash: contentHash("Ming plans deep work before 11:00 and protects Friday afternoons, and reviews on Monday."),
       content:
         "Ming plans deep work before 11:00 and protects Friday afternoons, and reviews on Monday.",
     });

@@ -166,7 +166,18 @@ import {
 import {
   createKnowledgeCompiler,
   type KnowledgeCompilationResult,
+  type KnowledgeOperationalRecord,
 } from "../knowledge/knowledge-compiler.js";
+import {
+  createKnowledgeOperations,
+  knowledgeJobInventory,
+  type KnowledgeDomainHealth,
+  type KnowledgeJobHealth,
+  type KnowledgeJobDefinition,
+  type KnowledgeOperations,
+  type KnowledgeSource,
+} from "../knowledge/knowledge-operations.js";
+import type { KnowledgeOperationalOutput } from "../knowledge/knowledge-compiler.js";
 import {
   createKnowledgeVault,
   type KnowledgeVault,
@@ -636,6 +647,13 @@ export interface RealMingSystemHarness {
   compileKnowledgeCandidate(
     candidate: CandidateEnvelope,
   ): KnowledgeCompilationResult;
+  knowledgeJobDefinitions(): readonly KnowledgeJobDefinition[];
+  knowledgeJobHealth(): readonly KnowledgeJobHealth[];
+  knowledgeHealth(): readonly KnowledgeDomainHealth[];
+  knowledgeStagedCandidates(): readonly CandidateEnvelope[];
+  compiledKnowledgePages(): readonly CompiledKnowledgePage[];
+  operationalKnowledgeOutputs(): readonly KnowledgeOperationalRecord[];
+  runKnowledgeJob(job: KnowledgeJobDefinition["job"]): Promise<void>;
   readVaultPage(root: VaultRoot, path: string): string | undefined;
   vaultGenerations(root: VaultRoot): readonly VaultGeneration[];
   serveCompiledKnowledge(
@@ -1031,6 +1049,13 @@ export function createRealMingSystemHarness(options: {
   readonly knowledgeVault?: {
     readonly encryptionKey: string;
     readonly statePath?: string;
+  };
+  readonly knowledgeOperations?: {
+    readonly sources?: readonly KnowledgeSource[];
+    readonly outputs?: readonly KnowledgeOperationalOutput[];
+    readonly backup?: () => Promise<void>;
+    readonly runnerTimeoutMs?: number;
+    readonly retentionRequired?: boolean;
   };
   readonly evidenceEnablement?: {
     readonly candidates: readonly EvidenceEnablementCandidate[];
@@ -1487,6 +1512,7 @@ export function createRealMingSystemHarness(options: {
           actorId: "ceo:ming",
           now: clock,
         });
+  let knowledgeOperations: KnowledgeOperations | undefined;
 
   const hermesProjection = createHermesProjectionBroker({
     state,
@@ -1644,6 +1670,44 @@ export function createRealMingSystemHarness(options: {
   // one job failing without stranding the others.
   const forcedFailures = new Set<string>();
   const forcedHangs = new Set<string>();
+  if (knowledgeCompiler !== undefined && knowledgeVault !== undefined) {
+    knowledgeOperations = createKnowledgeOperations({
+      state,
+      compiler: knowledgeCompiler,
+      vault: knowledgeVault,
+      now: clock,
+      ...(options.knowledgeOperations?.sources === undefined
+        ? {}
+        : { sources: options.knowledgeOperations.sources }),
+      ...(options.knowledgeOperations?.outputs === undefined
+        ? {}
+        : { outputs: options.knowledgeOperations.outputs }),
+      ...(personalContext === undefined ? {} : { personalContext }),
+      ...(options.knowledgeOperations?.backup === undefined
+        ? {}
+        : { backup: options.knowledgeOperations.backup }),
+      ...(options.knowledgeOperations?.runnerTimeoutMs === undefined
+        ? {}
+        : { runnerTimeoutMs: options.knowledgeOperations.runnerTimeoutMs }),
+      ...(options.knowledgeOperations?.retentionRequired === undefined
+        ? {}
+        : { retentionRequired: options.knowledgeOperations.retentionRequired }),
+      admitExceptionNotice: admitTracked,
+      recordExceptionNoticeRecovery: async (signature, details) => {
+        const admission = await exceptionNoticeRhythm.recordRecovery(
+          signature,
+          details,
+        );
+        recordExceptionNoticeHealth(admission);
+        return admission;
+      },
+      failureFor: (job) =>
+        forcedFailures.delete(job)
+          ? `Controlled failure of the ${job} job.`
+          : undefined,
+      hangFor: (job) => forcedHangs.delete(job),
+    });
+  }
   const executiveRollUp: ExecutiveRollUpRunner = createExecutiveRollUpRunner({
     state,
     workspaceId: "workspace:real-ming",
@@ -1670,9 +1734,12 @@ export function createRealMingSystemHarness(options: {
     }
     return run();
   };
-  const schedulerJobs = entertainmentEmailDigest === undefined
-    ? schedulerJobInventory
-    : [...schedulerJobInventory, entertainmentEmailDigestJobDefinition];
+  const schedulerJobs = [
+    ...(entertainmentEmailDigest === undefined
+      ? schedulerJobInventory
+      : [...schedulerJobInventory, entertainmentEmailDigestJobDefinition]),
+    ...(knowledgeOperations?.definitions ?? []),
+  ];
   const runEntertainmentEmailDigestJob = async (): Promise<void> => {
     if (entertainmentEmailDigest === undefined) return;
     const result = await entertainmentEmailDigest.run();
@@ -1790,7 +1857,17 @@ export function createRealMingSystemHarness(options: {
       return admission;
     },
     releaseHeldExceptionNotices: () => releaseHeldTracked(),
-    tickDailyOperations: () => dailyOperations.tick(),
+    tickDailyOperations: async () => {
+      const knowledgeTick = await knowledgeOperations?.scheduler.tick();
+      const operationsTick = await dailyOperations.tick();
+      return {
+        now: operationsTick.now,
+        ran: [ ...(knowledgeTick?.ran ?? []), ...operationsTick.ran ],
+        failed: [ ...(knowledgeTick?.failed ?? []), ...operationsTick.failed ],
+        notYetDue: [ ...(knowledgeTick?.notYetDue ?? []), ...operationsTick.notYetDue ],
+        alreadyRun: [ ...(knowledgeTick?.alreadyRun ?? []), ...operationsTick.alreadyRun ],
+      };
+    },
     failNextScheduledRun: async (job) => {
       forcedFailures.add(job);
     },
@@ -1906,6 +1983,18 @@ export function createRealMingSystemHarness(options: {
       }
       return knowledgeCompiler.compile(candidate);
     },
+    knowledgeJobDefinitions: () => knowledgeOperations?.definitions ?? knowledgeJobInventory,
+    knowledgeJobHealth: () => knowledgeOperations?.jobHealth ?? [],
+    knowledgeHealth: () => knowledgeOperations?.domainHealth ?? [],
+    knowledgeStagedCandidates: () => knowledgeOperations?.stagedCandidates ?? [],
+    compiledKnowledgePages: () => knowledgeCompiler?.pages() ?? [],
+    operationalKnowledgeOutputs: () => knowledgeCompiler?.operationalOutputs() ?? [],
+    runKnowledgeJob: async (job) => {
+      if (knowledgeOperations === undefined) {
+        throw new Error("Knowledge Operations are not configured.");
+      }
+      await knowledgeOperations.runJob(job);
+    },
     readVaultPage: (root, path) =>
       knowledgeVault?.readForCeo(root, path, "ceo:ming"),
     vaultGenerations: (root) => knowledgeVault?.generations(root) ?? [],
@@ -1972,6 +2061,7 @@ export function createRealMingSystemHarness(options: {
         repositoryCenters,
         deploymentCandidateStore,
         schedulerJobs,
+        knowledgeOperations?.domainHealth ?? [],
       ),
     recordProviderObservation: (record) =>
       providerObservationCoordinator.observe(record),

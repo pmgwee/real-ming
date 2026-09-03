@@ -1716,8 +1716,8 @@ export class OperationsState {
   /**
    * A scheduled occurrence claims its slot before it runs, so a restart, a
    * second process, or a rapid tick cannot execute the same occurrence twice.
-   * A failed occurrence stays claimable: a scheduler that never retries is
-   * worse than one that repeats.
+   * A failed occurrence stays claimable unless its caller supplies a bounded
+   * retry policy and the recorded attempt count has reached that bound.
    */
   claimSchedulerRun(run: {
     readonly job: string;
@@ -1725,12 +1725,14 @@ export class OperationsState {
     readonly scheduledAt: string;
     readonly startedAt: string;
     readonly staleAfterMs?: number;
+    readonly maxAttempts?: number;
   }): {
     readonly kind:
       | "claimed"
       | "already-succeeded"
       | "already-running"
-      | "stale-reclaimed";
+      | "stale-reclaimed"
+      | "terminal-failure";
   } {
     const row = this.#database
       .prepare(
@@ -1741,6 +1743,17 @@ export class OperationsState {
       | undefined;
     if (row?.outcome === "succeeded") {
       return { kind: "already-succeeded" };
+    }
+    if (row?.outcome === "failed" && run.maxAttempts !== undefined) {
+      const attempts = this.#database
+        .prepare(
+          `SELECT COUNT(*) AS count FROM scheduler_run_failures
+           WHERE job = ? AND occurrence_date = ?`,
+        )
+        .get(run.job, run.occurrenceDate) as { readonly count: number };
+      if (attempts.count >= run.maxAttempts) {
+        return { kind: "terminal-failure" };
+      }
     }
     let staleReclaimed = false;
     if (row?.outcome === null) {

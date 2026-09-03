@@ -39,6 +39,9 @@ import {
   createDailyOperationsControlPlane,
   type DailyOperationsControlPlane,
 } from "./daily-operations-control-plane.js";
+import type { KnowledgeOperationalOutput } from "../knowledge/knowledge-compiler.js";
+import type { KnowledgeSource } from "../knowledge/knowledge-operations.js";
+import type { PersonalContextIngestion } from "../knowledge/personal-context-ingestion.js";
 
 function optional(value: string | undefined): string | undefined {
   const trimmed = (value ?? "").trim();
@@ -83,6 +86,17 @@ export async function createProductionControlPlane(options: {
   readonly fetch?: typeof fetch;
   readonly now?: () => string;
   readonly wait?: () => Promise<void>;
+  /** Optional production Knowledge Compiler sources/outputs. Adapters must be supplied through approved evidence boundaries. */
+  readonly knowledgeOperations?: {
+    readonly statePath?: string;
+    readonly encryptionKey?: string;
+    readonly sources?: readonly KnowledgeSource[];
+    readonly outputs?: readonly KnowledgeOperationalOutput[];
+    readonly backup?: () => Promise<void>;
+    readonly runnerTimeoutMs?: number;
+    readonly personalContext?: PersonalContextIngestion;
+    readonly retentionRequired?: boolean;
+  };
 }): Promise<DailyOperationsControlPlane> {
   const request = options.fetch ?? fetch;
   const now = options.now ?? (() => new Date().toISOString());
@@ -110,6 +124,18 @@ export async function createProductionControlPlane(options: {
     }
     return value;
   };
+  const productionKnowledgeOperations = options.knowledgeOperations === undefined
+    ? undefined
+    : {
+        encryptionKey: options.knowledgeOperations.encryptionKey ?? required("REAL_MING_VAULT_KEY"),
+        ...(options.knowledgeOperations.statePath === undefined ? {} : { statePath: options.knowledgeOperations.statePath }),
+        ...(options.knowledgeOperations.sources === undefined ? {} : { sources: options.knowledgeOperations.sources }),
+        ...(options.knowledgeOperations.outputs === undefined ? {} : { outputs: options.knowledgeOperations.outputs }),
+        ...(options.knowledgeOperations.backup === undefined ? {} : { backup: options.knowledgeOperations.backup }),
+        ...(options.knowledgeOperations.runnerTimeoutMs === undefined ? {} : { runnerTimeoutMs: options.knowledgeOperations.runnerTimeoutMs }),
+        ...(options.knowledgeOperations.personalContext === undefined ? {} : { personalContext: options.knowledgeOperations.personalContext }),
+        retentionRequired: options.knowledgeOperations.retentionRequired ?? true,
+      };
 
   const telegram = createTelegramProviderAdapter({
     botToken: required("REAL_MING_TELEGRAM_BOT_TOKEN"),
@@ -261,6 +287,9 @@ export async function createProductionControlPlane(options: {
         }).listEvents(calendarId, window);
       },
       now,
+      ...(productionKnowledgeOperations === undefined
+        ? {}
+        : { knowledgeOperations: productionKnowledgeOperations }),
       ...(options.wait === undefined ? {} : { wait: options.wait }),
     });
     return {

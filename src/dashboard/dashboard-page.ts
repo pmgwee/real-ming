@@ -109,6 +109,24 @@ export function renderDashboardPage(overview: DashboardOverview): string {
     )
     .join("");
 
+  const knowledgeRows = overview.knowledge
+    .map(
+      (health) =>
+        `<tr data-knowledge-domain="${escapeHtml(health.domain)}">` +
+        `<td data-field="status">${escapeHtml(health.status)}</td>` +
+        `<td data-field="lastIngest">${escapeHtml(health.lastIngest ?? "")}</td>` +
+        `<td data-field="lastCompile">${escapeHtml(health.lastCompile ?? "")}</td>` +
+        `<td data-field="lastPublish">${escapeHtml(health.lastPublish ?? "")}</td>` +
+        `<td data-field="lastLint">${escapeHtml(health.lastLint ?? "")}</td>` +
+        `<td data-field="generation">${escapeHtml(health.currentGenerationId ?? "")}</td>` +
+        `<td data-field="backlog">${health.backlog}</td>` +
+        `<td data-field="stalePages">${health.stalePages}</td>` +
+        `<td data-field="citationFailures">${health.citationFailures}</td>` +
+        `<td data-field="quarantinedConflicts">${health.quarantinedConflicts}</td>` +
+        `</tr>`,
+    )
+    .join("");
+
   const providerObservationRows = overview.providerObservations
     .map(
       (observation) =>
@@ -254,6 +272,12 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <section aria-labelledby="scheduler-health-title">
 <h2 id="scheduler-health-title">Scheduler Heartbeats</h2>
 <table id="scheduler-health"><tbody>${schedulerRows}</tbody></table>
+</section>
+
+<section aria-labelledby="knowledge-health-title">
+<h2 id="knowledge-health-title">Knowledge Compiler Health</h2>
+<p>Per-domain status and counters only; raw knowledge content is never rendered here.</p>
+<table id="knowledge-health"><tbody>${knowledgeRows}</tbody></table>
 </section>
 
 <section aria-labelledby="provider-observations-title">

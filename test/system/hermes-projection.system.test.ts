@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,6 +17,9 @@ describe("RM-43 role-scoped Compiled Knowledge through Hermes", () => {
   const harnesses: RealMingSystemHarness[] = [];
   const directories: string[] = [];
 
+  const contentHash = (content: string): string =>
+    `sha256:${createHash("sha256").update(content, "utf8").digest("hex")}`;
+
   afterEach(() => {
     for (const harness of harnesses.splice(0)) harness.close();
     for (const directory of directories.splice(0)) {
@@ -26,7 +30,7 @@ describe("RM-43 role-scoped Compiled Knowledge through Hermes", () => {
   function candidate(
     overrides: Partial<CandidateEnvelope> = {},
   ): CandidateEnvelope {
-    return {
+    const base: CandidateEnvelope = {
       id: "candidate:duitsini-engineering",
       sourceSystem: "agent-brain",
       sourceIdentity: "agent-brain:ming-creatives",
@@ -34,7 +38,7 @@ describe("RM-43 role-scoped Compiled Knowledge through Hermes", () => {
       canonicalEvidenceId: "agent-brain:ming-creatives:evidence:11",
       capturedAt: "2026-09-03T09:30:00.000Z",
       asOf: "2026-09-03T09:00:00.000Z",
-      contentHash: "sha256:duitsini-engineering-v1",
+      contentHash: "",
       trustDomain: "Ming Creatives",
       sensitivity: "internal",
       allowedRoles: ["CTO"],
@@ -45,6 +49,7 @@ describe("RM-43 role-scoped Compiled Knowledge through Hermes", () => {
       freshness: "current",
       ...overrides,
     };
+    return { ...base, contentHash: overrides.contentHash ?? contentHash(base.content) };
   }
 
   function start(): RealMingSystemHarness {
@@ -55,7 +60,7 @@ describe("RM-43 role-scoped Compiled Knowledge through Hermes", () => {
         id: "candidate:duitsini-content",
         sourceReference: "wiki/content/duitsini.md",
         canonicalEvidenceId: "agent-brain:ming-creatives:evidence:12",
-        contentHash: "sha256:duitsini-content-v1",
+        contentHash: contentHash("DuitSini launch posts run on Tuesdays."),
         allowedRoles: ["CMO"],
         content: "DuitSini launch posts run on Tuesdays.",
         citations: ["agent-brain://ming-creatives/evidence/12"],
@@ -261,7 +266,7 @@ describe("RM-43 role-scoped Compiled Knowledge through Hermes", () => {
     if (served.kind !== "served") return;
     expect(served.brief).toMatchObject({
       sourceIdentity: "agent-brain:ming-creatives",
-      contentHash: "sha256:duitsini-engineering-v1",
+      contentHash: contentHash("DuitSini deploys from main with preview verification."),
       asOf: "2026-09-03T09:00:00.000Z",
       freshness: "current",
       contested: false,
@@ -277,7 +282,7 @@ describe("RM-43 role-scoped Compiled Knowledge through Hermes", () => {
     harness.compileKnowledgeCandidate(
       candidate({
         freshness: "stale",
-        contentHash: "sha256:duitsini-engineering-stale",
+        contentHash: contentHash("DuitSini deploys from main with preview verification."),
       }),
     );
     const workItemId = await workItemFor(harness, "MicroSaaS", "rm43:stale");
@@ -314,7 +319,7 @@ describe("RM-43 role-scoped Compiled Knowledge through Hermes", () => {
     const quarantined = harness.compileKnowledgeCandidate(
       candidate({
         id: "candidate:duitsini-engineering-v2",
-        contentHash: "sha256:duitsini-engineering-v2",
+        contentHash: contentHash("DuitSini deploys from a release branch after manual sign-off."),
         canonicalEvidenceId: "agent-brain:ming-creatives:evidence:13",
         content: "DuitSini deploys from a release branch after manual sign-off.",
         citations: ["agent-brain://ming-creatives/evidence/13"],

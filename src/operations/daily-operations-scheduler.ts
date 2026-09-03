@@ -122,6 +122,8 @@ export function createDailyOperationsScheduler(options: {
   readonly now: () => string;
   readonly jobs?: readonly SchedulerJobDefinition[];
   readonly runnerTimeoutMs?: number;
+  /** Optional per-occurrence retry bound; omitted preserves legacy retrying. */
+  readonly maxAttempts?: number;
   readonly admitExceptionNotice?: (
     notice: ExceptionNotice,
   ) => Promise<ExceptionNoticeAdmission>;
@@ -235,6 +237,7 @@ export function createDailyOperationsScheduler(options: {
         scheduledAt: previous.scheduledAt,
         startedAt: previous.scheduledAt,
         staleAfterMs: runnerTimeoutMs,
+        ...(options.maxAttempts === undefined ? {} : { maxAttempts: options.maxAttempts }),
       });
       if (claim.kind !== "claimed") return;
     }
@@ -296,6 +299,7 @@ export function createDailyOperationsScheduler(options: {
           scheduledAt: occurrence.scheduledAt,
           startedAt: now,
           staleAfterMs: runnerTimeoutMs,
+          ...(options.maxAttempts === undefined ? {} : { maxAttempts: options.maxAttempts }),
         });
         if (claim.kind === "stale-reclaimed") {
           // A restarted process has found an unfinished current occurrence.
@@ -321,12 +325,17 @@ export function createDailyOperationsScheduler(options: {
             scheduledAt: occurrence.scheduledAt,
             startedAt: now,
             staleAfterMs: runnerTimeoutMs,
+            ...(options.maxAttempts === undefined ? {} : { maxAttempts: options.maxAttempts }),
           });
           priorFailureStreak = failureStreak(
             options.state.schedulerRuns().filter((run) => run.job === scheduled.job),
           );
         }
-        if (claim.kind === "already-succeeded" || claim.kind === "already-running") {
+        if (
+          claim.kind === "already-succeeded" ||
+          claim.kind === "already-running" ||
+          claim.kind === "terminal-failure"
+        ) {
           alreadyRun.push(scheduled.job);
           continue;
         }

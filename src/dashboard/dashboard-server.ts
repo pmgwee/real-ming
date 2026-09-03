@@ -19,6 +19,7 @@ import type {
   DeploymentPromotionRequest,
 } from "../portfolio/deployment-promotion.js";
 import type { SchedulerJobDefinition } from "../operations/daily-operations-scheduler.js";
+import type { KnowledgeDomainHealth } from "../knowledge/knowledge-operations.js";
 
 export const dashboardSessionCookie = "real_ming_session";
 
@@ -179,6 +180,7 @@ export function createDashboardServer(options: {
   readonly deploymentCandidates?: DeploymentCandidateStore;
   readonly deploymentPromotion?: DeploymentPromotionCoordinator;
   readonly schedulerJobs?: readonly SchedulerJobDefinition[];
+  readonly knowledgeHealth?: () => readonly KnowledgeDomainHealth[];
   readonly credentials: readonly DashboardCredential[];
   /**
    * The operating clock. Without it the dashboard would report scheduler
@@ -202,6 +204,7 @@ export function createDashboardServer(options: {
         : await options.refreshRepositoryCenters(),
       options.deploymentCandidates,
       options.schedulerJobs,
+      options.knowledgeHealth?.() ?? [],
     );
 
   const server: Server = createServer((request, response) => {

@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
+import { posix as posixPath } from "node:path";
 import { detectSensitiveFields } from "../operations/sensitive-secret.js";
 import type { CandidateEnvelope } from "../evidence/evidence-broker.js";
+import type { TrustDomain } from "../operations/contracts.js";
 import type { CompiledKnowledgePage } from "./hermes-projection.js";
 import type {
   KnowledgeVault,
@@ -22,11 +25,48 @@ export type KnowledgeCompilationResult =
     }
   | {
       readonly kind: "rejected";
-      readonly reason: "sensitive-secret" | "uncited";
+      readonly reason: "sensitive-secret" | "uncited" | "invalid-provenance";
     };
+
+export interface KnowledgeOperationalOutput {
+  readonly idempotencyKey: string;
+  readonly root: VaultRoot;
+  readonly path: string;
+  readonly sourceIdentity: string;
+  readonly sourceReference: string;
+  readonly canonicalEvidenceId: string;
+  readonly capturedAt: string;
+  readonly asOf: string;
+  readonly contentHash: string;
+  readonly content: string;
+  readonly citations: readonly string[];
+  readonly recordKind: "daily-note" | "filed-output";
+}
+
+export type KnowledgeOperationalOutputResult =
+  | { readonly kind: "filed"; readonly generation: VaultGeneration; readonly path: string }
+  | { readonly kind: "unchanged"; readonly path: string }
+  | { readonly kind: "rejected"; readonly reason: "sensitive-secret" | "uncited" | "unsafe-path" | "invalid-provenance" };
+
+export interface KnowledgeOperationalRecord {
+  readonly idempotencyKey: string;
+  readonly root: VaultRoot;
+  readonly path: string;
+  readonly state: "candidate";
+  readonly sourceIdentity: string;
+  readonly sourceReference: string;
+  readonly canonicalEvidenceId: string;
+  readonly capturedAt: string;
+  readonly asOf: string;
+  readonly contentHash: string;
+  readonly citations: readonly string[];
+  readonly recordKind: KnowledgeOperationalOutput["recordKind"];
+}
 
 export interface KnowledgeCompiler {
   compile(candidate: CandidateEnvelope): KnowledgeCompilationResult;
+  fileOperationalOutput(output: KnowledgeOperationalOutput): KnowledgeOperationalOutputResult;
+  operationalOutputs(): readonly KnowledgeOperationalRecord[];
   /**
    * What has actually been published, in the shape a projection can serve. It
    * lives here rather than in the caller so a served brief cannot describe a
@@ -36,6 +76,11 @@ export interface KnowledgeCompiler {
   pages(): readonly CompiledKnowledgePage[];
 }
 
+interface PublicationRecord {
+  readonly canonicalEvidenceId: string;
+  readonly contentHash: string;
+}
+
 function pageNameFor(candidate: CandidateEnvelope): string {
   const base = candidate.sourceReference.split("/").at(-1) ?? candidate.id;
   return base.replace(/\.md$/u, "");
@@ -43,6 +88,38 @@ function pageNameFor(candidate: CandidateEnvelope): string {
 
 function trustDomainRoot(candidate: CandidateEnvelope): VaultRoot {
   return candidate.trustDomain;
+}
+
+const sourceIdentityRegistry: Readonly<Record<string, TrustDomain>> = {
+  "agent-brain:personal": "Personal",
+  "agent-brain:ming-creatives": "Ming Creatives",
+  "agent-brain:ming-creatives-content": "Ming Creatives",
+  "agent-brain:duitsini": "Ming Creatives",
+  "agent-brain:dashboard": "Ming Creatives",
+  "agent-brain:portfolio": "Ming Creatives",
+  "agent-brain:real-ming": "Ming Creatives",
+  "agent-brain:academic": "Academic",
+  "agent-brain:entertainment": "Entertainment",
+  "agent-brain:finance": "Finance",
+};
+
+/** Canonical Agent Brain identity-to-domain binding used by every ingest path. */
+export function sourceIdentityTrustDomain(sourceIdentity: string): TrustDomain | undefined {
+  const normalized = sourceIdentity.trim().toLowerCase();
+  const exact = sourceIdentityRegistry[normalized];
+  if (exact !== undefined) return exact;
+  // A registered Ming Creatives namespace may contain project-specific leaves,
+  // while reserved domain names never match by loose substring.
+  if (normalized.startsWith("agent-brain:ming-creatives:")) return "Ming Creatives";
+  return undefined;
+}
+
+function sourceMatchesRoot(sourceIdentity: string, root: VaultRoot): boolean {
+  return sourceIdentityTrustDomain(sourceIdentity) === root;
+}
+
+function contentHashMatches(content: string, contentHash: string): boolean {
+  return contentHash === `sha256:${createHash("sha256").update(content, "utf8").digest("hex")}`;
 }
 
 /**
@@ -88,8 +165,10 @@ export function createKnowledgeCompiler(options: {
   const projectionIndexPath = "projection-index.json";
   const publishedPages = new Map<string, Map<string, string>>();
   const publishedHashes = new Map<string, string>();
+  const quarantineFingerprints = new Map<string, Set<string>>();
   const logLines = new Map<string, string[]>();
   const pageRecords = new Map<string, CompiledKnowledgePage>();
+  const operationalRecords = new Map<string, KnowledgeOperationalRecord>();
   const loadedRoots = new Set<VaultRoot>();
 
   type PersistedPageRecord = Omit<CompiledKnowledgePage, "text">;
@@ -163,6 +242,17 @@ export function createKnowledgeCompiler(options: {
     loadedRoots.add(root);
     const files = options.vault.readCurrentFiles(root, options.actorId);
     publishedPages.set(root, new Map(Object.entries(files)));
+    for (const [path, text] of Object.entries(files)) {
+      if (!path.startsWith("quarantine/")) continue;
+      const contentHash = /- Content hash: (sha256:[^\s]+)\s*$/mu.exec(text)?.[1];
+      const canonicalEvidenceId = /- Canonical evidence: ([^\n]+)$/mu.exec(text)?.[1]?.trim();
+      if (contentHash !== undefined && canonicalEvidenceId !== undefined) {
+        const key = `${root}:${path}`;
+        const fingerprints = quarantineFingerprints.get(key) ?? new Set<string>();
+        fingerprints.add(`${canonicalEvidenceId}:${contentHash}`);
+        quarantineFingerprints.set(key, fingerprints);
+      }
+    }
     const persistedLog = files["log.md"]
       ?.split(/\r?\n/u)
       .filter((line) => line.startsWith("- generation "));
@@ -175,6 +265,49 @@ export function createKnowledgeCompiler(options: {
         : persistedLog;
     logLines.set(root, [...log]);
     readProjectionIndex(root, files[projectionIndexPath], files);
+    const rawOperational = files["operational-index.json"];
+    if (rawOperational !== undefined) {
+      try {
+        const parsed = JSON.parse(rawOperational) as { records?: unknown };
+        if (Array.isArray(parsed.records)) {
+          for (const value of parsed.records) {
+            if (typeof value !== "object" || value === null) continue;
+            const record = value as Partial<KnowledgeOperationalRecord>;
+            if (
+              record.root === root &&
+              typeof record.idempotencyKey === "string" &&
+              typeof record.path === "string" &&
+              record.state === "candidate" &&
+              typeof record.sourceIdentity === "string" &&
+              typeof record.sourceReference === "string" &&
+              typeof record.canonicalEvidenceId === "string" &&
+              typeof record.capturedAt === "string" &&
+              typeof record.asOf === "string" &&
+              typeof record.contentHash === "string" &&
+              Array.isArray(record.citations) &&
+              (record.recordKind === "daily-note" || record.recordKind === "filed-output")
+            ) {
+              operationalRecords.set(`${root}:${record.idempotencyKey}`, {
+                idempotencyKey: record.idempotencyKey,
+                root,
+                path: record.path,
+                state: "candidate",
+                sourceIdentity: record.sourceIdentity,
+                sourceReference: record.sourceReference,
+                canonicalEvidenceId: record.canonicalEvidenceId,
+                capturedAt: record.capturedAt,
+                asOf: record.asOf,
+                contentHash: record.contentHash,
+                citations: [...record.citations] as string[],
+                recordKind: record.recordKind,
+              });
+            }
+          }
+        }
+      } catch {
+        // A malformed optional index cannot manufacture a served page.
+      }
+    }
   };
 
   const recordsForGeneration = (
@@ -233,7 +366,13 @@ export function createKnowledgeCompiler(options: {
       // Checked before anything is written. A rejected candidate must not leave
       // a partial generation behind for someone to find later.
       if (
-        detectSensitiveFields({ content: candidate.content }).length > 0 ||
+        detectSensitiveFields({
+          content: candidate.content,
+          sourceIdentity: candidate.sourceIdentity,
+          sourceReference: candidate.sourceReference,
+          canonicalEvidenceId: candidate.canonicalEvidenceId,
+          citations: candidate.citations.join(" "),
+        }).length > 0 ||
         candidate.citations.length === 0
       ) {
         return {
@@ -241,6 +380,12 @@ export function createKnowledgeCompiler(options: {
           reason:
             candidate.citations.length === 0 ? "uncited" : "sensitive-secret",
         };
+      }
+      if (!contentHashMatches(candidate.content, candidate.contentHash)) {
+        return { kind: "rejected", reason: "invalid-provenance" };
+      }
+      if (!sourceMatchesRoot(candidate.sourceIdentity, root)) {
+        return { kind: "rejected", reason: "invalid-provenance" };
       }
 
       ensureLoaded(root);
@@ -262,7 +407,16 @@ export function createKnowledgeCompiler(options: {
             .slice(0, 40) ?? candidate.content,
         );
         if (!extendsExisting) {
-          const quarantinePath = `quarantine/${name}.md`;
+          const fingerprint = `${candidate.canonicalEvidenceId}:${candidate.contentHash}`;
+          const fingerprintSuffix = createHash("sha256")
+            .update(fingerprint, "utf8")
+            .digest("hex")
+            .slice(0, 16);
+          const quarantinePath = `quarantine/${name}-${fingerprintSuffix}.md`;
+          const quarantineKey = `${root}:${quarantinePath}`;
+          if (quarantineFingerprints.get(quarantineKey)?.has(fingerprint) === true) {
+            return { kind: "unchanged", pagePath: quarantinePath };
+          }
           const next = new Map(pages);
           next.set(
             quarantinePath,
@@ -288,6 +442,9 @@ export function createKnowledgeCompiler(options: {
           next.set(projectionIndexPath, serializeProjectionIndex(records));
           const generation = this.publishFiles(root, next, candidate, "quarantine");
           publishedPages.set(root, next);
+          const fingerprints = quarantineFingerprints.get(quarantineKey) ?? new Set<string>();
+          fingerprints.add(fingerprint);
+          quarantineFingerprints.set(quarantineKey, fingerprints);
           applyPageRecords(root, records.map((page) => ({
             ...page,
             generation: generation.sequence,
@@ -341,6 +498,129 @@ export function createKnowledgeCompiler(options: {
       return [...pageRecords.values()];
     },
 
+    operationalOutputs(): readonly KnowledgeOperationalRecord[] {
+      for (const root of vaultRoots) ensureLoaded(root);
+      return [...operationalRecords.values()];
+    },
+
+    fileOperationalOutput(output): KnowledgeOperationalOutputResult {
+      if (
+        detectSensitiveFields({
+          content: output.content,
+          path: output.path,
+          sourceIdentity: output.sourceIdentity,
+          sourceReference: output.sourceReference,
+          canonicalEvidenceId: output.canonicalEvidenceId,
+          citations: output.citations.join(" "),
+          idempotencyKey: output.idempotencyKey,
+        }).length > 0 ||
+        output.citations.length === 0 ||
+        output.sourceIdentity.trim().length === 0 ||
+        output.sourceReference.trim().length === 0 ||
+        output.canonicalEvidenceId.trim().length === 0 ||
+        output.contentHash.trim().length === 0 ||
+        !contentHashMatches(output.content, output.contentHash) ||
+        !Number.isFinite(Date.parse(output.capturedAt)) ||
+        !Number.isFinite(Date.parse(output.asOf)) ||
+        !output.citations.some(
+          (citation) =>
+            citation.includes(output.canonicalEvidenceId) ||
+            citation.includes(output.sourceReference) ||
+            citation.startsWith("agent-brain://"),
+        )
+      ) {
+        return {
+          kind: "rejected",
+          reason: output.citations.length === 0 ? "uncited" : "invalid-provenance",
+        };
+      }
+      const normalizedPath = posixPath.normalize(output.path);
+      if (
+        output.root === "CEO" ||
+        normalizedPath !== output.path ||
+        !normalizedPath.startsWith("daily/") &&
+        !normalizedPath.startsWith("outputs/")
+      ) {
+        return { kind: "rejected", reason: "unsafe-path" };
+      }
+      if (!sourceMatchesRoot(output.sourceIdentity, output.root)) {
+        return { kind: "rejected", reason: "invalid-provenance" };
+      }
+      const outputSegment = output.sourceIdentity.replace(/^agent-brain:/u, "");
+      const outputPrefix = `agent-brain://${outputSegment}/`;
+      if (
+        !output.sourceReference.startsWith(outputPrefix) ||
+        !output.citations.some(
+          (citation) => citation.startsWith(outputPrefix) || citation.includes(output.canonicalEvidenceId),
+        )
+      ) {
+        return { kind: "rejected", reason: "invalid-provenance" };
+      }
+      ensureLoaded(output.root);
+      const priorRecord = operationalRecords.get(`${output.root}:${output.idempotencyKey}`);
+      if (priorRecord !== undefined) {
+        // An idempotency key names one logical occurrence. A redelivered or
+        // mutated payload cannot create a second generation under that key.
+        return { kind: "unchanged", path: priorRecord.path };
+      }
+      const files = publishedPages.get(output.root) ?? new Map<string, string>();
+      const prior = files.get(output.path);
+      if (prior?.includes(`- Content hash: ${output.contentHash}`) === true) {
+        return { kind: "unchanged", path: output.path };
+      }
+      const rendered = [
+        `# ${output.recordKind === "daily-note" ? "Daily note" : "Filed output"}`,
+        "",
+        "> Operational record — pending normal validation; not a stable fact.",
+        "",
+        output.content,
+        "",
+        "## Provenance",
+        "",
+        `- Source identity: ${output.sourceIdentity}`,
+        `- Source: ${output.sourceReference}`,
+        `- Canonical evidence: ${output.canonicalEvidenceId}`,
+        `- Content hash: ${output.contentHash}`,
+        `- Captured: ${output.capturedAt}`,
+        `- As of: ${output.asOf}`,
+        ...output.citations.map((citation) => `- Citation: ${citation}`),
+        `- Idempotency key: ${output.idempotencyKey}`,
+        "",
+      ].join("\n");
+      const next = new Map(files);
+      next.set(output.path, rendered);
+      const record: KnowledgeOperationalRecord = {
+        idempotencyKey: output.idempotencyKey,
+        root: output.root,
+        path: output.path,
+        state: "candidate",
+        sourceIdentity: output.sourceIdentity,
+        sourceReference: output.sourceReference,
+        canonicalEvidenceId: output.canonicalEvidenceId,
+        capturedAt: output.capturedAt,
+        asOf: output.asOf,
+        contentHash: output.contentHash,
+        citations: [...output.citations],
+        recordKind: output.recordKind,
+      };
+      const existingRecords = [...operationalRecords.values()].filter((entry) => entry.root === output.root && entry.idempotencyKey !== output.idempotencyKey);
+      next.set("operational-index.json", `${JSON.stringify({ version: 1, records: [...existingRecords, record] }, null, 2)}\n`);
+      const generation = this.publishFiles(
+        output.root,
+        next,
+        output,
+        "operational",
+      );
+      publishedPages.set(output.root, next);
+      operationalRecords.set(`${output.root}:${output.idempotencyKey}`, record);
+      for (const [key, page] of pageRecords) {
+        if (page.root === output.root) {
+          pageRecords.set(key, { ...page, generation: generation.sequence });
+        }
+      }
+      return { kind: "filed", generation, path: output.path };
+    },
+
     /**
      * One atomic generation per compile. The log is regenerated as part of the
      * same publish so a reader never sees a page without its log entry.
@@ -348,8 +628,8 @@ export function createKnowledgeCompiler(options: {
     publishFiles(
       root: VaultRoot,
       files: Map<string, string>,
-      candidate: CandidateEnvelope,
-      outcome: "compiled" | "quarantine",
+      candidate: PublicationRecord,
+      outcome: "compiled" | "quarantine" | "operational",
     ): VaultGeneration {
       const lines = logLines.get(root) ?? [];
       const sequence = lines.length + 1;
@@ -370,8 +650,8 @@ export function createKnowledgeCompiler(options: {
     publishFiles(
       root: VaultRoot,
       files: Map<string, string>,
-      candidate: CandidateEnvelope,
-      outcome: "compiled" | "quarantine",
+      candidate: PublicationRecord,
+      outcome: "compiled" | "quarantine" | "operational",
     ): VaultGeneration;
   };
 }
