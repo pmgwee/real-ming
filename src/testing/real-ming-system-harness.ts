@@ -158,6 +158,15 @@ import {
   type EmailSendResult,
 } from "../operations/email-operations.js";
 import {
+  createFinancialSnapshotLedger,
+  type CompleteFinancialSnapshotResult,
+  type FinancialSnapshot,
+  type PrepareFinancialSnapshotRequest,
+  type PrepareFinancialSnapshotResult,
+  type PresentFinancialSnapshotResult,
+  type ValidateFinancialSnapshotResult,
+} from "../operations/financial-snapshot.js";
+import {
   createFinancialReconciliationCoordinator,
   type FinancialExportSource,
   type FinancialReconciliationResult,
@@ -556,6 +565,21 @@ export interface RealMingSystemHarness {
     request: FinancialRecordChangeRequest,
   ): Promise<FinancialRecordChangeResult>;
   reconcileFinancialExports(): Promise<FinancialReconciliationResult>;
+  prepareFinancialSnapshot(
+    request: PrepareFinancialSnapshotRequest,
+  ): Promise<PrepareFinancialSnapshotResult>;
+  validateFinancialSnapshot(request: {
+    readonly snapshotId: string;
+    readonly reconciliationReference: string;
+  }): ValidateFinancialSnapshotResult;
+  requestFinancialSnapshotApproval(
+    snapshotId: string,
+  ): Promise<PresentFinancialSnapshotResult>;
+  completeFinancialSnapshot(
+    snapshotId: string,
+  ): Promise<CompleteFinancialSnapshotResult>;
+  financialSnapshot(id: string): FinancialSnapshot | undefined;
+  financialSnapshots(): readonly FinancialSnapshot[];
   attemptAcademicSubmission(request: {
     readonly courseId: string;
     readonly assignmentId: string;
@@ -1378,6 +1402,12 @@ export function createRealMingSystemHarness(options: {
             ? {}
             : { calendarId: options.academic.calendarId }),
         });
+  const financialSnapshots = createFinancialSnapshotLedger({
+    gateway,
+    actorId: "ceo:ming",
+    workspaceId: "workspace:real-ming",
+    now: clock,
+  });
   const financialReconciliation = createFinancialReconciliationCoordinator({
     sources: options.financialExports?.sources ?? [],
     gateway,
@@ -1742,6 +1772,14 @@ export function createRealMingSystemHarness(options: {
       return financialRecordChange.readRecord(id);
     },
     reconcileFinancialExports: () => financialReconciliation.reconcile(),
+    prepareFinancialSnapshot: async (request) => financialSnapshots.prepare(request),
+    validateFinancialSnapshot: (request) => financialSnapshots.validate(request),
+    requestFinancialSnapshotApproval: (snapshotId) =>
+      financialSnapshots.present(snapshotId),
+    completeFinancialSnapshot: (snapshotId) =>
+      financialSnapshots.complete(snapshotId),
+    financialSnapshot: (id) => financialSnapshots.snapshot(id),
+    financialSnapshots: () => financialSnapshots.snapshots(),
     changeDuitSiniRecord: async (request) => {
       if (financialRecordChange === undefined) {
         return { kind: "denied", reason: "record-not-found" };
