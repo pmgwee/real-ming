@@ -158,6 +158,16 @@ import {
   type EmailSendResult,
 } from "../operations/email-operations.js";
 import {
+  createKnowledgeCompiler,
+  type KnowledgeCompilationResult,
+} from "../knowledge/knowledge-compiler.js";
+import {
+  createKnowledgeVault,
+  type KnowledgeVault,
+  type VaultGeneration,
+  type VaultRoot,
+} from "../knowledge/knowledge-vault.js";
+import {
   createEvidenceEnablementCoordinator,
   type EvidenceEnablementCandidate,
   type EvidenceEnablementResult,
@@ -287,6 +297,7 @@ import {
 import {
   createProjectEvidenceBroker,
   type AgentBrainEvidenceProvider,
+  type CandidateEnvelope,
   type ProjectEvidenceBroker,
   type ProjectEvidenceRequest,
   type ProjectEvidenceCandidateResult,
@@ -616,6 +627,11 @@ export interface RealMingSystemHarness {
   costBudget(scope: CostBudgetScope, key: string): CostBudget | undefined;
   routeModelWork(request: ModelRoutingRequest): ModelRoutingResult;
   enableProjectEvidence(): Promise<EvidenceEnablementResult>;
+  compileKnowledgeCandidate(
+    candidate: CandidateEnvelope,
+  ): KnowledgeCompilationResult;
+  readVaultPage(root: VaultRoot, path: string): string | undefined;
+  vaultGenerations(root: VaultRoot): readonly VaultGeneration[];
   attemptAcademicSubmission(request: {
     readonly courseId: string;
     readonly assignmentId: string;
@@ -1003,6 +1019,7 @@ export function createRealMingSystemHarness(options: {
   readonly canvasAdapter?: CanvasAdapter;
   readonly microsoft365Adapter?: Microsoft365Adapter;
   readonly duitsini?: { readonly adapter: DuitSiniAdapter };
+  readonly knowledgeVault?: { readonly encryptionKey: string };
   readonly evidenceEnablement?: {
     readonly candidates: readonly EvidenceEnablementCandidate[];
     readonly healthFailureFor?: string;
@@ -1442,6 +1459,22 @@ export function createRealMingSystemHarness(options: {
             ? {}
             : { calendarId: options.academic.calendarId }),
         });
+  const knowledgeVault: KnowledgeVault | undefined =
+    options.knowledgeVault === undefined
+      ? undefined
+      : createKnowledgeVault({
+          statePath: ":memory:",
+          encryptionKey: options.knowledgeVault.encryptionKey,
+          ...(options.now === undefined ? {} : { now: options.now }),
+        });
+  const knowledgeCompiler =
+    knowledgeVault === undefined
+      ? undefined
+      : createKnowledgeCompiler({
+          vault: knowledgeVault,
+          actorId: "ceo:ming",
+          now: clock,
+        });
   const evidenceEnablement = createEvidenceEnablementCoordinator({
     candidates: options.evidenceEnablement?.candidates ?? [],
     portfolio,
@@ -1850,6 +1883,15 @@ export function createRealMingSystemHarness(options: {
     costBudget: (scope, key) => meteredCost.budget(scope, key),
     routeModelWork: (request) => meteredCost.route(request),
     enableProjectEvidence: () => evidenceEnablement.enable(),
+    compileKnowledgeCandidate: (candidate) => {
+      if (knowledgeCompiler === undefined) {
+        return { kind: "rejected", reason: "uncited" };
+      }
+      return knowledgeCompiler.compile(candidate);
+    },
+    readVaultPage: (root, path) =>
+      knowledgeVault?.readForCeo(root, path, "ceo:ming"),
+    vaultGenerations: (root) => knowledgeVault?.generations(root) ?? [],
     changeDuitSiniRecord: async (request) => {
       if (financialRecordChange === undefined) {
         return { kind: "denied", reason: "record-not-found" };
