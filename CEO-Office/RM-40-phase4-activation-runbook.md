@@ -30,20 +30,29 @@ The first Codex OAuth request exposed a hard hosting-region blocker. The exact
 Hermes device-code request returns HTTP `200` from the Lenovo but HTTP `403`
 with `unsupported_country_region_territory` from the production VM. Azure
 `East Asia` is physically in Hong Kong. The same request returns HTTP `200`
-from Azure Cloud Shell in `Southeast Asia` (Singapore), and this subscription
-currently exposes `Standard_D2as_v5` there with four DASv5-family vCPUs of
-quota. Do not copy the Lenovo OAuth token, proxy around the country check, or
-keep the Hermes runtime in East Asia. The recommended correction is a
-reversible green/blue replacement in Southeast Asia, followed by OAuth and
-Phase 4 activation there; retain the stopped East Asia resources until the
-restore and Telegram tests pass.
+from Azure Cloud Shell in `Southeast Asia` (Singapore). The subscription has
+four DASv5-family vCPUs of quota there, but Azure's live ARM preflight rejects
+`Standard_D2as_v5` in the regional pool and in all three availability zones with
+`SkuNotAvailable`; the closest D2ads, D2s and B2ms alternatives are also
+capacity-blocked. No replacement VM or network was created. The same approved
+`Standard_D2as_v5` configuration passes ARM validation in `Malaysia West`
+(Kuala Lumpur), which is also an OpenAI-supported country. Do not copy the
+Lenovo OAuth token, proxy around the country check, or keep the Hermes runtime
+in East Asia. The recommended correction is therefore a reversible green/blue
+replacement in Malaysia West, followed by OAuth and Phase 4 activation there;
+retain the stopped East Asia resources until the restore and Telegram tests
+pass.
 
 The authenticated portal check also confirms that `real-ming-vault` contains
 the ten existing tracer secrets but not `real-ming-hermes-api-key`. The VM's
 managed identity (`real-ming-control-plane`) already has the `Key Vault Secrets
-User` role at the vault scope. The `real-ming` resource group currently has no
-Storage Account, so the off-host backup target and its blob role assignment
-still need a CEO decision and provisioning step.
+User` role at the vault scope. The approved backup target now exists as Storage
+account `realmingbk09041708` in Southeast Asia with container
+`real-ming-backups`, anonymous blob access disabled, an IP-restricted firewall,
+and a container-scoped role for the East Asia VM identity. Recovery generation
+`2026-09-04T17-11-44.756Z` uploaded successfully and contains the control-plane
+state plus Notion idempotency ledger. Hermes state is correctly absent because
+no production Hermes conversation exists yet.
 
 The VM network security group has zero custom inbound rules and the default
 deny-all rule is active. That is consistent with the failed public SSH attempt;
@@ -52,12 +61,13 @@ port 22 or a dashboard port as a shortcut.
 
 ### CEO decision gate before activation continues
 
-Approve the green/blue region correction and its temporary overlap cost. The
-bounded action is to create one matching `Standard_D2as_v5` Ubuntu 24.04
-Trusted Launch VM and private-by-default network in Azure Southeast Asia, create
-the Section 6 backup storage account/container, grant the new VM only `Key Vault
-Secrets User` and `Storage Blob Data Contributor`, migrate and verify state,
-create the protected Hermes bridge key, and activate the reviewed candidate.
+Approve the amended green/blue target and its temporary overlap cost. Southeast
+Asia cannot currently allocate the approved VM size in any zone. The bounded
+action is now to create one matching `Standard_D2as_v5` Ubuntu 24.04 Trusted
+Launch VM and private-by-default network in Azure Malaysia West, grant the new
+VM only `Key Vault Secrets User` and `Storage Blob Data Contributor`, restore
+and verify the existing backup, create the protected Hermes bridge key, and
+activate the reviewed candidate.
 After successful OAuth, restore, dashboard and Telegram checks, deallocate—but
 do not delete—the East Asia VM for rollback. No public dashboard or SSH rule is
 part of this approval.
@@ -82,7 +92,9 @@ part of this approval.
    --audit-level=high`, and `git diff --check`.
 2. The always-on Hermes runtime is in an OpenAI-supported Azure region. The
    current East Asia VM fails this prerequisite; complete the approved
-   Southeast Asia green/blue move before attempting OAuth again.
+   supported-region green/blue move before attempting OAuth again. Malaysia
+   West is the currently validated target because Southeast Asia has no
+   capacity for the required VM class.
 3. The Azure VM is reachable through the Azure VM agent or the existing private
    SSH/Tailscale path and has a persistent `/var/lib/real-ming` volume.
 4. The Hermes binary is installed on Azure at `/usr/local/bin/hermes`, and
