@@ -60,6 +60,7 @@ export async function verifyControlPlaneDeployment(
     [
       ["restart-policy", "Restart=always"],
       ["persistent-state", "--volume /var/lib/real-ming:/var/lib/real-ming"],
+      ["obsidian-state", "/var/lib/real-ming/obsidian"],
       ["vault-identity", "REAL_MING_AZURE_KEY_VAULT_NAME=real-ming-vault"],
       ["immutable-release", "${REAL_MING_IMAGE}"],
       ["release-binding", "EnvironmentFile=/etc/real-ming/release.env"],
