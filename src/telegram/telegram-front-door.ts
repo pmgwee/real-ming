@@ -2,7 +2,7 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 import type { OperationsGateway } from "../operations/operations-gateway.js";
 import type { OperationsState } from "../operations/operations-state.js";
-import type { ExecutiveRole } from "../operations/contracts.js";
+import type { ExecutiveRole, HermesAnswer } from "../operations/contracts.js";
 import { detectSensitiveFields } from "../operations/sensitive-secret.js";
 import { providerFailure } from "../providers/adapter-contract.js";
 import type { ProviderFailure } from "../providers/adapter-contract.js";
@@ -34,6 +34,20 @@ export interface TelegramFrontDoor {
   notify(notification: TelegramNotification): Promise<TelegramNotificationResult>;
   retryPendingDeliveries(): Promise<TelegramDeliveryRetrySummary>;
 }
+
+/** The intelligence seam used for ordinary natural-language Telegram turns. */
+export interface HermesTelegramTurnRequest {
+  readonly updateId: number;
+  readonly messageId: number;
+  readonly chatId: string;
+  readonly actorId: string;
+  readonly workspaceId: string;
+  readonly text: string;
+}
+
+export type HermesTelegramTurnHandler = (
+  request: HermesTelegramTurnRequest,
+) => Promise<HermesAnswer>;
 
 function matchesIdentity(candidate: string, expected: string): boolean {
   const left = Buffer.from(candidate);
@@ -195,6 +209,8 @@ export function createTelegramFrontDoor(options: {
   readonly afterReviewApplied?: () => void;
   readonly afterReviewControlClaimed?: () => void;
   readonly afterReplyDelivered?: () => void;
+  /** Optional Hermes intelligence boundary for ordinary natural language. */
+  readonly hermesTurn?: HermesTelegramTurnHandler;
 }): TelegramFrontDoor {
   const now = options.now ?? (() => new Date().toISOString());
   const ceoOwnership = {
@@ -412,6 +428,8 @@ export function createTelegramFrontDoor(options: {
             ? result.response.answer
             : result.response.kind === "clarification"
               ? result.response.question
+              : result.response.kind === "hermes-answer"
+                ? result.response.answer
               : `Acknowledged as Work Item ${result.response.workItem.id} · ${result.response.workItem.accountableExecutive} · ${result.response.workItem.state}.`,
         idempotencyKey: `telegram:reply:update:${update.updateId}`,
       });
@@ -1206,29 +1224,40 @@ export function createTelegramFrontDoor(options: {
       }
 
       const action = parseTelegramAction(update.message.text);
-      const response = await options.gateway.submitCeoCommand({
-        actorId: "ceo:ming",
-        workspaceId: "workspace:real-ming",
-        idempotencyKey: `telegram:update:${update.updateId}:message:${update.message.messageId}`,
-        text: action?.text ?? update.message.text,
-        ...(action === undefined
-          ? {}
-          : {
-              expectedEffect: {
-                kind: "telegram-request",
-                value: action.text,
-              },
-              ...(action.addressedExecutive === undefined
-                ? {}
-                : { addressedExecutive: action.addressedExecutive }),
-            }),
-      });
+      const response = action === undefined && options.hermesTurn !== undefined
+        ? await options.hermesTurn({
+            updateId: update.updateId,
+            messageId: update.message.messageId,
+            chatId: update.message.chatId,
+            actorId: ceoOwnership.actorId,
+            workspaceId: ceoOwnership.workspaceId,
+            text: update.message.text,
+          })
+        : await options.gateway.submitCeoCommand({
+            actorId: "ceo:ming",
+            workspaceId: "workspace:real-ming",
+            idempotencyKey: `telegram:update:${update.updateId}:message:${update.message.messageId}`,
+            text: action?.text ?? update.message.text,
+            ...(action === undefined
+              ? {}
+              : {
+                  expectedEffect: {
+                    kind: "telegram-request",
+                    value: action.text,
+                  },
+                  ...(action.addressedExecutive === undefined
+                    ? {}
+                    : { addressedExecutive: action.addressedExecutive }),
+                }),
+          });
 
       const responseText =
         response.kind === "information-answer"
           ? response.answer
           : response.kind === "clarification"
             ? response.question
+            : response.kind === "hermes-answer"
+              ? response.answer
             : undefined;
       if (
         responseText !== undefined &&

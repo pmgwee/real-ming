@@ -41,6 +41,20 @@ export async function verifyControlPlaneDeployment(
   );
   await inspect(
     repositoryRoot,
+    "deploy/systemd/hermes.service",
+    [
+      ["api-server-command", "gateway run --external-supervisor --quiet"],
+      ["hermes-home", "Environment=HERMES_HOME=/var/lib/real-ming/hermes"],
+      ["loopback-only", "Environment=API_SERVER_HOST=127.0.0.1"],
+      ["api-server-port", "Environment=API_SERVER_PORT=8642"],
+      ["api-key-file", "EnvironmentFile=/etc/real-ming/hermes.env"],
+      ["restart-policy", "Restart=always"],
+      ["unprivileged", "User=real-ming"],
+    ],
+    failures,
+  );
+  await inspect(
+    repositoryRoot,
     "deploy/systemd/real-ming.service",
     [
       ["restart-policy", "Restart=always"],
@@ -80,6 +94,8 @@ export async function verifyControlPlaneDeployment(
       ["immutable-release", "${REAL_MING_IMAGE}"],
       ["operations-state", "REAL_MING_STATE_PATH=/var/lib/real-ming/state.sqlite"],
       ["notion-ledger", "REAL_MING_NOTION_LEDGER_PATH=/var/lib/real-ming/notion-write-ledger.sqlite"],
+      ["hermes-session-store", "REAL_MING_HERMES_SESSIONS_PATH=/var/lib/real-ming/hermes.sqlite"],
+      ["hermes-native-state", "REAL_MING_HERMES_STATE_PATH=/var/lib/real-ming/hermes/state.db"],
     ],
     failures,
   );

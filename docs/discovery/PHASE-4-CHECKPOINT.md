@@ -1,6 +1,6 @@
 # Phase 4 Architecture and Planning Readiness Checkpoint
 
-Status: complete on 2026-08-27.
+Status: architecture approved; Phase 4 implementation in progress (V5 baseline promoted on 2026-09-04).
 
 Phase 4 is the consistency and implementation-readiness gate following discovery, specification, and ticket decomposition. It does not claim that the Real-Ming application or the 44 implementation tickets are complete.
 
@@ -9,10 +9,10 @@ Phase 4 is the consistency and implementation-readiness gate following discovery
 - Phase 1 discovery now records the approved persistent-knowledge decision and preserves the two-tracer rollout order.
 - Phase 2 is published as the Real-Ming v1.1 specification in `docs/specs/real-ming-v1.md` and GitHub issue #1.
 - Phase 3 contains 44 tracer-bullet tickets with explicit blocking edges in `real-ming-phase3-tickets.json` and GitHub issues #2 through #45.
-- Architecture v3 is represented by `docs/architecture/real-ming-personal-agent-diagram-v3.html` and its verified PNG rendering; `docs/architecture/real-ming-personal-agent-diagram-v3-simplified.html` and its PNG provide the executive-level companion view without changing the architecture baseline.
+- Architecture Revision 5 is represented by `docs/architecture/real-ming-personal-agent-diagram-v5-CEO-review.html` and its verified PNG rendering. The earlier v3 pair is retained under `docs/architecture/old_unenhanced/` for history only.
 - The detailed human-readable architecture is updated to v1.1 in `docs/architecture/real-ming-v1.html`.
 - The glossary defines Candidate Envelope, Compiled Knowledge, Knowledge Vault, Knowledge Compiler, and Hot Runtime Memory.
-- ADR-0018 records the Hermes + LLM Wiki + Obsidian-compatible Knowledge Vault decision; ADR-0017 now covers candidate payload and compiled-generation retention.
+- ADR-0018 records the Hermes + LLM Wiki + Obsidian-compatible Knowledge Vault decision; ADR-0019 records the Hermes-first Telegram/control-plane composition; ADR-0017 covers candidate payload and compiled-generation retention.
 - The primary-source research is retained in `docs/research/real-ming-llm-wiki-memory-research.md`.
 
 ## Locked memory and knowledge decisions
@@ -26,6 +26,7 @@ Phase 4 is the consistency and implementation-readiness gate following discovery
 7. Obsidian is the CEO-facing IDE over encrypted, versioned Markdown and is not the Source of Record or policy boundary.
 8. Agent Brain remains canonical, project-scoped Project Evidence behind the Evidence Broker; Real-Ming never edits its ledger or generated projections.
 9. The Knowledge Compiler may publish a new derived generation but never writes directly to a Source of Record or silently promotes a daily note, chat, or uncited output into stable knowledge.
+10. Telegram is governed by Real-Ming ingress, while Hermes owns the persistent conversation, reasoning, research, coding loop and final answer. Real-Ming creates/records the Work Item, serves bounded projections, gates tools and exposes durable outcomes.
 
 ## Remaining operational inputs
 
@@ -40,7 +41,16 @@ These are expected implementation inputs rather than unresolved architecture que
 
 ## Implementation handoff
 
-Implementation begins with the ready, unblocked foundation tickets rather than the umbrella specification or the final-readiness ticket. Human-input tickets remain visibly `ready-for-human`; blocked tickets must not be started by bypassing their declared edges. The Daily Operations tracer remains first, followed by the narrow Candidate Envelope → Knowledge Compiler → versioned wiki → Approved Projection proof, then the guarded DuitSini MicroSaaS tracer and later domain integrations.
+The Phase 4 Hermes-first implementation is now present behind the approved
+seams: Real-Ming owns Telegram ingress and governance, Hermes owns the durable
+conversation/reasoning/coding loop, the Projection and Evidence Brokers bound
+context, and the dashboard/Obsidian/recovery surfaces expose durable results.
+Human-input tickets remain visibly `ready-for-human`; blocked live actions must
+not be bypassed by starting a second Telegram owner or exposing the dashboard
+without an identity decision. The remaining handoff is the
+[RM-40 Phase 4 activation runbook](../../CEO-Office/RM-40-phase4-activation-runbook.md):
+Azure Hermes OAuth/API key, private Telegram smoke, Obsidian destination,
+dashboard security and off-host backup.
 
 ## Completion evidence
 
@@ -48,5 +58,5 @@ Implementation begins with the ready, unblocked foundation tickets rather than t
 - [x] Phase 2 local specification and GitHub specification synchronized.
 - [x] Phase 3 local manifest and GitHub tickets synchronized.
 - [x] Knowledge Vault ADR, terminology, retention, testing, and dashboard health incorporated.
-- [x] Architecture v3 and its simplified executive companion generated as HTML and PNG, checked responsively, and visually inspected.
+- [x] Architecture Revision 5 CEO-review diagram generated as HTML and PNG, checked responsively, and visually inspected.
 - [x] No Source of Record, production service, credential, Agent Brain ledger, or generated Agent Brain projection was modified.

@@ -20,6 +20,7 @@ import type {
 } from "../portfolio/deployment-promotion.js";
 import type { SchedulerJobDefinition } from "../operations/daily-operations-scheduler.js";
 import type { KnowledgeDomainHealth } from "../knowledge/knowledge-operations.js";
+import type { HermesConversationOverview } from "../hermes/hermes-turn-coordinator.js";
 
 export const dashboardSessionCookie = "real_ming_session";
 
@@ -181,6 +182,8 @@ export function createDashboardServer(options: {
   readonly deploymentPromotion?: DeploymentPromotionCoordinator;
   readonly schedulerJobs?: readonly SchedulerJobDefinition[];
   readonly knowledgeHealth?: () => readonly KnowledgeDomainHealth[];
+  /** Read-only Hermes runtime/session status. Prompts are never exposed. */
+  readonly hermesHealth?: () => HermesConversationOverview;
   readonly credentials: readonly DashboardCredential[];
   /**
    * The operating clock. Without it the dashboard would report scheduler
@@ -205,6 +208,7 @@ export function createDashboardServer(options: {
       options.deploymentCandidates,
       options.schedulerJobs,
       options.knowledgeHealth?.() ?? [],
+      options.hermesHealth?.(),
     );
 
   const server: Server = createServer((request, response) => {

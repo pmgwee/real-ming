@@ -15,8 +15,10 @@ personal-context/
 
 # Generated and temporary files
 tmp/
+.tmp/
 .scratch/
 .playwright-mcp/
+.impeccable/
 node_modules/
 dist/
 coverage/

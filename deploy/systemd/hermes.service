@@ -1,0 +1,29 @@
+[Unit]
+Description=Hermes Agent API gateway for Real-Ming
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=real-ming
+Group=real-ming
+WorkingDirectory=/var/lib/real-ming/hermes
+Environment=HOME=/var/lib/real-ming/hermes
+Environment=HERMES_HOME=/var/lib/real-ming/hermes
+Environment=API_SERVER_HOST=127.0.0.1
+Environment=API_SERVER_PORT=8642
+EnvironmentFile=/etc/real-ming/hermes.env
+StateDirectory=real-ming/hermes
+StateDirectoryMode=0700
+ExecStart=/usr/local/bin/hermes gateway run --external-supervisor --quiet
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/real-ming/hermes
+
+[Install]
+WantedBy=multi-user.target

@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-const baselineLabel = "Real-Ming v1.1 · Architecture Revision 3";
+const baselineLabel = "Real-Ming v1.1 · Architecture Revision 5";
 
 const repositoryRoot = new URL("../../", import.meta.url);
 
@@ -16,8 +16,7 @@ function readRepositoryFile(relative: string): string {
 }
 
 const diagrams = [
-  "docs/architecture/real-ming-personal-agent-diagram-v3.html",
-  "docs/architecture/real-ming-personal-agent-diagram-v3-simplified.html",
+  "docs/architecture/real-ming-personal-agent-diagram-v5-CEO-review.html",
 ] as const;
 
 describe("Real-Ming baseline synchronization", () => {
@@ -45,9 +44,9 @@ describe("Real-Ming baseline synchronization", () => {
     const markup = readRepositoryFile(diagram);
 
     expect(markup).toContain(
-      '<meta name="real-ming-baseline" content="Real-Ming v1.1 · Architecture Revision 3">',
+      '<meta name="real-ming-baseline" content="Real-Ming v1.1 · Architecture Revision 5">',
     );
-    expect(markup).toContain("Architecture Revision 3");
+    expect(markup).toContain("Architecture Revision 5");
   });
 
   it.each(diagrams)("keeps a non-empty render beside %s", (diagram) => {
@@ -75,6 +74,14 @@ describe("Real-Ming baseline synchronization", () => {
           ),
         ),
       ).toBe(true);
+    }
+    for (const superseded of [
+      "docs/architecture/real-ming-personal-agent-diagram-v3.html",
+      "docs/architecture/real-ming-personal-agent-diagram-v3.png",
+      "docs/architecture/real-ming-personal-agent-diagram-v3-simplified.html",
+      "docs/architecture/real-ming-personal-agent-diagram-v3-simplified.png",
+    ]) {
+      expect(existsSync(repositoryPath(superseded))).toBe(false);
     }
   });
 

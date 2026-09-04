@@ -617,6 +617,25 @@ describe("RM-38 retention and ingestion purge policy", () => {
     })).rejects.toThrow(/Sensitive Secret/);
   });
 
+  it("does not mistake UUIDs joined by an idempotency delimiter for a bot token", async () => {
+    const harness = start();
+    const first = "726103f3-4f56-4d0e-ae17-0d6eea104282";
+    const second = "e02231b2-d31c-43d1-860e-cc84a106dc81";
+    const accepted = await harness.acknowledgeCeoAction({
+      actorId: "ceo:ming",
+      workspaceId: "workspace:real-ming",
+      idempotencyKey: "rm38-uuid-delimiter",
+      intent: `Reconcile ${first}:${second}.`,
+      expectedEffect: { kind: "uuid-test", value: `${first}:${second}` },
+      workstream: "Personal Life",
+    });
+    await expect(harness.recordWorkItemCommitment({
+      workItemId: accepted.workItem.id,
+      value: `${first}:${second}`,
+      actor: { kind: "CEO", actorId: "ceo:ming" },
+    })).resolves.toBeDefined();
+  });
+
   it("rejects secret-bearing Work Items and audit records before durable write", async () => {
     const harness = start();
     await expect(harness.acknowledgeCeoAction({

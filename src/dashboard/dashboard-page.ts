@@ -146,6 +146,19 @@ export function renderDashboardPage(overview: DashboardOverview): string {
     )
     .join("");
 
+  const hermesRows = overview.hermes === undefined
+    ? `<tr data-hermes-status="disabled"><td data-field="status">disabled</td><td data-field="model"></td><td data-field="sessionCount">0</td><td data-field="turnCount">0</td><td data-field="lastTurnAt"></td><td data-field="lastIntent"></td><td data-field="lastWorkItemId"></td><td data-field="lastFailure"></td></tr>`
+    : `<tr data-hermes-status="${escapeHtml(overview.hermes.status)}">` +
+      `<td data-field="status">${escapeHtml(overview.hermes.status)}</td>` +
+      `<td data-field="model">${escapeHtml(overview.hermes.model ?? "")}</td>` +
+      `<td data-field="sessionCount">${overview.hermes.sessionCount}</td>` +
+      `<td data-field="turnCount">${overview.hermes.turnCount}</td>` +
+      `<td data-field="lastTurnAt">${escapeHtml(overview.hermes.lastTurnAt ?? "")}</td>` +
+      `<td data-field="lastIntent">${escapeHtml(overview.hermes.lastIntent ?? "")}</td>` +
+      `<td data-field="lastWorkItemId">${escapeHtml(overview.hermes.lastWorkItemId ?? "")}</td>` +
+      `<td data-field="lastFailure">${escapeHtml(overview.hermes.lastFailure ?? "")}</td>` +
+      "</tr>";
+
   const portfolioRows = overview.projectPortfolio
     .map(
       (project) =>
@@ -229,6 +242,7 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <h1>Real-Ming CEO Operations</h1>
 <p data-field="actorId">${escapeHtml(overview.actorId)}</p>
 <p data-field="workspaceId">${escapeHtml(overview.workspaceId)}</p>
+<p data-field="refresh-policy">Live read model · refreshes every 15 seconds · prompts and chain-of-thought are never rendered.</p>
 
 <section aria-labelledby="work-items-title">
 <h2 id="work-items-title">Work Items</h2>
@@ -286,7 +300,16 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <h2 id="provider-observations-title">Provider Observations</h2>
 <table id="provider-observations"><tbody>${providerObservationRows}</tbody></table>
 </section>
+
+<section aria-labelledby="hermes-runtime-title">
+<h2 id="hermes-runtime-title">Hermes Runtime and Conversations</h2>
+<p>Only operational metadata is shown. Telegram prompts, provider payloads, and chain-of-thought are not rendered.</p>
+<table id="hermes-runtime"><tbody>${hermesRows}</tbody></table>
+</section>
 </main>
+<script>
+  window.setTimeout(() => window.location.reload(), 15000);
+</script>
 </body>
 </html>`;
 }

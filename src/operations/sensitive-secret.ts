@@ -42,12 +42,16 @@ const recordIdentifierPattern =
  * audit event and therefore the Work Item behind it.
  */
 function looksLikeAccountNumber(value: string): boolean {
-  const withoutIds = value.replace(recordIdentifierPattern, (match) =>
+  const withoutIds = withoutRecordIdentifiers(value);
+  return accountNumberPattern.test(withoutIds);
+}
+
+function withoutRecordIdentifiers(value: string): string {
+  return value.replace(recordIdentifierPattern, (match) =>
     // An id with no hex letter in it is indistinguishable from a grouped
     // account number, so it keeps its place in the string.
     /[a-f]/iu.test(match) ? " " : match,
   );
-  return accountNumberPattern.test(withoutIds);
 }
 
 export function detectSensitiveFields(
@@ -61,7 +65,11 @@ export function detectSensitiveFields(
     .filter(
       ([field, value]) =>
         sensitiveFieldPatterns.some((pattern) => pattern.test(field)) ||
-        sensitiveValuePatterns.some((pattern) => pattern.test(value)) ||
+        // A UUID tail followed by a delimiter can otherwise look exactly like
+        // a Telegram bot token (`digits:token`). Strip only known mixed-case
+        // record identifiers before value-pattern scanning; all-digit UUID
+        // shapes remain subject to the account-number heuristic below.
+        sensitiveValuePatterns.some((pattern) => pattern.test(withoutRecordIdentifiers(value))) ||
         looksLikeAccountNumber(value),
     )
     .map(([field]) => field);

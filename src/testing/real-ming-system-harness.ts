@@ -248,6 +248,16 @@ import {
 } from "../operations/entertainment-email-digest.js";
 import type { EmailMessage, GmailEmailAdapter } from "../providers/email-provider-adapter.js";
 import type { CutoverBindings } from "../migration/master-tasks-cutover.js";
+import type { HermesRuntimeClient } from "../hermes/contracts.js";
+import {
+  createHermesSessionStore,
+  type HermesSessionStore,
+} from "../hermes/hermes-session-store.js";
+import {
+  createHermesTurnCoordinator,
+  type HermesTurnCoordinator,
+} from "../hermes/hermes-turn-coordinator.js";
+import type { HermesProjectionBroker } from "../knowledge/hermes-projection.js";
 
 import {
   createGoogleCalendarAdapter,
@@ -693,6 +703,7 @@ export interface RealMingSystemHarness {
     readonly actorId: string;
     readonly workspaceId: string;
   }): DashboardOverview;
+  hermesOverview(): import("../hermes/hermes-turn-coordinator.js").HermesConversationOverview | undefined;
   recordProviderObservation(
     record: ProviderObservationInput,
   ): Promise<ProviderObservationTransition>;
@@ -1069,6 +1080,9 @@ export function createRealMingSystemHarness(options: {
   readonly financialExports?: {
     readonly sources: readonly FinancialExportSource[];
   };
+  readonly financialSnapshots?: {
+    readonly beforeSuccessorInsert?: () => void;
+  };
   readonly career?: {
     readonly files: Readonly<Record<string, CareerFile>>;
   };
@@ -1107,6 +1121,12 @@ export function createRealMingSystemHarness(options: {
   };
   readonly evidence?: {
     readonly provider: AgentBrainEvidenceProvider;
+  };
+  /** Optional Hermes runtime used by the Telegram integration seam. */
+  readonly hermes?: {
+    readonly runtime: HermesRuntimeClient;
+    readonly projection?: HermesProjectionBroker;
+    readonly model?: string;
   };
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
@@ -1321,6 +1341,23 @@ export function createRealMingSystemHarness(options: {
     },
     ...(options.now === undefined ? {} : { now: options.now }),
   });
+  const hermesStore: HermesSessionStore | undefined = options.hermes === undefined
+    ? undefined
+    : createHermesSessionStore(
+        options.statePath === ":memory:" ? ":memory:" : `${options.statePath}.hermes.sqlite`,
+      );
+  const hermesCoordinator: HermesTurnCoordinator | undefined =
+    options.hermes === undefined || hermesStore === undefined
+      ? undefined
+      : createHermesTurnCoordinator({
+          runtime: options.hermes.runtime,
+          sessions: hermesStore,
+          gateway,
+          ...(options.hermes.projection === undefined ? {} : { projection: options.hermes.projection }),
+          ...(options.hermes.model === undefined ? {} : { model: options.hermes.model }),
+          workItem: (id) => state.workItem(id),
+          ...(options.now === undefined ? {} : { now: options.now }),
+        });
   const cutoverWorkspace =
     options.cutover === undefined
       ? undefined
@@ -1461,6 +1498,7 @@ export function createRealMingSystemHarness(options: {
           },
         }),
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(hermesCoordinator === undefined ? {} : { hermesTurn: hermesCoordinator }),
   });
   const deploymentPromotionExecutor = new ControlledDeploymentPromotionExecutor(
     options.deploymentPromotion ?? {},
@@ -1548,7 +1586,14 @@ export function createRealMingSystemHarness(options: {
     gateway,
     actorId: "ceo:ming",
     workspaceId: "workspace:real-ming",
+    statePath: options.statePath,
     now: clock,
+    ...(options.financialSnapshots?.beforeSuccessorInsert === undefined
+      ? {}
+      : {
+          beforeSuccessorInsert:
+            options.financialSnapshots.beforeSuccessorInsert,
+        }),
   });
   const financialReconciliation = createFinancialReconciliationCoordinator({
     sources: options.financialExports?.sources ?? [],
@@ -2074,7 +2119,9 @@ export function createRealMingSystemHarness(options: {
         deploymentCandidateStore,
         schedulerJobs,
         knowledgeOperations?.domainHealth ?? [],
+        hermesCoordinator?.overview(),
       ),
+    hermesOverview: () => hermesCoordinator?.overview(),
     recordProviderObservation: (record) =>
       providerObservationCoordinator.observe(record),
     providerObservations: () => state.providerObservations(),
@@ -2188,6 +2235,9 @@ export function createRealMingSystemHarness(options: {
         deploymentCandidates: deploymentCandidateStore,
         deploymentPromotion,
         schedulerJobs,
+        ...(hermesCoordinator === undefined
+          ? {}
+          : { hermesHealth: () => hermesCoordinator.overview() }),
         // Production wires this too. Without it the served page renders an
         // empty Knowledge Health section whatever the state holds, so no
         // browser check through this seam could ever prove the view.
@@ -2272,12 +2322,14 @@ export function createRealMingSystemHarness(options: {
     telegramMessages: () => telegramTransport.messages(),
     telegramAuditTrail: () => state.telegramAuditTrail(),
     close: () => {
+      financialSnapshots.close();
       personalContext?.close();
       privateWorker?.close();
       portfolio.close();
       deploymentCandidateStore.close();
       deploymentPromotionStore.close();
       knowledgeVault?.close();
+      hermesStore?.close();
       state.close();
     },
   };
@@ -2294,6 +2346,7 @@ export interface ControlPlaneSystemHarness {
   telegramPollRequests(): readonly unknown[];
   runCycle(): ReturnType<DailyOperationsControlPlane["runCycle"]>;
   dashboardOverview(): Promise<DashboardOverview>;
+  hermesOverview(): ReturnType<DailyOperationsControlPlane["hermesOverview"]>;
   telegramMessages(): readonly TelegramOutboundMessage[];
   backup(destinationPath: string): Promise<void>;
   backupSet(
@@ -2331,6 +2384,8 @@ export async function createControlPlaneSystemHarness(options: {
   readonly notionLedgerPath?: string;
   readonly now?: () => string;
   readonly telegramSendFailures?: number;
+  /** Enable a fully controlled Hermes API edge for production-composition tests. */
+  readonly hermesEnabled?: boolean;
 }): Promise<ControlPlaneSystemHarness> {
   const now = options.now ?? (() => new Date().toISOString());
   const dashboardToken = "controlled-dashboard-access-token";
@@ -2341,6 +2396,31 @@ export async function createControlPlaneSystemHarness(options: {
   const pollRequests: unknown[] = [];
   const controlledFetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
+    if (options.hermesEnabled === true && url.endsWith("/health")) {
+      return Response.json({ status: "ok", platform: "controlled-hermes", version: "test" });
+    }
+    if (options.hermesEnabled === true && url.endsWith("/api/sessions") && init?.method === "POST") {
+      return Response.json({ status: "created" }, { status: 201 });
+    }
+    if (options.hermesEnabled === true && url.includes("/api/sessions/") && url.endsWith("/chat")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { readonly message?: string };
+      const requestMessage = body.message ?? "";
+      const request = JSON.parse(requestMessage) as { readonly request?: string };
+      return Response.json({
+        session_id: decodeURIComponent(url.split("/api/sessions/")[1]?.split("/")[0] ?? ""),
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            intent: "answer",
+            answer: `Controlled Hermes answered: ${request.request ?? ""}`,
+            contextRequests: [],
+            toolRequests: [],
+          }),
+        },
+        usage: { input_tokens: 5, output_tokens: 7 },
+        runtime: { model: "gpt-5.6-sol", provider: "openai-codex" },
+      });
+    }
     if (url.includes("api.telegram.org") && url.endsWith("/getUpdates")) {
       if (telegramPollFailures > 0) {
         telegramPollFailures -= 1;
@@ -2398,6 +2478,16 @@ export async function createControlPlaneSystemHarness(options: {
           : `controlled-${credential.name.toLowerCase()}`,
     ]),
   );
+  if (options.hermesEnabled === true) {
+    Object.assign(environment, {
+      REAL_MING_HERMES_ENABLED: "true",
+      REAL_MING_HERMES_BASE_URL: "http://127.0.0.1:8642",
+      REAL_MING_HERMES_API_KEY: "controlled-hermes-api-key",
+      REAL_MING_HERMES_MODEL: "gpt-5.6-sol",
+      REAL_MING_HERMES_PROVIDER: "openai-codex",
+      REAL_MING_HERMES_REASONING: "medium",
+    });
+  }
   const controlPlane = await createProductionControlPlane({
     environment,
     statePath: options.statePath,
@@ -2433,31 +2523,46 @@ export async function createControlPlaneSystemHarness(options: {
       if (!response.ok) throw new Error("Controlled dashboard read failed.");
       return response.json() as Promise<DashboardOverview>;
     },
+    hermesOverview: () => controlPlane.hermesOverview(),
     telegramMessages: () => [...messages],
     backup: (destinationPath) =>
       backupSqliteState({
         sourcePath: options.statePath,
         destinationPath,
       }),
-    backupSet: (destinationDirectory, backupOptions) =>
-      backupAndUploadControlPlaneState({
-        statePath: options.statePath,
-        notionLedgerPath:
-          options.notionLedgerPath ?? `${options.statePath}.notion-ledger`,
-        destinationDirectory,
-        backupId: now().replaceAll(":", "-"),
-        createdAt: now(),
-        ...(backupOptions?.localOnly === true
-          ? {}
-          : {
-              uploader: {
-                upload: async () =>
-                  backupOptions?.failUpload === true
-                    ? { kind: "failed", reason: "unavailable" }
-                    : { kind: "ok" },
-              },
-            }),
-      }),
+    backupSet: async (destinationDirectory, backupOptions) => {
+      const backup = await backupAndUploadControlPlaneState({
+          statePath: options.statePath,
+          notionLedgerPath:
+            options.notionLedgerPath ?? `${options.statePath}.notion-ledger`,
+          destinationDirectory,
+          backupId: now().replaceAll(":", "-"),
+          createdAt: now(),
+          ...(backupOptions?.localOnly === true
+            ? {}
+            : {
+                uploader: {
+                  upload: async () =>
+                    backupOptions?.failUpload === true
+                      ? { kind: "failed", reason: "unavailable" as const }
+                      : { kind: "ok" as const },
+                },
+              }),
+        });
+      return {
+        statePath: backup.statePath,
+        notionLedgerPath: backup.notionLedgerPath,
+        manifest: {
+          files: backup.manifest.files.flatMap((file) =>
+            file.role === "hermes-session"
+              ? []
+              : [{
+                  role: file.role as "operations-state" | "notion-write-ledger",
+                  sha256: file.sha256,
+                }]),
+        },
+      };
+    },
     smoke: () =>
       verifyControlPlaneDashboard({
         origin: controlPlane.dashboardOrigin,

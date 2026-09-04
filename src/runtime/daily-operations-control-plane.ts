@@ -87,8 +87,13 @@ import {
   type KnowledgeSource,
 } from "../knowledge/knowledge-operations.js";
 import { createKnowledgeCompiler, type KnowledgeOperationalOutput } from "../knowledge/knowledge-compiler.js";
-import { createKnowledgeVault, type KnowledgeVault } from "../knowledge/knowledge-vault.js";
+import { createKnowledgeVault, type KnowledgeVault, type VaultRoot } from "../knowledge/knowledge-vault.js";
+import { createObsidianMaterializer, type ObsidianMaterializationResult, type ObsidianMaterializer } from "../knowledge/obsidian-materializer.js";
+import { createHermesProjectionBroker } from "../knowledge/hermes-projection.js";
 import type { PersonalContextIngestion } from "../knowledge/personal-context-ingestion.js";
+import type { HermesRuntimeClient } from "../hermes/contracts.js";
+import type { HermesSessionStore } from "../hermes/hermes-session-store.js";
+import { createHermesTurnCoordinator, type HermesTurnCoordinator } from "../hermes/hermes-turn-coordinator.js";
 
 const workspaceId = "workspace:real-ming";
 
@@ -136,6 +141,8 @@ export interface DailyOperationsControlPlane {
   promoteDeploymentCandidate(input: DeploymentPromotionRequest): Promise<DeploymentPromotionResult>;
   readonly emailOperations: EmailOperationsCoordinator | undefined;
   readonly entertainmentEmailDigest: EntertainmentEmailDigestRunner | undefined;
+  readonly hermesOverview: () => import("../hermes/hermes-turn-coordinator.js").HermesConversationOverview | undefined;
+  readonly materializeObsidian: () => ObsidianMaterializationResult | undefined;
   runCycle(): Promise<ControlPlaneCycle>;
   run(): Promise<void>;
   stop(): void;
@@ -193,6 +200,17 @@ export async function createDailyOperationsControlPlane(options: {
     readonly runnerTimeoutMs?: number;
     readonly personalContext?: PersonalContextIngestion;
     readonly retentionRequired?: boolean;
+  };
+  /** Optional real Hermes API-server runtime. Real-Ming remains the governance boundary. */
+  readonly hermes?: {
+    readonly runtime: HermesRuntimeClient;
+    readonly sessions: HermesSessionStore;
+    readonly model?: string;
+  };
+  /** Optional CEO-facing local Obsidian export. No directory means no export. */
+  readonly obsidian?: {
+    readonly directory: string;
+    readonly roots?: readonly VaultRoot[];
   };
 }): Promise<DailyOperationsControlPlane> {
   const now = options.now ?? (() => new Date().toISOString());
@@ -275,6 +293,24 @@ export async function createDailyOperationsControlPlane(options: {
     },
     now,
   });
+  let knowledgeCompiler: import("../knowledge/knowledge-compiler.js").KnowledgeCompiler | undefined;
+  const hermesProjection = options.hermes === undefined
+    ? undefined
+    : createHermesProjectionBroker({
+        state,
+        pages: () => knowledgeCompiler?.pages() ?? [],
+      });
+  const hermesCoordinator: HermesTurnCoordinator | undefined = options.hermes === undefined
+    ? undefined
+    : createHermesTurnCoordinator({
+        runtime: options.hermes.runtime,
+        sessions: options.hermes.sessions,
+        gateway,
+        ...(hermesProjection === undefined ? {} : { projection: hermesProjection }),
+        ...(options.hermes.model === undefined ? {} : { model: options.hermes.model }),
+        workItem: (id) => state.workItem(id),
+        now,
+      });
   const frontDoor = createTelegramFrontDoor({
     ceoTelegramId: options.ceoTelegramId,
     ceoTelegramChatId: options.ceoTelegramChatId,
@@ -283,6 +319,7 @@ export async function createDailyOperationsControlPlane(options: {
     transport: createTelegramTransport(options.telegram),
     auditPseudonymKey: options.auditPseudonymKey,
     now,
+    ...(hermesCoordinator === undefined ? {} : { hermesTurn: hermesCoordinator }),
   });
   const deploymentPromotion =
     options.deploymentCandidateStore === undefined || options.deploymentPromotionStore === undefined
@@ -367,7 +404,7 @@ export async function createDailyOperationsControlPlane(options: {
         encryptionKey: options.knowledgeOperations.encryptionKey,
         now,
       });
-  const knowledgeCompiler = knowledgeVault === undefined
+  knowledgeCompiler = knowledgeVault === undefined
     ? undefined
     : createKnowledgeCompiler({ vault: knowledgeVault, actorId: "ceo:ming", now });
   const knowledgeRuntime: KnowledgeOperations | undefined =
@@ -392,6 +429,18 @@ export async function createDailyOperationsControlPlane(options: {
             return admission;
           },
         });
+  const obsidianMaterializer: ObsidianMaterializer | undefined =
+    knowledgeVault === undefined || options.obsidian === undefined
+      ? undefined
+      : createObsidianMaterializer({ vault: knowledgeVault, now });
+  let lastObsidianMaterialization: ObsidianMaterializationResult | undefined;
+  let lastObsidianSignature: string | undefined;
+  const obsidianSignature = (): string => {
+    const roots = options.obsidian?.roots ?? ["CEO"];
+    return roots
+      .map((root) => `${root}:${knowledgeVault?.currentGeneration(root)?.id ?? ""}`)
+      .join("|");
+  };
   const schedulerJobs = entertainmentEmailDigest === undefined && knowledgeRuntime === undefined
     ? schedulerJobInventory
     : [
@@ -509,6 +558,7 @@ export async function createDailyOperationsControlPlane(options: {
         }),
     schedulerJobs,
     ...(knowledgeRuntime === undefined ? {} : { knowledgeHealth: () => knowledgeRuntime.domainHealth }),
+    ...(hermesCoordinator === undefined ? {} : { hermesHealth: () => hermesCoordinator.overview() }),
     credentials: [
       {
         actorId: "ceo:ming",
@@ -601,6 +651,20 @@ export async function createDailyOperationsControlPlane(options: {
     tickSchedule: async () => {
       const primary = await scheduler.tick();
       const knowledge = await knowledgeRuntime?.scheduler.tick();
+      if (
+        obsidianMaterializer !== undefined &&
+        knowledge !== undefined &&
+        knowledge.failed.length === 0 &&
+        obsidianSignature() !== lastObsidianSignature
+      ) {
+        lastObsidianMaterialization = obsidianMaterializer.materialize({
+          directory: options.obsidian!.directory,
+          actorId: "ceo:ming",
+          ...(options.obsidian?.roots === undefined ? {} : { roots: options.obsidian.roots }),
+          generatedAt: now(),
+        });
+        lastObsidianSignature = obsidianSignature();
+      }
       if (primary.failed.length > 0 || (knowledge?.failed.length ?? 0) > 0) {
         throw new Error("A scheduled operations job failed.");
       }
@@ -659,6 +723,8 @@ export async function createDailyOperationsControlPlane(options: {
     },
     emailOperations,
     entertainmentEmailDigest,
+    hermesOverview: () => hermesCoordinator?.overview(),
+    materializeObsidian: () => lastObsidianMaterialization,
     runCycle: () => supervisor.runCycle(),
     run: () => supervisor.run(),
     stop: () => supervisor.stop(),
@@ -670,6 +736,7 @@ export async function createDailyOperationsControlPlane(options: {
       options.deploymentCandidateStore?.close();
       options.deploymentPromotionStore?.close();
       knowledgeVault?.close();
+      options.hermes?.sessions.close();
       state.close();
     },
   };

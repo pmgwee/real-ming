@@ -8,13 +8,42 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## 🚦 Current status
 
-*As of 2026-09-03 · run `npm run graph:status` for live truth*
+*As of 2026-09-04 · run `npm run graph:status` for live truth*
 
 | | |
 | --- | --- |
 | Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
 | Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
-| Waiting on you | Nothing blocking. The milestone PR is the one item genuinely overdue. |
+| Waiting on you | Phase 4 code is locally wired. Live activation still needs the [RM-40 Phase 4 activation runbook](RM-40-phase4-activation-runbook.md): Azure Hermes OAuth/API key, Telegram ownership cutover, Obsidian destination, dashboard exposure, and off-host backup. |
+
+**Phase 4 implementation status (2026-09-04).** The approved Revision 5
+Hermes-first path is implemented and covered by controlled system tests:
+Real-Ming validates identity/idempotency/secrets, binds a durable Telegram
+conversation to the private Hermes API, accepts Hermes's structured intent and
+role/Work Item proposal, serves only Projection Broker briefs, gates tools and
+returns the verified answer through the existing Telegram ledger. The
+authenticated dashboard now shows Hermes runtime/session/turn metadata without
+prompts or chain-of-thought. Obsidian materialization is atomic and runs only
+when a Knowledge generation changes. The production composition resolves the
+Hermes API-server key from the protected environment or Key Vault; Hermes, not
+Real-Ming, owns the Codex OAuth session.
+
+This is a safe-to-review implementation, not a claim that Azure is activated.
+No live Telegram message, OAuth login, deployment, DNS change, dashboard
+exposure, Notion mutation or backup upload was performed in this pass.
+
+**Latest live audit (2026-09-04).** A read-only Azure VM-agent check confirmed
+the existing Real-Ming service is active on loopback, but Hermes and the Phase
+4 service account/directories are not installed yet; the scheduled backup
+service's last run failed. This Lenovo has no Azure CLI, SSH agent key, or
+matching private key. Recover the existing VM key or reopen an authenticated
+Azure Portal session before the candidate-preparation step; no replacement key
+or public SSH change is assumed. The portal also shows no
+`real-ming-hermes-api-key` in the vault (the VM identity already has
+`Key Vault Secrets User`) and no Storage Account in the `real-ming` resource
+group, so both remain CEO provisioning actions.
+The VM NSG has zero custom inbound rules and default deny-all inbound, so no
+public SSH or dashboard port is currently exposed.
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
@@ -62,7 +91,7 @@ bindings are supplied.
 | Managed identity | system-assigned, On |
 | Key Vault | `real-ming-vault`, East Asia, **Azure RBAC** model, purge protection disabled, 7-day retention |
 | Role assignments | Key Vault Secrets **User** to the VM, Secrets **Officer** to you — both scoped to the vault, not the subscription |
-| Secrets | **10 of 10** loaded and Enabled |
+| Secrets | **10 supplied / 9 Gate-1-required** loaded and Enabled; the RM-09-produced identifier is also present |
 
 ⚠️ **Still outstanding, and only you can do it: the budget alert.**
 Cost Management → Budgets → Add → subscription scope → RM250 → alerts at 50/80/100%
@@ -135,8 +164,14 @@ Two came out of the RM-30 reviews. Neither blocks anything; both change what you
 | Activate RM-15 candidate | Started image `sha256:0ed353723aa4…`; Telegram proven from a phone with the Lenovo shut. | Approved and executed 31 Aug. | ✅ Done |
 | Off-host backup | An Azure Storage account and a narrowly scoped role assignment, so the 33 Work Items survive losing the VM. | **Not yet.** Local backup meets every acceptance criterion, and a storage account is Azure-specific against your day-31 plan. Worth revisiting before teardown. | ⏳ Open |
 | Select RM-17 Personal Context item | One bounded file or allowlisted Notion page plus source metadata for the first Candidate Envelope. | Approved `personal-context/working-preferences.md` snapshot for COO daily planning. | ✅ Done in RM-17 |
-| Open Tracer 1 milestone PR | Reviewable `feat/tracer-1-daily-operations` increment. It was scoped as RM-07…RM-16; the branch now carries through RM-36, so it is well past the size one PR was meant to stay. | **Open it now, and consider splitting the remainder into a second milestone PR.** Do not merge to `main` without separate approval. | ⏳ Overdue |
+| Tracer 1 milestone PR | PR #47 carried RM-07…RM-44 and was much larger than the intended milestone boundary. | Merged by the CEO on 3 September 2026. Return to one reviewable milestone per PR for Phase 4. | ✅ Done |
 | `ceo-confirmed` career claims are unverified | RM-33 accepts a claim labelled "CEO confirmed" at face value: there is no Approval record behind the label, so it is only as trustworthy as whatever gates the caller. | Bind it to a real Approval in its own ticket if you want the label to mean something. | ⏳ Open |
+| Phase 4 Telegram transport process | One governed ingress must run before Hermes sees model context. The diagrams do not settle which process owns Telegram transport. | Keep the proven Real-Ming poller for the first Hermes tracer; consider Hermes-owned transport only if a pre-model governance hook proves equivalent. | ⏳ Open |
+| Dashboard exposure | The production dashboard is private over Tailscale/SSH and protected by a bearer token. | Inspect privately first. Do not add a public domain until TLS and identity-aware authentication are designed. | ⏳ Open |
+| Obsidian destination and sync | Materialization creates plain Markdown containing whichever Trust Domains are exported. | Start local and non-synced on the Lenovo; review encrypted sync separately. | ⏳ Open |
+| Hermes API/OAuth activation | Hermes must be installed and authenticated on the always-on Azure host; Real-Ming receives only a private API-server key and never copies the Codex OAuth token. | Follow [RM-40 Phase 4 activation runbook](RM-40-phase4-activation-runbook.md), authenticate Azure Hermes, then run the private Telegram smoke test. | ⏳ CEO action |
+| Hermes session backup | `hermes.sqlite` and native Hermes `state.db` are now included in a recovery set when present; OAuth files are excluded. | Provision the Azure Storage account/managed-identity role and run one approved restore rehearsal. | ⏳ CEO action |
+| Superseded Personal projection retention | The current 12-month window starts at publication, so an old projection superseded today may purge immediately. | Start the 12 months at supersession by adding `superseded_at`; preserve the current rule only if that immediate-purge behaviour is intentional. | ⏳ Open |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.
 
@@ -305,8 +340,9 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [RM-11-reconciliation-and-cutover-runbook.md](RM-11-reconciliation-and-cutover-runbook.md) | Review all 34 migration dispositions and approve the exact cutover separately |
 | [RM-11-cutover-approval-packet.md](RM-11-cutover-approval-packet.md) | Historical Version 2 Phase A packet and approval evidence; do not reuse |
 | [RM-11-phase-b-approval-packet.md](RM-11-phase-b-approval-packet.md) | Current exact Phase B continuation, evidence bindings, commit point, and approval sentence |
-| [CREDENTIAL-INVENTORY.md](CREDENTIAL-INVENTORY.md) | All ten credentials: owner, purpose, environment, revocation — **no values** |
+| [CREDENTIAL-INVENTORY.md](CREDENTIAL-INVENTORY.md) | Ten tracer credentials plus the Phase 4 Hermes bridge key: owner, purpose, storage, revocation — **no values** |
 | [RM-17-personal-context-selection-runbook.md](RM-17-personal-context-selection-runbook.md) | CEO-only choice of the first bounded Personal Context item |
+| [RM-40-phase4-activation-runbook.md](RM-40-phase4-activation-runbook.md) | CEO-only Hermes, Telegram, Obsidian, dashboard and backup activation sequence |
 
 ---
 
@@ -317,13 +353,15 @@ One long-lived branch would grow into a 44-ticket, 100-plus-file pull request no
 | # | Branch | Contents | Review checkpoint | Status |
 | --- | --- | --- | --- | --- |
 | 1 | `docs/final-architecture-v1` | RM-01…RM-05, RM-08, RM-41 + tooling | foundation | ✅ **merged** |
-| 2 | `feat/tracer-1-daily-operations` | RM-07 … RM-44 | Daily Operations + Context Vault + Hermes projection + Knowledge Compiler | ✅ **ready for review** |
-| 3 | `feat/context-and-portfolio` | RM-17 … RM-23, RM-42 … RM-43 | Context Vault + portfolio + Knowledge Compiler + Hermes projection | carried on branch 2 |
-| 4 | `feat/microsaas-loop` | RM-25 … RM-28, RM-34 | DuitSini promotion proven | waiting |
-| 5 | `feat/domain-loops` | remainder → RM-40 | Full v1.1 readiness | waiting |
+| 2 | `feat/tracer-1-daily-operations` | RM-07 … RM-44 | Daily Operations + Context Vault + Hermes-compatible projection + Knowledge Compiler | ✅ **merged as PR #47** |
+| 3 | `feat/context-and-portfolio` | RM-17 … RM-23, RM-42 … RM-43 | Context Vault + portfolio + Knowledge Compiler + Hermes projection | included in merged PR #47 |
+| 4 | `feat/microsaas-loop` | RM-25 … RM-28, RM-34 | DuitSini promotion proven | included in merged PR #47 |
+| 5 | `feat/domain-loops` | remainder → RM-40 | Full v1.1 readiness assessment | implementation included in PR #47; issue #41 remains open for corrected closeout |
 
 Each merge is a point where you review an increment you can actually hold in your head — the same principle as reviewing an Outcome Report instead of raw agent activity.
 
-`main` now holds the merged foundation. Milestone 2 branches from it.
+`main` now holds the merged Phase 3 implementation. RM-40 remains the final
+open graph ticket because live GitHub state, not the merged commit history,
+defines completion.
 
 > 💡 **No CI is configured.** `npm run check` currently runs only on my machine, so PR #46 carries my word rather than a green tick. Say *"add CI"* and I will add a GitHub Actions workflow that runs typecheck, tests, build, and audit on every push, so future PRs verify themselves.

@@ -15,7 +15,11 @@ export interface ControlPlaneBackupManifest {
   readonly backupId: string;
   readonly createdAt: string;
   readonly files: readonly {
-    readonly role: "operations-state" | "notion-write-ledger";
+    readonly role:
+      | "operations-state"
+      | "notion-write-ledger"
+      | "hermes-session"
+      | "hermes-native-state";
     readonly name: string;
     readonly sha256: string;
   }[];
@@ -25,6 +29,9 @@ export interface ControlPlaneBackupSet {
   readonly directory: string;
   readonly statePath: string;
   readonly notionLedgerPath: string;
+  readonly hermesSessionPath?: string;
+  /** Optional Hermes-native state.db containing its persisted conversation. */
+  readonly hermesStatePath?: string;
   readonly manifestPath: string;
   readonly manifest: ControlPlaneBackupManifest;
 }
@@ -47,6 +54,10 @@ function digest(path: string): string {
 export async function backupControlPlaneState(options: {
   readonly statePath: string;
   readonly notionLedgerPath: string;
+  /** Optional durable Hermes Telegram-session mapping database. */
+  readonly hermesSessionPath?: string;
+  /** Optional Hermes-native state.db containing the persistent transcript. */
+  readonly hermesStatePath?: string;
   readonly destinationDirectory: string;
   readonly backupId: string;
   readonly createdAt: string;
@@ -57,9 +68,21 @@ export async function backupControlPlaneState(options: {
   if (!existsSync(options.statePath) || !existsSync(options.notionLedgerPath)) {
     throw new Error("Both control-plane databases must exist before backup.");
   }
+  if (options.hermesSessionPath !== undefined && !existsSync(options.hermesSessionPath)) {
+    throw new Error("The configured Hermes session database must exist before backup.");
+  }
+  if (options.hermesStatePath !== undefined && !existsSync(options.hermesStatePath)) {
+    throw new Error("The configured Hermes native state database must exist before backup.");
+  }
   const directory = join(options.destinationDirectory, options.backupId);
   const statePath = join(directory, "state.sqlite");
   const notionLedgerPath = join(directory, "notion-write-ledger.sqlite");
+  const hermesSessionPath = options.hermesSessionPath === undefined
+    ? undefined
+    : join(directory, "hermes.sqlite");
+  const hermesStatePath = options.hermesStatePath === undefined
+    ? undefined
+    : join(directory, "hermes-state.db");
   const manifestPath = join(directory, "manifest.json");
   let createdDirectory = false;
 
@@ -78,6 +101,18 @@ export async function backupControlPlaneState(options: {
       sourcePath: options.notionLedgerPath,
       destinationPath: notionLedgerPath,
     });
+    if (hermesSessionPath !== undefined && options.hermesSessionPath !== undefined) {
+      await backupSqliteState({
+        sourcePath: options.hermesSessionPath,
+        destinationPath: hermesSessionPath,
+      });
+    }
+    if (hermesStatePath !== undefined && options.hermesStatePath !== undefined) {
+      await backupSqliteState({
+        sourcePath: options.hermesStatePath,
+        destinationPath: hermesStatePath,
+      });
+    }
     const manifest: ControlPlaneBackupManifest = {
       backupId: options.backupId,
       createdAt: options.createdAt,
@@ -92,6 +127,20 @@ export async function backupControlPlaneState(options: {
           name: "notion-write-ledger.sqlite",
           sha256: digest(notionLedgerPath),
         },
+        ...(hermesSessionPath === undefined
+          ? []
+          : [{
+              role: "hermes-session" as const,
+              name: "hermes.sqlite",
+              sha256: digest(hermesSessionPath),
+            }]),
+        ...(hermesStatePath === undefined
+          ? []
+          : [{
+              role: "hermes-native-state" as const,
+              name: "hermes-state.db",
+              sha256: digest(hermesStatePath),
+            }]),
       ],
     };
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
@@ -104,6 +153,8 @@ export async function backupControlPlaneState(options: {
       notionLedgerPath,
       manifestPath,
       manifest,
+      ...(hermesSessionPath === undefined ? {} : { hermesSessionPath }),
+      ...(hermesStatePath === undefined ? {} : { hermesStatePath }),
     };
   } catch (error) {
     if (createdDirectory && existsSync(directory)) {
@@ -137,6 +188,8 @@ function recordBackupHealth(
 export async function backupAndUploadControlPlaneState(options: {
   readonly statePath: string;
   readonly notionLedgerPath: string;
+  readonly hermesSessionPath?: string;
+  readonly hermesStatePath?: string;
   readonly destinationDirectory: string;
   readonly backupId: string;
   readonly createdAt: string;
@@ -159,6 +212,12 @@ export async function backupAndUploadControlPlaneState(options: {
       for (const [name, path] of [
         ["state.sqlite", backup.statePath],
         ["notion-write-ledger.sqlite", backup.notionLedgerPath],
+        ...(backup.hermesSessionPath === undefined
+          ? []
+          : [["hermes.sqlite", backup.hermesSessionPath] as const]),
+        ...(backup.hermesStatePath === undefined
+          ? []
+          : [["hermes-state.db", backup.hermesStatePath] as const]),
         ["manifest.json", backup.manifestPath],
       ] as const) {
         const upload = await uploader.upload({

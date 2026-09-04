@@ -62,4 +62,4 @@ Between the two broadening stages, one allowlisted Personal Context item must pr
 - staged Agent Brain registration and verification of additional projects.
 - the durable encrypted volume, backup, and optional synchronization provider used for the Knowledge Vault.
 
-Phase 2 and Phase 3 were completed and are now reconciled with this amendment. Phase 4 is the architecture-and-planning consistency gate: the v3 diagram, specification, ADRs, local ticket manifest, and GitHub tracker must agree before implementation begins.
+Phase 2 and Phase 3 were completed and are now reconciled with this amendment. Phase 4 is the architecture-and-planning consistency gate: the Revision 5 Hermes-first diagram, specification, ADRs, local ticket manifest, and GitHub tracker must agree before implementation begins.

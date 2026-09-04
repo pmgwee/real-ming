@@ -43,10 +43,24 @@ import {
 import type { KnowledgeOperationalOutput } from "../knowledge/knowledge-compiler.js";
 import type { KnowledgeSource } from "../knowledge/knowledge-operations.js";
 import type { PersonalContextIngestion } from "../knowledge/personal-context-ingestion.js";
+import { vaultRoots, type VaultRoot } from "../knowledge/knowledge-vault.js";
+import { createHermesRuntimeClient } from "../hermes/hermes-runtime-client.js";
+import { createHermesSessionStore } from "../hermes/hermes-session-store.js";
+import { tracerCredentials } from "../config/tracer-secrets.js";
 
 function optional(value: string | undefined): string | undefined {
   const trimmed = (value ?? "").trim();
   return trimmed.length === 0 ? undefined : trimmed;
+}
+
+function optionalObsidianRoots(value: string | undefined): readonly VaultRoot[] | undefined {
+  const raw = optional(value);
+  if (raw === undefined) return undefined;
+  const roots = [...new Set(raw.split(",").map((entry) => entry.trim()).filter((entry) => entry.length > 0))];
+  if (roots.length === 0 || roots.some((root) => !vaultRoots.includes(root as VaultRoot))) {
+    throw new Error("REAL_MING_OBSIDIAN_ROOTS must be a comma-separated list of valid vault roots.");
+  }
+  return roots as VaultRoot[];
 }
 
 /**
@@ -99,6 +113,21 @@ export async function createProductionControlPlane(options: {
     readonly personalContext?: PersonalContextIngestion;
     readonly retentionRequired?: boolean;
   };
+  /** Opt-in Hermes API-server binding. Hermes owns OAuth and model/tool reasoning. */
+  readonly hermes?: {
+    readonly enabled?: boolean;
+    readonly baseUrl?: string;
+    readonly apiKey?: string;
+    readonly sessionKeyPrefix?: string;
+    readonly model?: string;
+    readonly provider?: string;
+    readonly reasoningEffort?: "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra";
+    readonly sessionsPath?: string;
+  };
+  readonly obsidian?: {
+    readonly directory?: string;
+    readonly roots?: readonly VaultRoot[];
+  };
 }): Promise<DailyOperationsControlPlane> {
   const request = options.fetch ?? fetch;
   const now = options.now ?? (() => new Date().toISOString());
@@ -107,11 +136,26 @@ export async function createProductionControlPlane(options: {
   if (emailConfigured && (options.emailMailboxBindings === undefined || options.emailMailboxBindings.personal.trim().length === 0 || options.emailMailboxBindings.opportunity.trim().length === 0 || options.emailMailboxBindings.entertainment.trim().length === 0)) {
     throw new Error("Email operations require explicit personal, opportunity, and entertainment mailbox bindings.");
   }
+  const hermesEnabled = options.hermes?.enabled ??
+    (optional(options.environment["REAL_MING_HERMES_ENABLED"]) ?? "").toLowerCase() === "true";
+  const credentialInventory = hermesEnabled && options.hermes?.apiKey === undefined
+    ? [
+        ...tracerCredentials,
+        {
+          name: "REAL_MING_HERMES_API_KEY",
+          owner: "CEO",
+          purpose: "Authenticate the private Hermes API server; Hermes retains the Codex OAuth session.",
+          environment: "control-plane" as const,
+          revocation: "Rotate Hermes API_SERVER_KEY and restart both services.",
+        },
+      ]
+    : tracerCredentials;
   const vaultName =
     optional(options.vaultName) ??
     optional(options.environment["REAL_MING_AZURE_KEY_VAULT_NAME"]);
   const resolved = await resolveControlPlaneCredentials({
     environment: options.environment,
+    credentials: credentialInventory,
     ...(vaultName === undefined
       ? {}
       : { vault: createAzureKeyVaultReader({ vaultName, fetch: request }) }),
@@ -138,6 +182,43 @@ export async function createProductionControlPlane(options: {
         ...(options.knowledgeOperations.runnerTimeoutMs === undefined ? {} : { runnerTimeoutMs: options.knowledgeOperations.runnerTimeoutMs }),
         ...(options.knowledgeOperations.personalContext === undefined ? {} : { personalContext: options.knowledgeOperations.personalContext }),
         retentionRequired: options.knowledgeOperations.retentionRequired ?? true,
+      };
+
+  // Hermes's authenticated API_SERVER gateway listens on 8642 by default.
+  // Port 9119 belongs to Hermes's desktop/dashboard backend, which does not
+  // expose the API_SERVER session contract used by this adapter.
+  const hermesBaseUrl = optional(options.hermes?.baseUrl) ?? optional(options.environment["REAL_MING_HERMES_BASE_URL"]) ?? "http://127.0.0.1:8642";
+  const hermesApiKey = optional(options.hermes?.apiKey) ?? resolved.values.get("REAL_MING_HERMES_API_KEY");
+  if (hermesEnabled && hermesApiKey === undefined) {
+    throw new Error("Hermes is enabled but REAL_MING_HERMES_API_KEY is unresolved.");
+  }
+  const hermesSessionsPath = options.hermes?.sessionsPath ??
+    optional(options.environment["REAL_MING_HERMES_SESSIONS_PATH"]) ?? `${options.statePath}.hermes.sqlite`;
+  const hermesModel = options.hermes?.model ?? optional(options.environment["REAL_MING_HERMES_MODEL"]);
+  const hermesProvider = options.hermes?.provider ?? optional(options.environment["REAL_MING_HERMES_PROVIDER"]);
+  const hermesReasoning = options.hermes?.reasoningEffort ?? optional(options.environment["REAL_MING_HERMES_REASONING"]);
+  const hermes = hermesEnabled && hermesBaseUrl !== undefined && hermesApiKey !== undefined
+    ? {
+        runtime: createHermesRuntimeClient({
+          baseUrl: hermesBaseUrl,
+          sharedSecret: hermesApiKey,
+          fetch: request,
+          ...(options.hermes?.sessionKeyPrefix === undefined ? {} : { sessionKeyPrefix: options.hermes.sessionKeyPrefix }),
+          ...(hermesModel === undefined ? {} : { model: hermesModel }),
+          ...(hermesProvider === undefined ? {} : { provider: hermesProvider }),
+          ...(hermesReasoning === undefined ? {} : { reasoningEffort: hermesReasoning as "none" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max" | "ultra" }),
+        }),
+        sessions: createHermesSessionStore(hermesSessionsPath),
+        ...(hermesModel === undefined ? {} : { model: hermesModel }),
+      }
+    : undefined;
+  const obsidianDirectory = options.obsidian?.directory ?? optional(options.environment["REAL_MING_OBSIDIAN_DIRECTORY"]);
+  const obsidianRoots = options.obsidian?.roots ?? optionalObsidianRoots(options.environment["REAL_MING_OBSIDIAN_ROOTS"]);
+  const obsidian = obsidianDirectory === undefined
+    ? undefined
+    : {
+        directory: obsidianDirectory,
+        ...(obsidianRoots === undefined ? {} : { roots: obsidianRoots }),
       };
 
   const telegram = createTelegramProviderAdapter({
@@ -293,6 +374,8 @@ export async function createProductionControlPlane(options: {
       ...(productionKnowledgeOperations === undefined
         ? {}
         : { knowledgeOperations: productionKnowledgeOperations }),
+      ...(hermes === undefined ? {} : { hermes }),
+      ...(obsidian === undefined ? {} : { obsidian }),
       ...(options.wait === undefined ? {} : { wait: options.wait }),
     });
     return {
@@ -310,6 +393,8 @@ export async function createProductionControlPlane(options: {
         controlPlane.promoteDeploymentCandidate(input),
       emailOperations: controlPlane.emailOperations,
       entertainmentEmailDigest: controlPlane.entertainmentEmailDigest,
+      hermesOverview: controlPlane.hermesOverview,
+      materializeObsidian: controlPlane.materializeObsidian,
       runCycle: () => controlPlane.runCycle(),
       run: () => controlPlane.run(),
       stop: () => controlPlane.stop(),
@@ -329,6 +414,7 @@ export async function createProductionControlPlane(options: {
     deploymentPromotionStore.close();
     emailLedger?.close();
     notionLedger.close();
+    hermes?.sessions.close();
     throw error;
   }
 }

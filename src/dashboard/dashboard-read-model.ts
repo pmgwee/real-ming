@@ -21,6 +21,7 @@ import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 import type { DeploymentCandidate, DeploymentCandidateStore } from "../portfolio/deployment-candidate.js";
 import type { KnowledgeDomainHealth } from "../knowledge/knowledge-operations.js";
+import type { HermesConversationOverview } from "../hermes/hermes-turn-coordinator.js";
 
 export interface DashboardWorkItemView {
   readonly id: string;
@@ -149,6 +150,8 @@ export interface DashboardOverview {
   readonly providerObservations: readonly ProviderObservation[];
   /** Payload-free per-domain Knowledge Compiler health. */
   readonly knowledge: readonly KnowledgeDomainHealth[];
+  /** Payload-free Hermes session and turn health; prompts and chain-of-thought never enter the view. */
+  readonly hermes?: HermesConversationOverview;
 }
 
 const executiveRoles: readonly ExecutiveRole[] = [
@@ -224,6 +227,7 @@ export function buildDashboardOverview(
   deploymentCandidates?: DeploymentCandidateStore,
   schedulerJobs: readonly SchedulerJobDefinition[] = schedulerJobInventory,
   knowledge: readonly KnowledgeDomainHealth[] = [],
+  hermes?: HermesConversationOverview,
 ): DashboardOverview {
   const workItems = state
     .workItems()
@@ -392,5 +396,6 @@ export function buildDashboardOverview(
     controlPlane: state.controlPlaneHealth(),
     providerObservations: state.providerObservations(),
     knowledge,
+    ...(hermes === undefined ? {} : { hermes }),
   };
 }

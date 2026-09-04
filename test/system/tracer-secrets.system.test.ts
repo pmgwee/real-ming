@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -148,6 +148,10 @@ describe("RM-06 repository credential leak guard", () => {
     const findings: string[] = [];
     for (const relative of tracked) {
       const absolute = `${repositoryRoot}${relative}`;
+      // A deleted tracked path remains in the index until the current ticket
+      // is committed. It is not content that can leak a credential, so skip
+      // it while the working tree is in that transitional state.
+      if (!existsSync(absolute)) continue;
       if (statSync(absolute).size > 2_000_000) {
         continue;
       }

@@ -674,6 +674,41 @@ describe("RM-15 production-equivalent control plane composition", () => {
     }
   });
 
+  it("routes an ordinary production Telegram turn through the configured Hermes API edge", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm40-hermes-production-"));
+    const harness = await createControlPlaneSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      hermesEnabled: true,
+      now: () => "2026-09-04T12:00:00.000Z",
+    });
+    try {
+      harness.queueTelegramUpdate({
+        updateId: 9801,
+        senderId: "100000001",
+        chatId: "100000001",
+        text: "What is the next step for my personal agent?",
+      });
+      await harness.runCycle();
+      expect(harness.telegramMessages()).toContainEqual({
+        chatId: "100000001",
+        text: "Controlled Hermes answered: What is the next step for my personal agent?",
+      });
+      expect(harness.hermesOverview()).toMatchObject({
+        status: "healthy",
+        model: "gpt-5.6-sol",
+        sessionCount: 1,
+        turnCount: 1,
+        lastIntent: "answer",
+      });
+      await expect(harness.dashboardOverview()).resolves.toMatchObject({
+        hermes: expect.objectContaining({ sessionCount: 1, turnCount: 1 }),
+      });
+    } finally {
+      await harness.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("retries a durable failed notification after the process restarts", async () => {
     const directory = mkdtempSync(join(tmpdir(), "real-ming-rm15-delivery-"));
     const statePath = join(directory, "state.sqlite");
