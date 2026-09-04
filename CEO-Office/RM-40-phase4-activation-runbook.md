@@ -16,21 +16,27 @@ ownership, choose where readable cross-domain Markdown is written, or expose
 the dashboard to a new network boundary. Do not run them against production
 until the exact candidate and rollback window are approved.
 
-## Latest activation audit · 2026-09-04
+## Latest activation audit · 2026-09-05
 
-A read-only Azure VM Run Command check reached `real-ming-control-plane` through
-the VM agent. It found the pre-Phase-4 service running on loopback `127.0.0.1:8787`,
-but no Hermes installation or `hermes.service`, no `real-ming` Linux service
-account, no `/var/lib/hermes-real-ming` or Obsidian directory, and no Phase 4
-environment files. The existing `real-ming-backup.timer` is enabled, but its
-last `real-ming-backup.service` run exited with status 1. The running container
-is an older immutable image, not the current uncommitted Phase 4 working tree.
+A live Azure VM Run Command session prepared the Phase 4 candidate without
+cutting over production. Hermes Agent v0.21.0 is installed at the pinned commit,
+the isolated `real-ming` service account and `/var/lib/hermes-real-ming` home
+exist, the candidate image passed its deployment verifier, and the reviewed
+systemd units are installed. The old Real-Ming image remains the running
+production container on loopback `127.0.0.1:8787`; Hermes is not enabled and no
+Telegram ownership change has occurred.
 
-The Lenovo has no Azure CLI, no SSH agent key, and no matching private key in
-the standard SSH directory. The next CEO action is therefore to recover the
-existing VM SSH private key or sign in to Azure Portal and keep that session
-available for the preparation step. Do not generate a replacement key or
-change the network boundary until that choice is recorded.
+The first Codex OAuth request exposed a hard hosting-region blocker. The exact
+Hermes device-code request returns HTTP `200` from the Lenovo but HTTP `403`
+with `unsupported_country_region_territory` from the production VM. Azure
+`East Asia` is physically in Hong Kong. The same request returns HTTP `200`
+from Azure Cloud Shell in `Southeast Asia` (Singapore), and this subscription
+currently exposes `Standard_D2as_v5` there with four DASv5-family vCPUs of
+quota. Do not copy the Lenovo OAuth token, proxy around the country check, or
+keep the Hermes runtime in East Asia. The recommended correction is a
+reversible green/blue replacement in Southeast Asia, followed by OAuth and
+Phase 4 activation there; retain the stopped East Asia resources until the
+restore and Telegram tests pass.
 
 The authenticated portal check also confirms that `real-ming-vault` contains
 the ten existing tracer secrets but not `real-ming-hermes-api-key`. The VM's
@@ -43,6 +49,18 @@ The VM network security group has zero custom inbound rules and the default
 deny-all rule is active. That is consistent with the failed public SSH attempt;
 use the recovered private/Tailscale path or the Azure VM agent, and do not open
 port 22 or a dashboard port as a shortcut.
+
+### CEO decision gate before activation continues
+
+Approve the green/blue region correction and its temporary overlap cost. The
+bounded action is to create one matching `Standard_D2as_v5` Ubuntu 24.04
+Trusted Launch VM and private-by-default network in Azure Southeast Asia, create
+the Section 6 backup storage account/container, grant the new VM only `Key Vault
+Secrets User` and `Storage Blob Data Contributor`, migrate and verify state,
+create the protected Hermes bridge key, and activate the reviewed candidate.
+After successful OAuth, restore, dashboard and Telegram checks, deallocate—but
+do not delete—the East Asia VM for rollback. No public dashboard or SSH rule is
+part of this approval.
 
 ## Why this cannot be delegated
 
@@ -62,27 +80,32 @@ port 22 or a dashboard port as a shortcut.
 
 1. A reviewed Real-Ming image has passed `npm run check`, `npm audit
    --audit-level=high`, and `git diff --check`.
-2. The Azure VM `real-ming-control-plane` is reachable through the existing
-   private SSH/Tailscale path and has a persistent `/var/lib/real-ming` volume.
-3. The Hermes binary is installed on Azure at `/usr/local/bin/hermes`, and
+2. The always-on Hermes runtime is in an OpenAI-supported Azure region. The
+   current East Asia VM fails this prerequisite; complete the approved
+   Southeast Asia green/blue move before attempting OAuth again.
+3. The Azure VM is reachable through the Azure VM agent or the existing private
+   SSH/Tailscale path and has a persistent `/var/lib/real-ming` volume.
+4. The Hermes binary is installed on Azure at `/usr/local/bin/hermes`, and
    `hermes --version` and `hermes gateway run --help` succeed as the
    `real-ming` service account. Real-Ming uses Hermes's authenticated
    `API_SERVER` gateway; `hermes serve` is the separate desktop/dashboard
    backend and is not the Real-Ming bridge.
-4. The 10 existing Real-Ming secrets remain in the approved environment/Key
+5. The 10 existing Real-Ming secrets remain in the approved environment/Key
    Vault path. Add one new Key Vault secret named
    `real-ming-hermes-api-key` (or provide the same value through the protected
    release environment); do not place its value in Git, this runbook, logs or
    Telegram.
-5. Decide the host-local Obsidian directory. The conservative first choice is
+6. Decide the host-local Obsidian directory. The conservative first choice is
    an unsynced Azure directory such as `/var/lib/real-ming/obsidian`; if the
    vault must be visible on Lenovo, choose an encrypted sync or an explicit
    pull process separately.
 
 ## 1. Install and authenticate Hermes on Azure
 
-Run the following as an administrator on the Azure VM. Substitute no secret
-values into shell history.
+Run the following as an administrator on the supported-region Azure VM.
+Substitute no secret values into shell history. Do not retry this flow on the
+East Asia VM: its OpenAI device-auth request is region-blocked before a user
+code can be issued.
 
 1. Ensure the service identity and state directory exist:
 
@@ -273,3 +296,4 @@ manifest checksums before relying on the service.
 | Dashboard shows `failed` | Use the typed failure class and service health, not raw provider text; rotate only through the approved secret path. |
 | Obsidian folder is empty | Confirm a Knowledge Compiler generation exists and the configured directory is host-local and writable by the service account. |
 | Backup fails after Hermes activation | Confirm `/var/lib/real-ming/hermes.sqlite` and `/var/lib/hermes-real-ming/state.db` exist (the native file may be absent before the first turn) and the backup destination is new; local state remains retained for recovery. |
+| Codex device-code request returns `unsupported_country_region_territory` | Stop. Confirm the Azure region and egress location. Move the runtime to an OpenAI-supported region; never copy an existing OAuth token or add an egress proxy to bypass the restriction. |

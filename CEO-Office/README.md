@@ -8,13 +8,13 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## 🚦 Current status
 
-*As of 2026-09-04 · run `npm run graph:status` for live truth*
+*As of 2026-09-05 · run `npm run graph:status` for live truth*
 
 | | |
 | --- | --- |
 | Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
 | Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
-| Waiting on you | Phase 4 code is locally wired. Live activation still needs the [RM-40 Phase 4 activation runbook](RM-40-phase4-activation-runbook.md): Azure Hermes OAuth/API key, Telegram ownership cutover, Obsidian destination, dashboard exposure, and off-host backup. |
+| Waiting on you | Approve the reversible Azure region correction in the [RM-40 Phase 4 activation runbook](RM-40-phase4-activation-runbook.md). East Asia is rejected by OpenAI before Codex OAuth; Southeast Asia is available and was live-probed successfully. |
 
 **Phase 4 implementation status (2026-09-04).** The approved Revision 5
 Hermes-first path is implemented and covered by controlled system tests:
@@ -32,18 +32,17 @@ This is a safe-to-review implementation, not a claim that Azure is activated.
 No live Telegram message, OAuth login, deployment, DNS change, dashboard
 exposure, Notion mutation or backup upload was performed in this pass.
 
-**Latest live audit (2026-09-04).** A read-only Azure VM-agent check confirmed
-the existing Real-Ming service is active on loopback, but Hermes and the Phase
-4 service account/directories are not installed yet; the scheduled backup
-service's last run failed. This Lenovo has no Azure CLI, SSH agent key, or
-matching private key. Recover the existing VM key or reopen an authenticated
-Azure Portal session before the candidate-preparation step; no replacement key
-or public SSH change is assumed. The portal also shows no
-`real-ming-hermes-api-key` in the vault (the VM identity already has
-`Key Vault Secrets User`) and no Storage Account in the `real-ming` resource
-group, so both remain CEO provisioning actions.
-The VM NSG has zero custom inbound rules and default deny-all inbound, so no
-public SSH or dashboard port is currently exposed.
+**Latest live audit (2026-09-05).** The Phase 4 candidate and pinned Hermes
+v0.21.0 runtime are prepared on Azure, but production still runs the prior image
+and Hermes remains disabled. Codex OAuth cannot start on the current VM: the
+same device-code request returns `200` from the Lenovo and Azure Southeast Asia,
+but East Asia returns `403 unsupported_country_region_territory`. East Asia is
+Azure's Hong Kong region. `Standard_D2as_v5` is currently available in Southeast
+Asia with enough subscription quota, so the safe correction is a green/blue
+replacement there, state restore, then activation. The existing East Asia VM
+remains untouched for rollback. The vault still lacks the Hermes bridge key and
+the resource group still lacks backup Storage; both are included in the pending
+bounded migration approval. No public SSH or dashboard port will be opened.
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
@@ -159,7 +158,7 @@ Two came out of the RM-30 reviews. Neither blocks anything; both change what you
 
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
-| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Settled: Azure**, East Asia (Southeast Asia refused every small size for this subscription). Chosen for the résumé value on the one cloud you have not used, with the credit difference largely illusory since both expire. | ✅ Decided |
+| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Azure remains settled; East Asia does not.** OpenAI rejects the Hong Kong egress before Codex OAuth. Use a reversible green/blue replacement in Southeast Asia (Singapore), where the exact OAuth request and VM quota were proven, then retain the deallocated East Asia VM for rollback. | ⏳ CEO approval |
 | Prepare RM-15 candidate | Rebuilt from `5016918` after two blocking defects were found in the earlier candidate. | Approved and executed 31 Aug. | ✅ Done |
 | Activate RM-15 candidate | Started image `sha256:0ed353723aa4…`; Telegram proven from a phone with the Lenovo shut. | Approved and executed 31 Aug. | ✅ Done |
 | Off-host backup | An Azure Storage account and a narrowly scoped role assignment, so the 33 Work Items survive losing the VM. | **Not yet.** Local backup meets every acceptance criterion, and a storage account is Azure-specific against your day-31 plan. Worth revisiting before teardown. | ⏳ Open |
@@ -169,7 +168,7 @@ Two came out of the RM-30 reviews. Neither blocks anything; both change what you
 | Phase 4 Telegram transport process | One governed ingress must run before Hermes sees model context. The diagrams do not settle which process owns Telegram transport. | Keep the proven Real-Ming poller for the first Hermes tracer; consider Hermes-owned transport only if a pre-model governance hook proves equivalent. | ⏳ Open |
 | Dashboard exposure | The production dashboard is private over Tailscale/SSH and protected by a bearer token. | Inspect privately first. Do not add a public domain until TLS and identity-aware authentication are designed. | ⏳ Open |
 | Obsidian destination and sync | Materialization creates plain Markdown containing whichever Trust Domains are exported. | Start local and non-synced on the Lenovo; review encrypted sync separately. | ⏳ Open |
-| Hermes API/OAuth activation | Hermes must be installed and authenticated on the always-on Azure host; Real-Ming receives only a private API-server key and never copies the Codex OAuth token. | Follow [RM-40 Phase 4 activation runbook](RM-40-phase4-activation-runbook.md), authenticate Azure Hermes, then run the private Telegram smoke test. | ⏳ CEO action |
+| Hermes API/OAuth activation | Hermes is installed, but OpenAI rejects device auth from Azure East Asia. Real-Ming receives only a private API-server key and never copies the Codex OAuth token. | Approve the runbook's Southeast Asia green/blue correction; authenticate Hermes there, then run the private Telegram smoke test. | ⛔ Region-blocked |
 | Hermes session backup | `hermes.sqlite` and native Hermes `state.db` are now included in a recovery set when present; OAuth files are excluded. | Provision the Azure Storage account/managed-identity role and run one approved restore rehearsal. | ⏳ CEO action |
 | Superseded Personal projection retention | The current 12-month window starts at publication, so an old projection superseded today may purge immediately. | Start the 12 months at supersession by adding `superseded_at`; preserve the current rule only if that immediate-purge behaviour is intentional. | ⏳ Open |
 
