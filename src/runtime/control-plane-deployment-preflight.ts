@@ -44,7 +44,8 @@ export async function verifyControlPlaneDeployment(
     "deploy/systemd/hermes.service",
     [
       ["api-server-command", "gateway run --external-supervisor --quiet"],
-      ["hermes-home", "Environment=HERMES_HOME=/var/lib/real-ming/hermes"],
+      ["hermes-home", "Environment=HERMES_HOME=/var/lib/hermes-real-ming"],
+      ["isolated-hermes-state", "StateDirectory=hermes-real-ming"],
       ["loopback-only", "Environment=API_SERVER_HOST=127.0.0.1"],
       ["api-server-port", "Environment=API_SERVER_PORT=8642"],
       ["api-key-file", "EnvironmentFile=/etc/real-ming/hermes.env"],
@@ -69,14 +70,14 @@ export async function verifyControlPlaneDeployment(
     repositoryRoot,
     "deploy/systemd/real-ming-backup.service",
     [
-      ["boot-ordering", "After=real-ming.service"],
+      ["boot-ordering", "After=hermes.service real-ming.service"],
       ["root-owned-helper", "/usr/local/libexec/real-ming-backup"],
       ["release-binding", "EnvironmentFile=/etc/real-ming/release.env"],
       // The backup stops the control plane. These two are what guarantee it
       // comes back: a bounded start, and a restart that runs however the
       // backup ended -- including killed on timeout.
       ["bounded-start", "TimeoutStartSec="],
-      ["unconditional-restart", "ExecStopPost=-/usr/bin/systemctl --no-block start real-ming.service"],
+      ["unconditional-restart", "ExecStopPost=-/usr/bin/systemctl --no-block start hermes.service real-ming.service"],
     ],
     failures,
   );
@@ -88,14 +89,16 @@ export async function verifyControlPlaneDeployment(
       ["quiesce-writes", "systemctl stop real-ming.service"],
       // Bash skips an EXIT trap when it dies on an untrapped signal, so the
       // signals must be named or a systemd timeout strands the service.
-      ["restart-on-exit", "trap restart_control_plane EXIT INT TERM"],
+      ["restart-on-exit", "trap cleanup_and_restart EXIT INT TERM"],
       ["bounded-container-run", "timeout --signal=TERM"],
       ["run-live-backup", "control-plane-backup-cli.js --live"],
       ["immutable-release", "${REAL_MING_IMAGE}"],
       ["operations-state", "REAL_MING_STATE_PATH=/var/lib/real-ming/state.sqlite"],
       ["notion-ledger", "REAL_MING_NOTION_LEDGER_PATH=/var/lib/real-ming/notion-write-ledger.sqlite"],
       ["hermes-session-store", "REAL_MING_HERMES_SESSIONS_PATH=/var/lib/real-ming/hermes.sqlite"],
-      ["hermes-native-state", "REAL_MING_HERMES_STATE_PATH=/var/lib/real-ming/hermes/state.db"],
+      ["quiesce-hermes-writes", "systemctl stop hermes.service"],
+      ["stage-hermes-native-state", "hermes-state.snapshot.db"],
+      ["hermes-native-state", "REAL_MING_HERMES_STATE_PATH=/var/lib/real-ming/hermes-state.snapshot.db"],
     ],
     failures,
   );

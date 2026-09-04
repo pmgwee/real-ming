@@ -21,7 +21,7 @@ until the exact candidate and rollback window are approved.
 A read-only Azure VM Run Command check reached `real-ming-control-plane` through
 the VM agent. It found the pre-Phase-4 service running on loopback `127.0.0.1:8787`,
 but no Hermes installation or `hermes.service`, no `real-ming` Linux service
-account, no `/var/lib/real-ming/hermes` or Obsidian directory, and no Phase 4
+account, no `/var/lib/hermes-real-ming` or Obsidian directory, and no Phase 4
 environment files. The existing `real-ming-backup.timer` is enabled, but its
 last `real-ming-backup.service` run exited with status 1. The running container
 is an older immutable image, not the current uncommitted Phase 4 working tree.
@@ -87,13 +87,19 @@ values into shell history.
 1. Ensure the service identity and state directory exist:
 
    ```text
-   sudo useradd --system --create-home --home-dir /var/lib/real-ming real-ming 2>/dev/null || true
-   sudo install -d -o real-ming -g real-ming -m 0700 /var/lib/real-ming/hermes
+   if id real-ming >/dev/null 2>&1; then
+     sudo usermod --home /var/lib/hermes-real-ming real-ming
+   else
+     sudo useradd --system --create-home --home-dir /var/lib/hermes-real-ming real-ming
+   fi
+   sudo install -d -o real-ming -g real-ming -m 0700 /var/lib/hermes-real-ming
    ```
 
-   The repository unit pins `HERMES_HOME=/var/lib/real-ming/hermes`, so the
-   service account's OAuth/session/config state stays on the persistent Azure
-   volume and is not confused with the host administrator's Hermes home.
+   The repository unit pins `HERMES_HOME=/var/lib/hermes-real-ming`, so the
+   service account's OAuth/session/config state stays isolated from both the
+   container-owned `/var/lib/real-ming` directory and the host administrator's
+   Hermes home. This prevents the Real-Ming container from reading Hermes's
+   OAuth material.
 
 2. Install the approved Hermes release for the `real-ming` account. The first
    production tracer is pinned to **Hermes Agent v0.21.0 at commit
@@ -101,8 +107,8 @@ values into shell history.
    proven on Lenovo. Authenticate it with:
 
    ```text
-   sudo -u real-ming env HOME=/var/lib/real-ming \
-     HERMES_HOME=/var/lib/real-ming/hermes \
+   sudo -u real-ming env HOME=/var/lib/hermes-real-ming \
+     HERMES_HOME=/var/lib/hermes-real-ming \
      /usr/local/bin/hermes auth add openai-codex
    ```
 
@@ -254,7 +260,7 @@ manifest checksums before relying on the service.
 3. Stop Hermes only after the control plane is disabled or no longer points at
    it: `sudo systemctl stop hermes.service`.
 4. Preserve `/var/lib/real-ming/hermes.sqlite`,
-   `/var/lib/real-ming/hermes/state.db`, the Obsidian `.previous` folder, and
+   `/var/lib/hermes-real-ming/state.db`, the Obsidian `.previous` folder, and
    the last backup manifest for diagnosis. Never delete them during a rollback.
 
 ## Troubleshooting
@@ -266,4 +272,4 @@ manifest checksums before relying on the service.
 | Telegram messages split or disappear | Stop the Hermes/desktop gateway and leave exactly one Real-Ming polling owner; replay only after the cursor and delivery ledger are inspected. |
 | Dashboard shows `failed` | Use the typed failure class and service health, not raw provider text; rotate only through the approved secret path. |
 | Obsidian folder is empty | Confirm a Knowledge Compiler generation exists and the configured directory is host-local and writable by the service account. |
-| Backup fails after Hermes activation | Confirm `/var/lib/real-ming/hermes.sqlite` and `/var/lib/real-ming/hermes/state.db` exist (the native file may be absent before the first turn) and the backup destination is new; local state remains retained for recovery. |
+| Backup fails after Hermes activation | Confirm `/var/lib/real-ming/hermes.sqlite` and `/var/lib/hermes-real-ming/state.db` exist (the native file may be absent before the first turn) and the backup destination is new; local state remains retained for recovery. |

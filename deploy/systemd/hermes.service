@@ -7,13 +7,13 @@ Wants=network-online.target
 Type=simple
 User=real-ming
 Group=real-ming
-WorkingDirectory=/var/lib/real-ming/hermes
-Environment=HOME=/var/lib/real-ming/hermes
-Environment=HERMES_HOME=/var/lib/real-ming/hermes
+WorkingDirectory=/var/lib/hermes-real-ming
+Environment=HOME=/var/lib/hermes-real-ming
+Environment=HERMES_HOME=/var/lib/hermes-real-ming
 Environment=API_SERVER_HOST=127.0.0.1
 Environment=API_SERVER_PORT=8642
 EnvironmentFile=/etc/real-ming/hermes.env
-StateDirectory=real-ming/hermes
+StateDirectory=hermes-real-ming
 StateDirectoryMode=0700
 ExecStart=/usr/local/bin/hermes gateway run --external-supervisor --quiet
 Restart=always
@@ -23,7 +23,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/real-ming/hermes
+ReadWritePaths=/var/lib/hermes-real-ming
 
 [Install]
 WantedBy=multi-user.target
