@@ -165,4 +165,3 @@ Before accepting completion, check that the agent reports all of these:
 | Telegram gives no response after cutover | Tell the active Codex task immediately; do not start another Telegram gateway |
 | Dashboard cannot open | Keep all Azure ports closed and ask the agent to inspect the Tailscale/SSH tunnel |
 | Any page displays a secret unexpectedly | Stop, do not paste it anywhere, and tell the agent only which credential type may have been exposed |
-
