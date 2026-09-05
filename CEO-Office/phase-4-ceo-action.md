@@ -2,18 +2,15 @@
 
 ## TL;DR
 
-The Malaysia West Phase 4 candidate is prepared but deliberately inactive.
-Only Ming can complete the identity checks and send the live Telegram test
-messages. The agent will perform the service activation, verification,
-dashboard tunnel, recovery rehearsal and approved East Asia deallocation.
+The Malaysia West Phase 4 candidate is active and is now the only Telegram
+polling owner. Codex OAuth and Tailscale enrollment are complete. The only
+remaining CEO actions are to send the live Telegram smoke messages and review
+the resulting private dashboard/Obsidian evidence. The agent will perform the
+post-conversation backup, restore rehearsal and approved East Asia
+deallocation after those checks.
 
-Start here when resuming:
-
-1. Complete the Codex OAuth action below.
-2. Complete the Tailscale action below.
-3. Reply to the active Codex task with: **I completed Codex OAuth and
-   Tailscale authorization. Continue RM-40 Phase 4 activation.**
-4. Remain available for the Telegram and CEO review checks when requested.
+Resume from **section 3** below. Do not repeat the identity steps unless the
+agent reports that the corresponding credential or device is unhealthy.
 
 Do not paste any OAuth token, Telegram token, dashboard token, Key Vault
 secret or Tailscale credential into Codex, Telegram, GitHub or this file.
@@ -22,14 +19,15 @@ secret or Tailscale credential into Codex, Telegram, GitHub or this file.
 
 | Item | State |
 | --- | --- |
-| Malaysia West VM `real-ming-control-plane-my` | Prepared and running as the inactive green host |
+| Malaysia West VM `real-ming-control-plane-my` | Active candidate; Hermes and Real-Ming services healthy |
 | Reviewed Real-Ming image | Exact approved digest restored and verified |
-| Hermes | v0.21.0 at the pinned commit; installed but inactive |
-| Real-Ming on Malaysia West | Inactive |
-| Real-Ming on East Asia | Active and still the sole Telegram polling owner |
+| Hermes | v0.21.0 at the pinned commit; Codex OAuth authorized; loopback API healthy |
+| Real-Ming on Malaysia West | Active; exact approved image; loopback dashboard only |
+| Real-Ming on East Asia | Stopped for cutover; keep the VM for rollback until final proof |
 | Hermes bridge key | Stored in Azure Key Vault and protected host configuration; value never displayed |
 | Backup | Singapore storage generation restored and SQLite-verified |
-| Obsidian | CEO-only host-local destination staged; no sync enabled |
+| Obsidian | CEO-only host-local destination staged; waiting for first live Knowledge Compiler generation; no sync enabled |
+| Tailscale | Malaysia device enrolled; private address verified; SSH tunnel and dashboard smoke passed |
 | Network | No public SSH, Hermes or dashboard inbound rule |
 
 The complete technical sequence and rollback plan remain in
@@ -43,7 +41,7 @@ OpenAI requires the account owner to authenticate and consent. The resulting
 OAuth state belongs only to Hermes's protected service account on Azure.
 Real-Ming and the deployment agent must never receive or copy the token.
 
-### Steps
+### Historical steps (already completed)
 
 1. Tell the active Codex task: **Issue a fresh Hermes Codex device code.**
    Device codes expire, so do not reuse one from an older message.
@@ -69,7 +67,7 @@ Joining the host to Ming's private tailnet requires the tailnet owner's sign-in
 and consent. This supplies private dashboard reachability without opening a
 public dashboard or SSH port.
 
-### Steps
+### Historical steps (already completed)
 
 1. Tell the active Codex task: **Issue or show the current Malaysia Tailscale
    authorization link.**
@@ -87,9 +85,9 @@ loopback-only dashboard. No public Azure network rule will be added.
 
 ## 3. Perform the Telegram CEO smoke checks
 
-Do this only when the active Codex task explicitly says the ownership cutover
-has completed. Sending these messages earlier tests the East Asia service,
-not the Phase 4 candidate.
+The ownership cutover is complete. Malaysia West is the sole polling owner;
+the East Asia service is stopped. Sending these messages now tests the Phase 4
+candidate.
 
 1. Send one harmless natural-language question to the existing Real-Ming bot.
 2. Confirm that the response feels like a Hermes answer rather than the former

@@ -10,12 +10,12 @@ payload-free Hermes session state. Obsidian export and Hermes session recovery
 backup (the Real-Ming mapping plus Hermes native `state.db`) are implemented
 but opt-in.
 
-The bounded activation and rollback window are approved. All automatable
-prerequisites are now prepared on the inactive Malaysia West candidate. The
-only current CEO actions are the two interactive identity checks: authorize
-Hermes against Ming's Codex subscription and enroll the candidate in Ming's
-existing Tailscale network. The automated health, Telegram, dashboard,
-Obsidian and recovery proofs resume immediately after those checks.
+The bounded activation and rollback window are approved. The Malaysia West
+candidate is now active. Codex OAuth and Tailscale enrollment are complete;
+the remaining CEO action is to send the live Telegram smoke messages and
+review the resulting private dashboard and Obsidian evidence. The automated
+post-conversation backup, restore rehearsal and East Asia deallocation follow
+those checks.
 
 ## Latest activation audit · 2026-09-05
 
@@ -49,13 +49,13 @@ still the only Telegram polling owner.
 
 | Runbook scope | State | Evidence / next action |
 | --- | --- | --- |
-| Prerequisites | ✅ Complete except interactive identity | Exact image, restore, roles, bridge key, private network and pinned Hermes verified |
-| 1. Hermes install | 🔄 Waiting on Ming | Complete the active OpenAI Codex device authorization; the OAuth token stays only in the protected Hermes home |
+| Prerequisites | ✅ Complete | Exact image, restore, roles, bridge key, private network and pinned Hermes verified |
+| 1. Hermes install | ✅ Complete | Codex OAuth authorized in the protected Hermes home; loopback health and harmless GPT-5.6 Sol proof passed |
 | 2. Real-Ming binding | ✅ Staged | Protected release values point to loopback Hermes with GPT-5.6 Sol, Codex OAuth and medium reasoning |
-| 3. Telegram cutover | ⏸ Not started | Starts only after a successful Hermes model conversation; East Asia remains the sole owner |
-| 4. Obsidian | ✅ Staged | CEO-only export root at `/var/lib/real-ming/obsidian`; no sync client enabled |
-| 5. Dashboard | 🔄 Waiting on Ming | Complete the active Tailscale device authorization; no public port will be opened |
-| 6. Recovery | 🔄 Base restore proven | Singapore backup and restore are proven; post-Hermes state backup/rehearsal follows the first successful conversation |
+| 3. Telegram cutover | ✅ Complete; smoke pending | Malaysia West is the sole polling owner; send the question, coding, duplicate and synthetic-secret checks |
+| 4. Obsidian | 🔄 Waiting on source generation | CEO-only export root is configured; no live Knowledge Compiler source has generated a projection yet; no sync client enabled |
+| 5. Dashboard | ✅ Complete | Tailscale device, private SSH tunnel and authenticated dashboard smoke passed; no public port opened |
+| 6. Recovery | 🔄 Post-conversation proof pending | Base restore is proven; run a fresh state backup and restore rehearsal after the first successful Hermes conversation |
 
 ### Approved activation boundary
 
