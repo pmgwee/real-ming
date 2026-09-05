@@ -14,7 +14,7 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 | --- | --- |
 | Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
 | Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
-| Waiting on you | Complete the two active browser identity checks in the [RM-40 Phase 4 activation runbook](RM-40-phase4-activation-runbook.md): OpenAI Codex OAuth for Hermes and Tailscale enrollment for the private dashboard path. Everything else that can precede those checks is staged. |
+| Waiting on you | Follow [Phase 4 CEO actions](phase-4-ceo-action.md): authorize Hermes with Codex OAuth and enroll the Malaysia host in Tailscale. The same checklist covers the later Telegram, dashboard and Obsidian CEO reviews. |
 
 **Phase 4 implementation status (2026-09-04).** The approved Revision 5
 Hermes-first path is implemented and covered by controlled system tests:
@@ -340,6 +340,7 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [CREDENTIAL-INVENTORY.md](CREDENTIAL-INVENTORY.md) | Ten tracer credentials plus the Phase 4 Hermes bridge key: owner, purpose, storage, revocation — **no values** |
 | [RM-17-personal-context-selection-runbook.md](RM-17-personal-context-selection-runbook.md) | CEO-only choice of the first bounded Personal Context item |
 | [RM-40-phase4-activation-runbook.md](RM-40-phase4-activation-runbook.md) | CEO-only Hermes, Telegram, Obsidian, dashboard and backup activation sequence |
+| [phase-4-ceo-action.md](phase-4-ceo-action.md) | Short CEO checklist for the remaining identity, Telegram and review actions needed to finish Phase 4 |
 
 ---
 
