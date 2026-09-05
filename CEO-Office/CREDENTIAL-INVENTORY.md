@@ -30,13 +30,14 @@ Generated from `src/config/tracer-secrets.ts`. A test fails the build if this ta
 
 ## Where the control plane runs
 
-Updated 4 September 2026 for the Phase 4 activation audit.
+Updated 5 September 2026 for the Malaysia West green/blue activation.
 
 | | |
 | --- | --- |
-| **Production** | Azure VM `real-ming-control-plane` in the `real-ming` resource group is the settled always-on home. Phase 4 Hermes activation is not complete yet. |
+| **Production** | East Asia VM `real-ming-control-plane` remains the sole active Telegram owner. Malaysia West VM `real-ming-control-plane-my` is the prepared green candidate and remains inactive until OAuth/private-access proof. |
 | **Secret storage** | Production tracer values are in Key Vault `real-ming-vault`; local development values remain in a gitignored `.env` at the repository root. `.env.example` carries names only. |
-| **Still to provision** | The Phase 4 Hermes bridge secret, Hermes service OAuth state, Obsidian destination and off-host backup target. The existing VM managed identity can read Key Vault secrets. |
+| **Provisioned** | The Phase 4 bridge secret, protected service environments, Singapore backup target, container-scoped VM roles and unsynced CEO-only Obsidian destination. No value is recorded here. |
+| **Still to activate** | Complete Hermes Codex OAuth and Tailscale enrollment interactively, then prove the Hermes conversation, Telegram cutover, private dashboard and post-Hermes backup before deallocating East Asia. |
 
 RM-07 through RM-14 were implemented and verified locally. RM-15 settled Azure as the
 always-on host; the current Phase 4 work now moves the Hermes runtime and the

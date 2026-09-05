@@ -14,7 +14,7 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 | --- | --- |
 | Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
 | Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
-| Waiting on you | Approve one narrow amendment in the [RM-40 Phase 4 activation runbook](RM-40-phase4-activation-runbook.md): keep the approved `Standard_D2as_v5`, but place it in Azure Malaysia West. Southeast Asia passes OpenAI access but Azure cannot currently allocate this or three comparable VM sizes in any zone. |
+| Waiting on you | Complete the two active browser identity checks in the [RM-40 Phase 4 activation runbook](RM-40-phase4-activation-runbook.md): OpenAI Codex OAuth for Hermes and Tailscale enrollment for the private dashboard path. Everything else that can precede those checks is staged. |
 
 **Phase 4 implementation status (2026-09-04).** The approved Revision 5
 Hermes-first path is implemented and covered by controlled system tests:
@@ -28,24 +28,19 @@ when a Knowledge generation changes. The production composition resolves the
 Hermes API-server key from the protected environment or Key Vault; Hermes, not
 Real-Ming, owns the Codex OAuth session.
 
-This is a safe-to-review implementation, not a claim that Azure is activated.
-No live Telegram message, OAuth login, deployment, DNS change, dashboard
-exposure, Notion mutation or backup upload was performed in this pass.
+This implementation is now deployed as an inactive green candidate in Malaysia
+West. Production Telegram ownership has not moved yet, no public dashboard or
+SSH port is exposed, and no Notion mutation was performed during preparation.
 
-**Latest live audit (2026-09-05).** The Phase 4 candidate and pinned Hermes
-v0.21.0 runtime are prepared on Azure, but production still runs the prior image
-and Hermes remains disabled. Codex OAuth cannot start on the current VM: the
-same device-code request returns `200` from the Lenovo and Azure Southeast Asia,
-but East Asia returns `403 unsupported_country_region_territory`. East Asia is
-Azure's Hong Kong region. Southeast Asia has subscription quota but live ARM
-preflight reports `SkuNotAvailable` for `Standard_D2as_v5` in the regional pool
-and every zone; D2ads, D2s and B2ms validations are also capacity-blocked. The
-unchanged `Standard_D2as_v5` configuration validates successfully in Malaysia
-West, now the recommended target. No replacement VM/network was created. Backup
-Storage `realmingbk09041708` and container `real-ming-backups` are provisioned,
-and recovery generation `2026-09-04T17-11-44.756Z` uploaded successfully. The
-existing East Asia service remains active and Hermes inactive; no public SSH or
-dashboard port is exposed.
+**Latest live audit (2026-09-05).** The approved Malaysia West replacement VM
+`real-ming-control-plane-my` is prepared with the exact reviewed Phase 4 image,
+pinned Hermes v0.21.0 commit, verified restored SQLite state, protected bridge
+key, narrowly scoped Key Vault/Blob roles and zero custom inbound NSG rules.
+Tailscale is installed and the CEO-only Obsidian destination is staged. OpenAI
+Codex OAuth and Tailscale each issued an interactive browser authorization and
+are waiting on Ming. Until both complete and Hermes passes a harmless model
+conversation, the candidate services remain inactive and the East Asia service
+remains the sole Telegram owner.
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
@@ -161,18 +156,18 @@ Two came out of the RM-30 reviews. Neither blocks anything; both change what you
 
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
-| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | **Azure remains settled; East Asia and Southeast Asia are unusable for different reasons.** OpenAI rejects Hong Kong egress; Azure currently rejects every tested Singapore VM size for capacity. Amend the approved target to Malaysia West, where the unchanged `Standard_D2as_v5` ARM template validates, then retain the deallocated East Asia VM for rollback. | ⏳ CEO approval |
+| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | Malaysia West replacement approved and prepared; keep East Asia active until proof, then deallocate without deleting it. | 🔄 Activation in progress |
 | Prepare RM-15 candidate | Rebuilt from `5016918` after two blocking defects were found in the earlier candidate. | Approved and executed 31 Aug. | ✅ Done |
 | Activate RM-15 candidate | Started image `sha256:0ed353723aa4…`; Telegram proven from a phone with the Lenovo shut. | Approved and executed 31 Aug. | ✅ Done |
-| Off-host backup | An Azure Storage account and a narrowly scoped role assignment, so the 33 Work Items survive losing the VM. | **Not yet.** Local backup meets every acceptance criterion, and a storage account is Azure-specific against your day-31 plan. Worth revisiting before teardown. | ⏳ Open |
+| Off-host backup | An Azure Storage account and a narrowly scoped role assignment, so the Work Items survive losing the VM. | Singapore Storage account/container, both VM grants, manifest-last upload and base restore rehearsal are proven. Repeat after the first Hermes conversation to include native session state. | 🔄 Post-Hermes proof pending |
 | Select RM-17 Personal Context item | One bounded file or allowlisted Notion page plus source metadata for the first Candidate Envelope. | Approved `personal-context/working-preferences.md` snapshot for COO daily planning. | ✅ Done in RM-17 |
 | Tracer 1 milestone PR | PR #47 carried RM-07…RM-44 and was much larger than the intended milestone boundary. | Merged by the CEO on 3 September 2026. Return to one reviewable milestone per PR for Phase 4. | ✅ Done |
 | `ceo-confirmed` career claims are unverified | RM-33 accepts a claim labelled "CEO confirmed" at face value: there is no Approval record behind the label, so it is only as trustworthy as whatever gates the caller. | Bind it to a real Approval in its own ticket if you want the label to mean something. | ⏳ Open |
-| Phase 4 Telegram transport process | One governed ingress must run before Hermes sees model context. The diagrams do not settle which process owns Telegram transport. | Keep the proven Real-Ming poller for the first Hermes tracer; consider Hermes-owned transport only if a pre-model governance hook proves equivalent. | ⏳ Open |
-| Dashboard exposure | The production dashboard is private over Tailscale/SSH and protected by a bearer token. | Inspect privately first. Do not add a public domain until TLS and identity-aware authentication are designed. | ⏳ Open |
-| Obsidian destination and sync | Materialization creates plain Markdown containing whichever Trust Domains are exported. | Start local and non-synced on the Lenovo; review encrypted sync separately. | ⏳ Open |
-| Hermes API/OAuth activation | Hermes is installed, but OpenAI rejects device auth from Azure East Asia and Azure cannot allocate the approved Singapore VM. Real-Ming receives only a private API-server key and never copies the Codex OAuth token. | Approve the narrow Malaysia West target amendment; authenticate Hermes there, then run the private Telegram smoke test. | ⛔ Region/capacity-blocked |
-| Hermes session backup | `hermes.sqlite` and native Hermes `state.db` are included when present; OAuth files are excluded. Storage account `realmingbk09041708`, its protected container and the East Asia VM's container-scoped role now exist; the first off-host generation uploaded successfully. | Grant the replacement VM the same container-scoped role and complete the restore rehearsal after its region is approved. | 🔄 In progress |
+| Phase 4 Telegram transport process | One governed ingress must run before Hermes sees model context. | Real-Ming owns the one Telegram polling loop; Hermes owns persistent conversation, reasoning and coding behind the private API. | ✅ Settled and staged |
+| Dashboard exposure | The production dashboard is private over Tailscale/SSH and protected by a bearer token. | Tailscale is installed on the Malaysia host and awaits CEO enrollment. Inspect privately; no public domain or port. | 🔄 Identity check pending |
+| Obsidian destination and sync | Materialization creates plain Markdown containing whichever Trust Domains are exported. | Use the unsynced Azure path `/var/lib/real-ming/obsidian` with CEO-only roots. Review any sync separately. | ✅ Settled and staged |
+| Hermes API/OAuth activation | Real-Ming receives only a private API-server key and never copies the Codex OAuth token. | Pinned Hermes and bridge key are ready; complete the active Codex device authorization, then run a harmless GPT-5.6 Sol proof. | 🔄 Identity check pending |
+| Hermes session backup | `hermes.sqlite` and native Hermes `state.db` are included when present; OAuth files are excluded. | Base restore passed on Malaysia with container-scoped access. Repeat after Hermes creates the first conversation. | 🔄 Post-Hermes proof pending |
 | Superseded Personal projection retention | The current 12-month window starts at publication, so an old projection superseded today may purge immediately. | Start the 12 months at supersession by adding `superseded_at`; preserve the current rule only if that immediate-purge behaviour is intentional. | ⏳ Open |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.

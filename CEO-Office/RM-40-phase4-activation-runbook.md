@@ -10,67 +10,59 @@ payload-free Hermes session state. Obsidian export and Hermes session recovery
 backup (the Real-Ming mapping plus Hermes native `state.db`) are implemented
 but opt-in.
 
-The remaining steps below are live actions. They require Ming because they
-authenticate an always-on runtime, transfer a Telegram bot's operational
-ownership, choose where readable cross-domain Markdown is written, or expose
-the dashboard to a new network boundary. Do not run them against production
-until the exact candidate and rollback window are approved.
+The bounded activation and rollback window are approved. All automatable
+prerequisites are now prepared on the inactive Malaysia West candidate. The
+only current CEO actions are the two interactive identity checks: authorize
+Hermes against Ming's Codex subscription and enroll the candidate in Ming's
+existing Tailscale network. The automated health, Telegram, dashboard,
+Obsidian and recovery proofs resume immediately after those checks.
 
 ## Latest activation audit · 2026-09-05
 
-A live Azure VM Run Command session prepared the Phase 4 candidate without
-cutting over production. Hermes Agent v0.21.0 is installed at the pinned commit,
-the isolated `real-ming` service account and `/var/lib/hermes-real-ming` home
-exist, the candidate image passed its deployment verifier, and the reviewed
-systemd units are installed. The old Real-Ming image remains the running
-production container on loopback `127.0.0.1:8787`; Hermes is not enabled and no
-Telegram ownership change has occurred.
+The CEO-approved Malaysia West green/blue candidate now exists as VM
+`real-ming-control-plane-my`: Ubuntu 24.04 Trusted Launch,
+`Standard_D2as_v5`, secure boot, vTPM and a 128 GB Premium SSD. Its network
+security group has zero custom inbound rules. A public-IP resource exists for
+Azure egress and management plumbing, but no public SSH, Hermes or dashboard
+rule is open.
 
-The first Codex OAuth request exposed a hard hosting-region blocker. The exact
-Hermes device-code request returns HTTP `200` from the Lenovo but HTTP `403`
-with `unsupported_country_region_territory` from the production VM. Azure
-`East Asia` is physically in Hong Kong. The same request returns HTTP `200`
-from Azure Cloud Shell in `Southeast Asia` (Singapore). The subscription has
-four DASv5-family vCPUs of quota there, but Azure's live ARM preflight rejects
-`Standard_D2as_v5` in the regional pool and in all three availability zones with
-`SkuNotAvailable`; the closest D2ads, D2s and B2ms alternatives are also
-capacity-blocked. No replacement VM or network was created. The same approved
-`Standard_D2as_v5` configuration passes ARM validation in `Malaysia West`
-(Kuala Lumpur), which is also an OpenAI-supported country. Do not copy the
-Lenovo OAuth token, proxy around the country check, or keep the Hermes runtime
-in East Asia. The recommended correction is therefore a reversible green/blue
-replacement in Malaysia West, followed by OAuth and Phase 4 activation there;
-retain the stopped East Asia resources until the restore and Telegram tests
-pass.
+The VM managed identity has only `Key Vault Secrets User` at
+`real-ming-vault` and `Storage Blob Data Contributor` at the
+`real-ming-backups` container. The protected `real-ming-hermes-api-key` now
+exists and was retrieved directly into `/etc/real-ming/hermes.env`; its value
+was never displayed. The reviewed image from commit
+`af75e3c53e6a3befee56595eeee557dc5ddb5dd4` was transferred through the private
+backup container and re-verified at the exact image ID
+`sha256:6b4bef97bfadb79e34fbe1af9a76f4f2d6e33ba2ab135640084e7db13ca2b5a4`.
+Recovery generation `2026-09-04T17-11-44.756Z` passed manifest checks and
+SQLite `quick_check` after restore.
 
-The authenticated portal check also confirms that `real-ming-vault` contains
-the ten existing tracer secrets but not `real-ming-hermes-api-key`. The VM's
-managed identity (`real-ming-control-plane`) already has the `Key Vault Secrets
-User` role at the vault scope. The approved backup target now exists as Storage
-account `realmingbk09041708` in Southeast Asia with container
-`real-ming-backups`, anonymous blob access disabled, an IP-restricted firewall,
-and a container-scoped role for the East Asia VM identity. Recovery generation
-`2026-09-04T17-11-44.756Z` uploaded successfully and contains the control-plane
-state plus Notion idempotency ledger. Hermes state is correctly absent because
-no production Hermes conversation exists yet.
+Hermes Agent v0.21.0 is installed at pinned commit
+`561b053f794a1781868bb032029d589c67708119`. The isolated `real-ming` account,
+protected Hermes home, release configuration, backup configuration, systemd
+units and CEO-only host-local Obsidian destination are staged. Tailscale 1.102.3
+is installed. Hermes and candidate Real-Ming remain inactive until the two
+interactive identity checks below complete; the East Asia Real-Ming service is
+still the only Telegram polling owner.
 
-The VM network security group has zero custom inbound rules and the default
-deny-all rule is active. That is consistent with the failed public SSH attempt;
-use the recovered private/Tailscale path or the Azure VM agent, and do not open
-port 22 or a dashboard port as a shortcut.
+### Live execution checkpoint
 
-### CEO decision gate before activation continues
+| Runbook scope | State | Evidence / next action |
+| --- | --- | --- |
+| Prerequisites | ✅ Complete except interactive identity | Exact image, restore, roles, bridge key, private network and pinned Hermes verified |
+| 1. Hermes install | 🔄 Waiting on Ming | Complete the active OpenAI Codex device authorization; the OAuth token stays only in the protected Hermes home |
+| 2. Real-Ming binding | ✅ Staged | Protected release values point to loopback Hermes with GPT-5.6 Sol, Codex OAuth and medium reasoning |
+| 3. Telegram cutover | ⏸ Not started | Starts only after a successful Hermes model conversation; East Asia remains the sole owner |
+| 4. Obsidian | ✅ Staged | CEO-only export root at `/var/lib/real-ming/obsidian`; no sync client enabled |
+| 5. Dashboard | 🔄 Waiting on Ming | Complete the active Tailscale device authorization; no public port will be opened |
+| 6. Recovery | 🔄 Base restore proven | Singapore backup and restore are proven; post-Hermes state backup/rehearsal follows the first successful conversation |
 
-Approve the amended green/blue target and its temporary overlap cost. Southeast
-Asia cannot currently allocate the approved VM size in any zone. The bounded
-action is now to create one matching `Standard_D2as_v5` Ubuntu 24.04 Trusted
-Launch VM and private-by-default network in Azure Malaysia West, grant the new
-VM only `Key Vault Secrets User` and `Storage Blob Data Contributor`, restore
-and verify the existing backup, create the protected Hermes bridge key, and
-activate the reviewed candidate.
-After successful OAuth, restore, dashboard and Telegram checks, deallocate—but
-do not delete—the East Asia VM for rollback. No public dashboard or SSH rule is
-part of this approval.
+### Approved activation boundary
+
+The CEO approved the Malaysia West replacement and temporary overlap. After
+OAuth, private dashboard and Telegram checks pass, deallocate—but do not
+delete—the East Asia VM for rollback. No public dashboard or SSH rule is part
+of this approval.
 
 ## Why this cannot be delegated
 
