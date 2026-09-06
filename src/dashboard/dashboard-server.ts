@@ -7,6 +7,7 @@ import { isCeoActor } from "../operations/actor-identity.js";
 import {
   buildDashboardOverview,
   type DashboardOverview,
+  type NativeHermesDashboardStatus,
 } from "./dashboard-read-model.js";
 import { renderDashboardPage } from "./dashboard-page.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
@@ -21,6 +22,15 @@ import type {
 import type { SchedulerJobDefinition } from "../operations/daily-operations-scheduler.js";
 import type { KnowledgeDomainHealth } from "../knowledge/knowledge-operations.js";
 import type { HermesConversationOverview } from "../hermes/hermes-turn-coordinator.js";
+import type {
+  NativeScheduledReportRequest,
+  NativeScheduledReportResult,
+} from "../operations/native-scheduled-reports.js";
+
+const nativeCronJobs = new Set([
+  "morning-brief",
+  "executive-roll-up",
+] as const);
 
 export const dashboardSessionCookie = "real_ming_session";
 
@@ -60,6 +70,14 @@ export interface DashboardServer {
   close(): Promise<void>;
 }
 
+export interface NativeCronEndpoint {
+  /** Loopback-only shared secret inherited by the Hermes MCP process. */
+  readonly apiKey: string;
+  readonly run: (
+    request: NativeScheduledReportRequest,
+  ) => Promise<NativeScheduledReportResult>;
+}
+
 function matchesToken(candidate: string, expected: string): boolean {
   const left = Buffer.from(candidate);
   const right = Buffer.from(expected);
@@ -83,6 +101,13 @@ function presentedToken(request: IncomingMessage): string | undefined {
     .find(([name]) => name === dashboardSessionCookie)
     ?.slice(1)
     .join("=");
+}
+
+function presentedBearerToken(request: IncomingMessage): string | undefined {
+  const authorization = request.headers.authorization;
+  return typeof authorization === "string" && authorization.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length).trim()
+    : undefined;
 }
 
 function resolveSession(
@@ -184,6 +209,11 @@ export function createDashboardServer(options: {
   readonly knowledgeHealth?: () => readonly KnowledgeDomainHealth[];
   /** Read-only Hermes runtime/session status. Prompts are never exposed. */
   readonly hermesHealth?: () => HermesConversationOverview;
+  /** Read-only native Hermes gateway reachability. Session details stay native. */
+  readonly nativeHermesHealth?:
+    () => NativeHermesDashboardStatus | Promise<NativeHermesDashboardStatus>;
+  /** Optional private endpoint used by native Hermes cron, never rendered. */
+  readonly nativeCron?: NativeCronEndpoint;
   readonly credentials: readonly DashboardCredential[];
   /**
    * The operating clock. Without it the dashboard would report scheduler
@@ -197,8 +227,12 @@ export function createDashboardServer(options: {
   const now = options.now ?? (() => new Date().toISOString());
   const host = options.host ?? "127.0.0.1";
   const port = options.port ?? 0;
-  const overviewFor = async (session: DashboardSession): Promise<DashboardOverview> =>
-    buildDashboardOverview(
+  const overviewFor = async (session: DashboardSession): Promise<DashboardOverview> => {
+    const nativeHermes =
+      options.nativeHermesHealth === undefined
+        ? undefined
+        : await options.nativeHermesHealth();
+    return buildDashboardOverview(
       options.state,
       { ...session, now: now() },
       options.portfolio,
@@ -209,11 +243,58 @@ export function createDashboardServer(options: {
       options.schedulerJobs,
       options.knowledgeHealth?.() ?? [],
       options.hermesHealth?.(),
+      nativeHermes,
     );
+  };
 
   const server: Server = createServer((request, response) => {
     void (async () => {
       const url = new URL(request.url ?? "/", "http://dashboard.local");
+
+      // Native Hermes cron is the sole caller of this loopback endpoint. It
+      // receives composed text and owns Telegram delivery; it never receives
+      // a CEO session cookie or a dashboard write capability.
+      if (request.method === "POST" && url.pathname === "/internal/native-cron/run") {
+        if (
+          options.nativeCron === undefined ||
+          presentedBearerToken(request) === undefined ||
+          !matchesToken(
+            presentedBearerToken(request) ?? "",
+            options.nativeCron.apiKey,
+          )
+        ) {
+          sendUnauthorized(response);
+          return;
+        }
+        try {
+          const body = await readJsonBody(request);
+          const job = body["job"];
+          if (typeof job !== "string" || !nativeCronJobs.has(job as never)) {
+            sendJson(response, 400, {
+              error: "job-must-be-morning-brief-or-executive-roll-up",
+            });
+            return;
+          }
+          const runId = body["runId"];
+          const occurrenceDate = body["occurrenceDate"];
+          const result = await options.nativeCron.run({
+            job: job as NativeScheduledReportRequest["job"],
+            ...(typeof runId === "string" ? { runId } : {}),
+            ...(typeof occurrenceDate === "string" ? { occurrenceDate } : {}),
+          });
+          sendJson(response, 200, result);
+        } catch (error) {
+          if (error instanceof RequestBodyError) {
+            sendJson(response, error.status, { error: error.code });
+            return;
+          }
+          sendJson(response, 422, {
+            error: "native-cron-rejected",
+            message: error instanceof Error ? error.message : "Unknown failure.",
+          });
+        }
+        return;
+      }
       const session = resolveSession(request, options.credentials);
 
       if (session === undefined) {

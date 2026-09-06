@@ -67,11 +67,12 @@ main() {
   fi
 
   cat <<'EOF' | sha256sum --check --strict
-ecadb877ab6efd422428baf2f062e24c38b1b1ff3df8e7452ceee947e4feb369  /usr/local/libexec/real-ming-backup
-e559348bf1061eb17b1b66c35781d38885ce4f1a42d9f64673781ed26f3a5444  /etc/systemd/system/hermes.service
-765c725f9358c673aecfd5c985e6713fd68e94d80e43b8b87bd6c7a4393f5ab8  /etc/systemd/system/real-ming.service
-4953bf99050ba56411708041c54a10d3133c730e0fadbd9c7c26f45eb6a3b106  /etc/systemd/system/real-ming-backup.service
-eb912a338a5048602a03cbfdd6e7653c34583bf85c2298085b7572e526bcf861  /etc/systemd/system/real-ming-backup.timer
+14db017a941f739e680369b351ddd6d112c00e357f92a677664fec1cc14be7c1  /usr/local/libexec/real-ming-backup
+40df5eccbed127db77dc28161d0c2e4cdfaaa381e5dd47667dd8e98a77c66c96  /etc/systemd/system/hermes.service
+63006835d16bf7fc5e678ac99769ea08bdf25208970d795be2e97af34d1000ee  /etc/systemd/system/hermes-dashboard.service
+3a716e8ad7a742f34d203124b5ed9a32cb3c8bbb8be335deb54afa54dd17de13  /etc/systemd/system/real-ming.service
+6b5e2934ff3d49fdfa487b533b4091db555b96f29b23378a57fc22f6de2a32f9  /etc/systemd/system/real-ming-backup.service
+79eaedb822b7c69ea810ea892bb77d30b1348d4c6b52e74cd4509cae32ff9f62  /etc/systemd/system/real-ming-backup.timer
 EOF
 
   rm -f -- "${image_archive}.partial" "${bundle_archive}.partial"
@@ -85,6 +86,8 @@ EOF
     "${bundle_root}/deploy/backup-control-plane.sh"
   install -m 0644 "${unit_directory}/hermes.service" \
     "${bundle_root}/deploy/systemd/hermes.service"
+  install -m 0644 "${unit_directory}/hermes-dashboard.service" \
+    "${bundle_root}/deploy/systemd/hermes-dashboard.service"
   install -m 0644 "${unit_directory}/real-ming.service" \
     "${bundle_root}/deploy/systemd/real-ming.service"
   install -m 0644 "${unit_directory}/real-ming-backup.service" \
@@ -97,6 +100,7 @@ EOF
     sha256sum \
       deploy/backup-control-plane.sh \
       deploy/systemd/hermes.service \
+      deploy/systemd/hermes-dashboard.service \
       deploy/systemd/real-ming.service \
       deploy/systemd/real-ming-backup.service \
       deploy/systemd/real-ming-backup.timer \

@@ -10,6 +10,7 @@ readonly expected_commit="${REAL_MING_EXPECTED_COMMIT:-af75e3c53e6a3befee56595ee
 readonly hermes_commit="${REAL_MING_HERMES_COMMIT:-561b053f794a1781868bb032029d589c67708119}"
 readonly hermes_install_directory="/opt/hermes-agent-561b053f"
 readonly hermes_home="/var/lib/hermes-real-ming"
+readonly hermes_obsidian_vault="${hermes_home}/obsidian-vault"
 readonly storage_account="${REAL_MING_BACKUP_STORAGE_ACCOUNT:-realmingbk09041708}"
 readonly storage_container="${REAL_MING_BACKUP_STORAGE_CONTAINER:-real-ming-backups}"
 readonly blob_prefix="${REAL_MING_MIGRATION_BLOB_PREFIX:-migration/phase4-af75e3c}"
@@ -57,7 +58,7 @@ install_hermes() {
   else
     useradd --system --create-home --home-dir "${hermes_home}" real-ming
   fi
-  install -d -o real-ming -g real-ming -m 0700 "${hermes_home}"
+  install -d -o real-ming -g real-ming -m 0700 "${hermes_home}" "${hermes_obsidian_vault}"
 
   if [[ ! -x "${hermes_install_directory}/venv/bin/hermes" ]]; then
     if [[ -e "${hermes_install_directory}" && ! -d "${hermes_install_directory}/.git" ]]; then
@@ -104,6 +105,7 @@ import_candidate_and_assets() {
   readarray -t migration_values < <(python3 - "${work_directory}/migration-manifest.json" <<'PY'
 import json
 import sys
+from pathlib import PurePosixPath
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     data = json.load(handle)
@@ -168,43 +170,99 @@ restore_state() {
   install -d -m 0700 "${restore_directory}"
   download_blob "${backup_generation}/manifest.json" "${restore_directory}/manifest.json"
 
-  mapfile -t backup_files < <(python3 - "${restore_directory}/manifest.json" "${backup_generation}" <<'PY'
+mapfile -t backup_files < <(python3 - "${restore_directory}/manifest.json" "${backup_generation}" <<'PY'
 import json
 import sys
+from pathlib import PurePosixPath
 
 with open(sys.argv[1], encoding="utf-8") as handle:
     data = json.load(handle)
 if data.get("backupId") != sys.argv[2]:
     raise SystemExit("Backup generation mismatch")
 allowed = {"state.sqlite", "notion-write-ledger.sqlite", "hermes.sqlite", "hermes-state.db"}
+allowed_native = {
+    "state.db",
+    "kanban.db",
+    "cron/executions.db",
+    "response_store.db",
+    "verification_evidence.db",
+    "runs_idempotency.db",
+    "projects.db",
+    "sessions/sessions.json",
+    "memories/USER.md",
+    "memories/MEMORY.md",
+}
 if not data.get("files"):
     raise SystemExit("Backup manifest has no files")
 for item in data["files"]:
-    if item.get("name") not in allowed:
-        raise SystemExit(f'Unexpected backup member: {item.get("name")}')
-    print(f'{item["name"]}\t{item["sha256"]}')
+    name = item.get("name")
+    if name not in allowed:
+        if isinstance(name, str) and name.startswith("hermes-native/"):
+            relative = PurePosixPath(name[len("hermes-native/"):])
+            if relative.as_posix() not in allowed_native:
+                raise SystemExit(f'Unexpected native Hermes member: {name}')
+        elif not isinstance(name, str) or not name.startswith("hermes-vault/"):
+            raise SystemExit(f'Unexpected backup member: {name}')
+        else:
+            relative = PurePosixPath(name[len("hermes-vault/"):])
+            if relative.as_posix() in {"", "."} or relative.is_absolute() or ".." in relative.parts:
+                raise SystemExit(f'Unsafe native vault member: {name}')
+    digest = item.get("sha256")
+    if not isinstance(digest, str) or len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        raise SystemExit(f'Invalid backup digest for {name}')
+    print(f'{name}\t{digest}')
 PY
   )
 
-  local row name expected_sha
+  local row name expected_sha destination relative
   for row in "${backup_files[@]}"; do
     IFS=$'\t' read -r name expected_sha <<< "${row}"
-    download_blob "${backup_generation}/${name}" "${restore_directory}/${name}"
-    printf '%s  %s\n' "${expected_sha}" "${restore_directory}/${name}" | \
+    destination="${restore_directory}/${name}"
+    install -d -m 0700 "$(dirname -- "${destination}")"
+    download_blob "${backup_generation}/${name}" "${destination}"
+    printf '%s  %s\n' "${expected_sha}" "${destination}" | \
       sha256sum --check --strict
-    sqlite3 "${restore_directory}/${name}" 'PRAGMA quick_check;' | grep -qx ok
+    case "${name}" in
+      state.sqlite|notion-write-ledger.sqlite|hermes.sqlite|hermes-state.db|\
+      hermes-native/state.db|hermes-native/kanban.db|hermes-native/cron/executions.db|\
+      hermes-native/response_store.db|hermes-native/verification_evidence.db|\
+      hermes-native/runs_idempotency.db|hermes-native/projects.db)
+        sqlite3 "${destination}" 'PRAGMA quick_check;' | grep -qx ok
+        ;;
+    esac
   done
 
   install -d -o 1000 -g 1000 -m 0700 \
     /var/lib/real-ming /var/lib/real-ming/backups /var/lib/real-ming/obsidian
+  install -d -o real-ming -g real-ming -m 0700 "${hermes_home}/obsidian-vault"
   for row in "${backup_files[@]}"; do
     IFS=$'\t' read -r name expected_sha <<< "${row}"
-    if [[ "${name}" == "hermes-state.db" ]]; then
+    if [[ "${name}" == hermes-vault/* ]]; then
+      relative="${name#hermes-vault/}"
+      destination="${hermes_home}/obsidian-vault/${relative}"
+      install -d -o real-ming -g real-ming -m 0700 "$(dirname -- "${destination}")"
+      install -o real-ming -g real-ming -m 0600 \
+        "${restore_directory}/${name}" "${destination}"
+    elif [[ "${name}" == "hermes-state.db" ]]; then
       # The backup manifest uses a neutral artifact name, but Hermes must own
       # its native database inside its isolated 0700 home. Never place it in
       # the container-mounted Real-Ming directory beside the projection map.
       install -o real-ming -g real-ming -m 0600 \
         "${restore_directory}/${name}" "${hermes_home}/state.db"
+    elif [[ "${name}" == hermes-native/* ]]; then
+      relative="${name#hermes-native/}"
+      case "${relative}" in
+        state.db|kanban.db|cron/executions.db|response_store.db|verification_evidence.db|runs_idempotency.db|projects.db|sessions/sessions.json|memories/USER.md|memories/MEMORY.md)
+          ;;
+        *)
+          printf 'Unexpected native Hermes restore member: %s\n' "${name}" >&2
+          exit 1
+          ;;
+      esac
+      destination="${hermes_home}/${relative}"
+      install -d -o real-ming -g real-ming -m 0700 "$(dirname -- "${destination}")"
+      install -o real-ming -g real-ming -m 0600 \
+        "${restore_directory}/${name}" "${destination}"
     else
       install -o 1000 -g 1000 -m 0600 \
         "${restore_directory}/${name}" "/var/lib/real-ming/${name}"
@@ -229,7 +287,8 @@ write_protected_configuration() {
     exit 1
   fi
   umask 077
-  printf 'API_SERVER_KEY=%s\n' "${secret_value}" > /etc/real-ming/hermes.env
+  printf 'API_SERVER_KEY=%s\nREAL_MING_NATIVE_CRON_ENABLED=false\n' \
+    "${secret_value}" > /etc/real-ming/hermes.env
   unset secret_value
 
   cat > /etc/real-ming/release.env <<'EOF'
@@ -242,6 +301,11 @@ REAL_MING_HERMES_REASONING=medium
 REAL_MING_HERMES_SESSIONS_PATH=/var/lib/real-ming/hermes.sqlite
 REAL_MING_OBSIDIAN_DIRECTORY=/var/lib/real-ming/obsidian
 REAL_MING_OBSIDIAN_ROOTS=CEO
+# Scheduler migration is staged disabled. Enable only after the two native
+# Hermes cron jobs exist and their dry-run/restart checks pass.
+REAL_MING_SCHEDULER_OWNERSHIP=real-ming
+REAL_MING_NATIVE_CRON_ENABLED=false
+REAL_MING_NATIVE_CRON_ENDPOINT=http://127.0.0.1:8787/internal/native-cron/run
 EOF
   cat > /etc/real-ming/backup.env <<EOF
 REAL_MING_BACKUP_STORAGE_ACCOUNT=${storage_account}
@@ -257,6 +321,8 @@ stage_services() {
     /usr/local/libexec/real-ming-backup
   install -m 0644 "${release_directory}/deploy/systemd/hermes.service" \
     /etc/systemd/system/hermes.service
+  install -m 0644 "${release_directory}/deploy/systemd/hermes-dashboard.service" \
+    /etc/systemd/system/hermes-dashboard.service
   install -m 0644 "${release_directory}/deploy/systemd/real-ming.service" \
     /etc/systemd/system/real-ming.service
   install -m 0644 "${release_directory}/deploy/systemd/real-ming-backup.service" \
@@ -271,8 +337,8 @@ stage_services() {
   systemctl daemon-reload
   # Do not arm boot-time startup before OAuth and Telegram ownership cutover.
   # Activation enables these units only after the candidate is proven.
-  systemctl disable hermes.service real-ming.service real-ming-backup.timer || true
-  systemctl stop real-ming.service hermes.service || true
+  systemctl disable hermes.service hermes-dashboard.service real-ming.service real-ming-backup.timer || true
+  systemctl stop real-ming.service hermes-dashboard.service hermes.service || true
 }
 
 verify_prepared_host() {

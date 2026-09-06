@@ -1,0 +1,21 @@
+# Native Hermes settings for the Real-Ming Malaysia host.
+#
+# This is a reviewable, secret-free fragment. Merge these keys into
+# $HERMES_HOME/config.yaml (or apply them with `hermes config set`); do not
+# replace the file because it also contains the selected model, toolsets and
+# gateway settings. Credentials remain in Hermes' protected .env/auth.json.
+
+memory:
+  # Keep the small native stores available for safe preferences and runtime
+  # lessons. Larger, cited knowledge belongs in the Obsidian/LLM-Wiki vault.
+  memory_enabled: true
+  user_profile_enabled: true
+  memory_char_limit: 2200
+  user_char_limit: 1375
+  # Telegram and background review writes are staged for CEO review.
+  write_approval: true
+
+# The bundled Obsidian skill reads this environment variable. The systemd unit
+# supplies the absolute path; it is intentionally separate from the generated
+# Real-Ming CEO projection under /var/lib/real-ming/obsidian.
+# OBSIDIAN_VAULT_PATH=/var/lib/hermes-real-ming/obsidian-vault

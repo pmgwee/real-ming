@@ -8,6 +8,7 @@ set -euo pipefail
 
 readonly hermes_home="${HERMES_HOME:-/var/lib/hermes-real-ming}"
 readonly service_account="${HERMES_SERVICE_ACCOUNT:-real-ming}"
+readonly obsidian_vault_path="${OBSIDIAN_VAULT_PATH:-${hermes_home}/obsidian-vault}"
 readonly source_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ ! -d "${hermes_home}" ]]; then
@@ -23,6 +24,16 @@ if [[ -f "${hermes_home}/SOUL.md" && ! -f "${hermes_home}/SOUL.md.pre-ming" ]]; 
 fi
 install -o "${service_account}" -g "${service_account}" -m 0644 \
   "${source_root}/SOUL.md" "${hermes_home}/SOUL.md"
+
+# The native Obsidian skill needs a concrete absolute directory. It is kept
+# separate from Real-Ming's generated CEO projection, which has its own
+# writer and recovery lifecycle.
+if [[ "${obsidian_vault_path}" != /* ]]; then
+  echo "OBSIDIAN_VAULT_PATH must be an absolute path." >&2
+  exit 1
+fi
+install -d -o "${service_account}" -g "${service_account}" -m 0700 \
+  "${obsidian_vault_path}"
 
 # Ming's skills live in their own namespace so a Hermes update that refreshes
 # the bundled skill tree cannot overwrite them, and so `hermes skills

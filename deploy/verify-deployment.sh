@@ -31,6 +31,7 @@ docker run --rm real-ming:tracer-1 \
 
 systemd-analyze verify \
   "$(pwd)/deploy/systemd/hermes.service" \
+  "$(pwd)/deploy/systemd/hermes-dashboard.service" \
   "$(pwd)/deploy/systemd/real-ming.service" \
   "$(pwd)/deploy/systemd/real-ming-backup.service" \
   "$(pwd)/deploy/systemd/real-ming-backup.timer"

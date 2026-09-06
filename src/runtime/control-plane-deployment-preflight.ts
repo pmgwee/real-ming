@@ -106,9 +106,45 @@ export async function verifyControlPlaneDeployment(
       ["isolated-hermes-state", "StateDirectory=hermes-real-ming"],
       ["loopback-only", "Environment=API_SERVER_HOST=127.0.0.1"],
       ["api-server-port", "Environment=API_SERVER_PORT=8642"],
+      ["native-obsidian-vault", "Environment=OBSIDIAN_VAULT_PATH=/var/lib/hermes-real-ming/obsidian-vault"],
       ["api-key-file", "EnvironmentFile=/etc/real-ming/hermes.env"],
       ["restart-policy", "Restart=always"],
       ["unprivileged", "User=real-ming"],
+    ],
+    failures,
+  );
+  await inspect(
+    repositoryRoot,
+    "deploy/systemd/hermes-dashboard.service",
+    [
+      ["dashboard-command", "hermes dashboard --host 127.0.0.1 --port 9119 --skip-build --no-open"],
+      ["dashboard-loopback-only", "--host 127.0.0.1"],
+      ["dashboard-port", "--port 9119"],
+      ["hermes-home", "Environment=HERMES_HOME=/var/lib/hermes-real-ming"],
+      ["native-obsidian-vault", "Environment=OBSIDIAN_VAULT_PATH=/var/lib/hermes-real-ming/obsidian-vault"],
+      ["requires-gateway", "Requires=hermes.service"],
+      ["restart-policy", "Restart=always"],
+      ["unprivileged", "User=real-ming"],
+    ],
+    failures,
+  );
+  await inspect(
+    repositoryRoot,
+    "hermes/config.native-first.example.yaml",
+    [
+      ["native-memory-enabled", "memory_enabled: true"],
+      ["user-profile-enabled", "user_profile_enabled: true"],
+      ["memory-write-approval", "write_approval: true"],
+      ["native-vault-path", "/var/lib/hermes-real-ming/obsidian-vault"],
+    ],
+    failures,
+  );
+  await inspect(
+    repositoryRoot,
+    "hermes/deploy-skills.sh",
+    [
+      ["native-vault-absolute-check", "OBSIDIAN_VAULT_PATH must be an absolute path."],
+      ["native-vault-directory", "obsidian_vault_path"],
     ],
     failures,
   );
@@ -129,14 +165,14 @@ export async function verifyControlPlaneDeployment(
     repositoryRoot,
     "deploy/systemd/real-ming-backup.service",
     [
-      ["boot-ordering", "After=hermes.service real-ming.service"],
+      ["boot-ordering", "After=hermes.service hermes-dashboard.service real-ming.service"],
       ["root-owned-helper", "/usr/local/libexec/real-ming-backup"],
       ["release-binding", "EnvironmentFile=/etc/real-ming/release.env"],
       // The backup stops the control plane. These two are what guarantee it
       // comes back: a bounded start, and a restart that runs however the
       // backup ended -- including killed on timeout.
       ["bounded-start", "TimeoutStartSec="],
-      ["unconditional-restart", "ExecStopPost=-/usr/bin/systemctl --no-block start hermes.service real-ming.service"],
+      ["unconditional-restart", "ExecStopPost=-/usr/bin/systemctl --no-block start hermes.service hermes-dashboard.service real-ming.service"],
     ],
     failures,
   );
@@ -156,8 +192,26 @@ export async function verifyControlPlaneDeployment(
       ["notion-ledger", "REAL_MING_NOTION_LEDGER_PATH=/var/lib/real-ming/notion-write-ledger.sqlite"],
       ["hermes-session-store", "REAL_MING_HERMES_SESSIONS_PATH=/var/lib/real-ming/hermes.sqlite"],
       ["quiesce-hermes-writes", "systemctl stop hermes.service"],
-      ["stage-hermes-native-state", "hermes-state.snapshot.db"],
-      ["hermes-native-state", "REAL_MING_HERMES_STATE_PATH=/var/lib/real-ming/hermes-state.snapshot.db"],
+      ["quiesce-dashboard-writes", "systemctl stop hermes-dashboard.service"],
+      ["stage-hermes-native-state", "hermes-native.snapshot"],
+      ["hermes-native-state", "REAL_MING_HERMES_NATIVE_STATE_PATH=/var/lib/real-ming/hermes-native.snapshot"],
+      ["native-state-whitelist", "hermes_native_sqlite_files=("],
+      ["native-profile-whitelist", "hermes_native_document_files=("],
+      ["native-state-checkpoint", "PRAGMA wal_checkpoint(TRUNCATE)"],
+      ["native-state-integrity", "PRAGMA quick_check"],
+      ["native-state-required", "Hermes native state.db was not available for backup."],
+      ["stage-hermes-native-vault", "hermes-vault.snapshot"],
+      ["hermes-native-vault", "REAL_MING_HERMES_VAULT_PATH=/var/lib/real-ming/hermes-vault.snapshot"],
+    ],
+    failures,
+  );
+  await inspect(
+    repositoryRoot,
+    "deploy/azure/prepare-malaysia-host.sh",
+    [
+      ["native-restore-whitelist", "allowed_native = {"],
+      ["native-restore-integrity-scope", "hermes-native/state.db|hermes-native/kanban.db"],
+      ["native-restore-safe-destination", "destination=\"${hermes_home}/${relative}\""],
     ],
     failures,
   );

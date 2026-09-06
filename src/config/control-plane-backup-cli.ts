@@ -29,6 +29,21 @@ async function main(): Promise<void> {
   const hermesStatePath = configuredHermesStatePath !== undefined && configuredHermesStatePath.length > 0 && existsSync(configuredHermesStatePath)
     ? configuredHermesStatePath
     : undefined;
+  const configuredHermesNativeStateDirectory = process.env["REAL_MING_HERMES_NATIVE_STATE_PATH"]?.trim();
+  let hermesNativeStateDirectory: string | undefined;
+  if (configuredHermesNativeStateDirectory !== undefined && configuredHermesNativeStateDirectory.length > 0) {
+    if (!existsSync(configuredHermesNativeStateDirectory)) {
+      throw new Error("The configured Hermes native state directory does not exist.");
+    }
+    hermesNativeStateDirectory = configuredHermesNativeStateDirectory;
+  }
+  if (hermesStatePath !== undefined && hermesNativeStateDirectory !== undefined) {
+    throw new Error("Configure either REAL_MING_HERMES_STATE_PATH or REAL_MING_HERMES_NATIVE_STATE_PATH, not both.");
+  }
+  const configuredHermesVaultPath = process.env["REAL_MING_HERMES_VAULT_PATH"]?.trim();
+  const hermesVaultPath = configuredHermesVaultPath !== undefined && configuredHermesVaultPath.length > 0 && existsSync(configuredHermesVaultPath)
+    ? configuredHermesVaultPath
+    : undefined;
   const directory =
     process.env["REAL_MING_LOCAL_BACKUP_DIRECTORY"]?.trim() ||
     "/var/lib/real-ming/backups";
@@ -47,6 +62,12 @@ async function main(): Promise<void> {
     ...(hermesStatePath === undefined || hermesStatePath.length === 0
       ? {}
       : { hermesStatePath }),
+    ...(hermesNativeStateDirectory === undefined || hermesNativeStateDirectory.length === 0
+      ? {}
+      : { hermesNativeStateDirectory }),
+    ...(hermesVaultPath === undefined || hermesVaultPath.length === 0
+      ? {}
+      : { hermesVaultPath }),
     destinationDirectory: directory,
     backupId,
     createdAt,

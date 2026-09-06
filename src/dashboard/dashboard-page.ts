@@ -97,6 +97,9 @@ export function renderDashboardPage(overview: DashboardOverview): string {
         `<td data-field="expectedCadence">${escapeHtml(job.expectedCadence)}</td>` +
         `<td data-field="criticality">${escapeHtml(job.criticality)}</td>` +
         `<td data-field="accountableExecutive">${escapeHtml(job.accountableExecutive)}</td>` +
+        `<td data-field="owner">${escapeHtml(job.owner)}</td>` +
+        `<td data-field="lastRunId">${escapeHtml(job.lastRunId ?? "")}</td>` +
+        `<td data-field="lastRunOwner">${escapeHtml(job.lastRunOwner ?? "")}</td>` +
         `<td data-field="lastSchedulerHeartbeat">${escapeHtml(job.lastSchedulerHeartbeat ?? "")}</td>` +
         `<td data-field="lastSuccess">${escapeHtml(job.lastSuccess ?? "")}</td>` +
         `<td data-field="nextExpectedRun">${escapeHtml(job.nextExpectedRun)}</td>` +
@@ -157,6 +160,16 @@ export function renderDashboardPage(overview: DashboardOverview): string {
       `<td data-field="lastIntent">${escapeHtml(overview.hermes.lastIntent ?? "")}</td>` +
       `<td data-field="lastWorkItemId">${escapeHtml(overview.hermes.lastWorkItemId ?? "")}</td>` +
       `<td data-field="lastFailure">${escapeHtml(overview.hermes.lastFailure ?? "")}</td>` +
+      "</tr>";
+
+  const nativeHermesRows = overview.nativeHermes === undefined
+    ? `<tr data-native-hermes-status="not-configured"><td data-field="status">not-configured</td><td data-field="owner"></td><td data-field="model"></td><td data-field="checkedAt"></td><td data-field="lastFailure"></td></tr>`
+    : `<tr data-native-hermes-status="${escapeHtml(overview.nativeHermes.status)}">` +
+      `<td data-field="status">${escapeHtml(overview.nativeHermes.status)}</td>` +
+      `<td data-field="owner">${escapeHtml(overview.nativeHermes.owner)}</td>` +
+      `<td data-field="model">${escapeHtml(overview.nativeHermes.model ?? "")}</td>` +
+      `<td data-field="checkedAt">${escapeHtml(overview.nativeHermes.checkedAt)}</td>` +
+      `<td data-field="lastFailure">${escapeHtml(overview.nativeHermes.lastFailure ?? "")}</td>` +
       "</tr>";
 
   const portfolioRows = overview.projectPortfolio
@@ -305,6 +318,12 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <h2 id="hermes-runtime-title">Hermes Runtime and Conversations</h2>
 <p>Only operational metadata is shown. Telegram prompts, provider payloads, and chain-of-thought are not rendered.</p>
 <table id="hermes-runtime"><tbody>${hermesRows}</tbody></table>
+</section>
+
+<section aria-labelledby="native-hermes-title">
+<h2 id="native-hermes-title">Native Hermes Gateway</h2>
+<p>The native gateway owns Telegram transport, slash commands, tools, plugins, MCP and conversation sessions. Session details remain in Hermes; this panel shows only Real-Ming's read-only reachability check.</p>
+<table id="native-hermes"><tbody>${nativeHermesRows}</tbody></table>
 </section>
 </main>
 <script>

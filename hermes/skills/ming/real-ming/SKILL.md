@@ -90,3 +90,22 @@ Record something when it is worth tracking: real work with an outcome Ming will
 want to see later. Do not open a record for a question, and do not let a failed
 record silently swallow work that actually happened — if the note did not save,
 say the work is done and the record is not.
+
+## Native Hermes and Real-Ming together
+
+Hermes remains the agent. Use the `real-ming` MCP tools only when a request
+needs Ming's operational continuity:
+
+1. For substantial work, call `real_ming_list_work_items` and select an
+   existing Work Item when one matches. A normal question, explanation or
+   small conversation stays native and creates no Work Item.
+2. Keep the native Hermes session/Kanban task as the execution record. Once a
+   canonical Work Item is known, call `real_ming_link_execution_task` with a
+   stable idempotency key so retries cannot create a duplicate link.
+3. Use `real_ming_get_work_item` when reporting the cross-app state or evidence.
+   If a record is missing, say so; do not write Notion or the Real-Ming SQLite
+   files directly with `file` or `terminal`.
+
+The tools add records and continuity around the native coding, research and
+tool loop. They do not replace Hermes commands, plugins, MCP, formatting,
+progress, attachments or its final answer.

@@ -64,6 +64,16 @@ describe("Ming's Hermes configuration pack", () => {
     expect(skillFile("personal-cfo")).toMatch(/never initiate Money Movement/i);
   });
 
+  it("keeps the Real-Ming extension additive to native Hermes execution", () => {
+    const skill = skillFile("real-ming");
+
+    expect(skill).toMatch(/real_ming_list_work_items/);
+    expect(skill).toMatch(/real_ming_link_execution_task/);
+    expect(skill).toMatch(/normal question[\s\S]*creates no Work Item/i);
+    expect(skill).toMatch(/do not write Notion or the Real-Ming SQLite[\s\S]*files directly/i);
+    expect(skill).toMatch(/do not replace Hermes commands, plugins, MCP/i);
+  });
+
   it("carries no configuration values, only names", () => {
     // Values live in the protected Hermes .env and Key Vault. A pack that
     // carries one puts a credential into Git the moment someone copies the
@@ -76,6 +86,18 @@ describe("Ming's Hermes configuration pack", () => {
     for (const name of everySkill) {
       expect(skillFile(name)).not.toMatch(assignment);
     }
+  });
+
+  it("ships a native-first memory policy without collapsing the Obsidian writers", () => {
+    const config = readFileSync(`${packRoot}config.native-first.example.yaml`, "utf8");
+
+    expect(config).toMatch(/memory_enabled:\s*true/u);
+    expect(config).toMatch(/user_profile_enabled:\s*true/u);
+    expect(config).toMatch(/write_approval:\s*true/u);
+    expect(config).toContain("OBSIDIAN_VAULT_PATH=/var/lib/hermes-real-ming/obsidian-vault");
+    expect(config).toContain("/var/lib/real-ming/obsidian");
+    expect(config).toMatch(/do not[\s\S]*replace the file/i);
+    expect(config).not.toMatch(/(?:REAL_MING_|TELEGRAM_|HERMES_)[A-Z_]+=\S/m);
   });
 
   it("ships nothing beyond the declared skills", () => {
