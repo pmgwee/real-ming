@@ -75,3 +75,14 @@ The protected `control-plane-smoke-cli.js --live` was then run inside the
 running Real-Ming container. It resolved the existing server-side credential,
 read the authenticated `/api/overview` endpoint and exited **0** with
 `Control-plane live smoke passed.` It emitted no token or overview payload.
+
+## Live deployment update · 7 September 2026
+
+Decision 1 installed and enabled the supervised `hermes-dashboard.service` on
+Malaysia West. The native dashboard now runs continuously on loopback
+`127.0.0.1:9119` and returned HTTP 200 after the V6 restart; Real-Ming remains
+authenticated and loopback-only on `127.0.0.1:8787` (HTTP 401 without its
+bearer). The [deployment evidence](RM-40-v6-deployment-evidence-2026-09-07.md)
+records the image and service checks. The authenticated side-by-side
+comparison and Ming's CEO outcomes review remain pending, so this does not
+close milestone 7.

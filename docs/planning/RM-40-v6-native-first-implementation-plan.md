@@ -1,6 +1,6 @@
 # RM-40 · V6 native-first implementation plan
 
-Prepared: 6 September 2026. Status: **implementation plan; migration not executed by this document**.
+Prepared: 6 September 2026. Status: **implementation plan; live deployment evidence is recorded separately**.
 
 ## Milestone status
 
@@ -13,9 +13,9 @@ Prepared: 6 September 2026. Status: **implementation plan; migration not execute
 | 4 · Configure Ming's roles and connect sources | ✅ Complete for Notion and Calendar, 6 Sep 2026; GitHub and Vercel need credentials | [Milestone 4 evidence](../evidence/RM-40-v6-milestone-4-configuration-and-sources.md). Six skills live and behaviour-verified; two sources proven by real authorized reads; two have no credential provisioned |
 | 5 · Add the missing task, schedule and action contracts | 🔄 Extension, field authority, version-aware sync and native-cron composition implemented 6 Sep 2026; **live scheduler/Notion acceptance pending** | [Extension evidence](../evidence/RM-40-v6-milestone-5-extension-evidence.md) and [scheduler ownership evidence](../evidence/RM-40-v6-milestone-5-scheduler-ownership-evidence.md). Native cron has a tested MCP composition boundary, replayable run artifacts and explicit ownership; Master Tasks refuses an unverified external overwrite; production jobs remain staged until the cutover checks pass |
 | 6 · Native memory, Obsidian, cited knowledge | 🔄 Foundation and recovery wiring implemented 6 Sep 2026; **live config/note/restore acceptance pending** | [Milestone 6 evidence](../evidence/RM-40-v6-milestone-6-native-memory-evidence.md) |
-| 7 · Private dashboard and CEO outcomes | 🔄 Native Hermes dashboard live-observed privately, 6 Sep 2026; **authenticated Real-Ming comparison and CEO outcomes review pending** | [Milestone 7 dashboard evidence](../evidence/RM-40-v6-milestone-7-dashboard-evidence.md) |
+| 7 · Private dashboard and CEO outcomes | 🔄 Native Hermes dashboard supervised and live on loopback, 7 Sep 2026; **authenticated Real-Ming comparison and CEO outcomes review pending** | [Milestone 7 dashboard evidence](../evidence/RM-40-v6-milestone-7-dashboard-evidence.md) and [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
 | 8 · Complete acceptance scenarios | 🔄 Acceptance matrix and controlled regression assembled 6 Sep 2026; **live/user acceptance pending** | [Milestone 8 evidence](../evidence/RM-40-v6-milestone-8-acceptance-evidence.md) |
-| 9 · Recovery, readiness, closeout | 🔄 Manifest-verified isolated restore and native-state backup coverage implemented and controlled-tested 6 Sep 2026; **live restore/restart and closeout pending** | [Milestone 9 evidence](../evidence/RM-40-v6-milestone-9-recovery-evidence.md) |
+| 9 · Recovery, readiness, closeout | 🔄 Manifest-verified post-deploy backup and isolated restore live-verified 7 Sep 2026; **Malaysia restart/reconcile and closeout pending** | [Milestone 9 evidence](../evidence/RM-40-v6-milestone-9-recovery-evidence.md) and [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
 
 
 ## TL;DR

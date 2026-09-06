@@ -8,12 +8,18 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## 🚦 Current status
 
-*As of 2026-09-06 · run `npm run graph:status` for live truth*
+*As of 2026-09-07 · run `npm run graph:status` for live truth*
 
 **Design baseline: Architecture Revision 6 — [native Hermes + thin Real-Ming extension](../docs/architecture/real-ming-agent-diagram-v6.html), recorded in [ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md).**
 Read [why the earlier architecture drifted and what to reuse](../docs/architecture/RM-40-v6-architecture-review.md)
 and the [official Hermes capability comparison](../docs/architecture/RM-40-hermes-native-capability-review.md).
-**Deployed revision: Revision 6, partially activated.** The native Hermes gateway owns your Telegram bot, Real-Ming runs the Revision 6 image and polls nothing, and the extension is registered as an MCP server. The two labels are stated separately in [docs/BASELINE.md](../docs/BASELINE.md) on purpose; neither is evidence for the other.
+**Deployed revision: Revision 6, partially activated.** Malaysia West now runs
+`real-ming:v6-23bd903`; the native Hermes gateway owns your Telegram bot,
+Real-Ming polls nothing, the supervised native dashboard is loopback-only and
+the extension is registered as an MCP server. The protected backup and isolated
+restore passed. The two labels are stated separately in
+[docs/BASELINE.md](../docs/BASELINE.md) on purpose; neither is evidence for the
+other. See the [deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md).
 
 **Milestone 0 — done, 6 September.** The specification, ADRs, baseline labels, ticket-graph metadata and baseline tests are reconciled to Revision 6, and every Revision 5 requirement now carries a keep/revise/defer/remove disposition in the [requirement ledger](../docs/planning/RM-40-v6-requirement-ledger.md). `npm run check` passes: 771 tests, exit 0.
 
@@ -29,9 +35,9 @@ and the [official Hermes capability comparison](../docs/architecture/RM-40-herme
 
 **Milestone 6 — native memory foundation is implemented; live note/recall remains pending.** The native Hermes vault is separated from the generated CEO projection and included in the recovery set. [Milestone 6 evidence](../docs/evidence/RM-40-v6-milestone-6-native-memory-evidence.md).
 
-**Milestone 7 — the native Hermes dashboard is live-observed privately; Real-Ming comparison remains pending.** Hermes reachability, Telegram connection, 59 enabled skills, the `real-ming` MCP server and zero native cron jobs are visible without copying native sessions or inventing legacy conversation state. [Milestone 7 evidence](../docs/evidence/RM-40-v6-milestone-7-dashboard-evidence.md).
+**Milestone 7 — the native Hermes dashboard is supervised and live privately; Real-Ming comparison remains pending.** Hermes reachability, Telegram connection, 59 enabled skills, the `real-ming` MCP server and zero native cron jobs are visible without copying native sessions or inventing legacy conversation state. [Milestone 7 evidence](../docs/evidence/RM-40-v6-milestone-7-dashboard-evidence.md).
 
-**Milestones 8–9 — acceptance and recovery are prepared and controlled-tested, not accepted.** The matrix and restore evidence keep phone/provider/CEO actions explicit. [Milestone 8 evidence](../docs/evidence/RM-40-v6-milestone-8-acceptance-evidence.md) and [milestone 9 evidence](../docs/evidence/RM-40-v6-milestone-9-recovery-evidence.md).
+**Milestone 8 — acceptance remains pending.** The matrix keeps phone/provider/CEO actions explicit. **Milestone 9 — backup and isolated restore are live-verified; restart/reconcile and closeout remain.** See [milestone 8 evidence](../docs/evidence/RM-40-v6-milestone-8-acceptance-evidence.md), [milestone 9 evidence](../docs/evidence/RM-40-v6-milestone-9-recovery-evidence.md) and the [deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md).
 
 For future projects, use [the build-alignment lessons and reusable prompts](../docs/agents/LESSONS-LEARNED-build-alignment.md) with the installed `$build-alignment` skill.
 
@@ -39,7 +45,7 @@ For future projects, use [the build-alignment lessons and reusable prompts](../d
 | --- | --- |
 | Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
 | Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
-| Next engineering work | Live-verify the native cron/memory/dashboard boundaries when the CEO window is available, then run the V6 acceptance and restore checks. |
+| Next engineering work | CEO-approved native cron/memory acceptance, authenticated dashboard comparison, bounded coding acceptance, Malaysia restart/reconcile and final closeout. |
 | Waiting on you | Native cron/memory/dashboard acceptance, bounded coding and recovery scenarios, GitHub/Vercel credentials, and the explicit live deployment/delivery decisions below. **Nothing blocks controlled engineering.** See [Phase 4 CEO actions](phase-4-ceo-action.md). Leave the East Asia VM stopped but undeleted; nothing to do in Tailscale. |
 
 **Recorded V5 implementation status (2026-09-04; not V6 acceptance).** The approved Revision 5
@@ -184,24 +190,24 @@ Two came out of the RM-30 reviews. Neither blocks anything; both change what you
 
 | Decision | What it contains | Recommendation | Status |
 | --- | --- | --- | --- |
-| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | Malaysia West replacement active; keep East Asia stopped but undeleted for rollback until post-conversation proof, then deallocate it. | 🔄 Telegram/backup proof pending |
+| Where Real-Ming runs | A genuinely always-on host with a persistent disk and a secret store. Must not be serverless: state is SQLite and the Telegram front door is a long-lived process. | Malaysia West V6 bundle active; keep East Asia deallocated but undeleted for rollback until final closeout. | 🔄 Final closeout pending |
 | Prepare RM-15 candidate | Rebuilt from `5016918` after two blocking defects were found in the earlier candidate. | Approved and executed 31 Aug. | ✅ Done |
 | Activate RM-15 candidate | Started image `sha256:0ed353723aa4…`; Telegram proven from a phone with the Lenovo shut. | Approved and executed 31 Aug. | ✅ Done |
-| Off-host backup | An Azure Storage account and a narrowly scoped role assignment, so the Work Items survive losing the VM. | Singapore Storage account/container, both VM grants, manifest-last upload and base restore rehearsal are proven. Repeat after the first Hermes conversation to include native session state. | 🔄 Post-Hermes proof pending |
+| Off-host backup | An Azure Storage account and a narrowly scoped role assignment, so the Work Items survive losing the VM. | Singapore Storage account/container, both VM grants, manifest-last upload, native-state backup and isolated restore are verified on the V6 host. | ✅ V6 backup/restore verified; closeout review pending |
 | Select RM-17 Personal Context item | One bounded file or allowlisted Notion page plus source metadata for the first Candidate Envelope. | Approved `personal-context/working-preferences.md` snapshot for COO daily planning. | ✅ Done in RM-17 |
 | Tracer 1 milestone PR | PR #47 carried RM-07…RM-44 and was much larger than the intended milestone boundary. | Merged by the CEO on 3 September 2026. Return to one reviewable milestone per PR for Phase 4. | ✅ Done |
 | `ceo-confirmed` career claims are unverified | RM-33 accepts a claim labelled "CEO confirmed" at face value: there is no Approval record behind the label, so it is only as trustworthy as whatever gates the caller. | Bind it to a real Approval in its own ticket if you want the label to mean something. | ⏳ Open |
 | V6 Telegram ownership | Native Hermes owns the gateway, commands, conversation and execution; Real-Ming adds selected integrations. | One-owner migration executed on Malaysia West; retain East Asia for rollback until the remaining V6 acceptance and recovery proof. | ✅ Transport cutover live; broader V6 acceptance pending |
 | **RM-40 (#41) acceptance criteria** | The open readiness ticket is written for Revision 5. It has no criterion for native Telegram ownership, native presentation, a real coding loop, or native memory. Passing it as written would repeat the drift the lessons document describes. | Approve adding five native-experience criteria — the exact wording is in [the requirement ledger §6](../docs/planning/RM-40-v6-requirement-ledger.md). I will post it as an issue comment once you say yes; nothing has been written to GitHub. | ⏳ Open — decision 1 |
 | **Optional curated-knowledge guarantees** | Versioned atomic publication, contradiction quarantine and access-controlled cross-domain projection are built and controlled-tested but were never wired to a production caller. Revision 6 makes them optional rather than default. | Defer. Prove native Obsidian/LLM-Wiki knowledge first in milestone 6, then decide against observed gaps instead of in advance. The code and design are preserved either way. | ⏳ Open — decision 2 |
-| **Deploy the new V6 recovery/dashboard bundle** | The candidate adds the supervised loopback Hermes dashboard unit and whitelist-only native-state backup/restore coverage. It is a new bundle; the prior image approval does not cover it. | Approve after reviewing the controlled gates; keep all listeners loopback-only and retain East Asia for rollback. | ⏳ Open — live deployment decision |
+| **Deploy the new V6 recovery/dashboard bundle** | The candidate adds the supervised loopback Hermes dashboard unit and whitelist-only native-state backup/restore coverage. It is a new bundle; the prior image approval does not cover it. | Approved and executed on Malaysia West; all listeners remain loopback-only and East Asia is retained for rollback. | ✅ Deployed; [evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
 | **Create native cron jobs and switch ownership** | Exactly two Telegram-delivering jobs (07:30/21:30 Kuala Lumpur) and the protected ownership flags. | Approve only after the fourth MCP tool is live and one-run/restart checks pass; keep the old scheduler until then. | ⏳ Open — live delivery decision |
 | **Enable native memory write approval** | Hermes currently has memory/profile enabled but `memory.write_approval=false`. Enabling it permits supervised persistent profile/memory writes. | Approve only with the note/recall and restart test plan in `phase-4-ceo-action.md`; preserve other memories. | ⏳ Open — live memory decision |
 | **Native default model does not match the credential** | The host's Hermes `config.yaml` defaults to `anthropic/claude-opus-4.6` over OpenRouter, while the only credential is Codex OAuth. The V5 bridge hides this by overriding every call; the native gateway would not. | Engineering will set the native default to `gpt-5.6-sol` / `openai-codex` through protected configuration before cutover. Tell me only if you want a different model for Telegram. | 🔧 Engineering; no CEO action unless you want a different model |
-| Dashboard exposure | The production dashboard is private over Tailscale/SSH and protected by a bearer token. | Tailscale enrollment, private tunnel and authenticated dashboard smoke passed; native dashboard unit is now staged but not installed; no public domain or port. | 🔄 Native dashboard observed; Real-Ming comparison/CEO review pending |
+| Dashboard exposure | The production dashboard is private over Tailscale/SSH and protected by a bearer token. | Tailscale enrollment, private tunnel and authenticated dashboard smoke passed; supervised native dashboard is active on loopback; no public domain or port. | 🔄 Real-Ming comparison/CEO review pending |
 | Obsidian destination and sync | Native Obsidian/Wiki use comes first; curated generated projections remain a separate optional contract. | Native vault path and whitelist-only backup are implemented; live config/note/recall/restore checks remain. No sync is enabled. | 🔄 Live acceptance pending; device sync choice later |
 | Hermes API/OAuth activation | Real-Ming receives only a private API-server key and never copies the Codex OAuth token. | Pinned Hermes, bridge key, Codex OAuth, loopback health and harmless GPT-5.6 Sol proof all passed. | ✅ Activated |
-| Hermes native-state backup | Native Hermes databases, session/profile files and vault are whitelisted and checkpointed; OAuth/auth/config/cache/log files are excluded. | Controlled manifest/restore checks pass. Run the protected post-conversation backup and isolated restore on Malaysia. | 🔄 Post-Hermes proof pending |
+| Hermes native-state backup | Native Hermes databases, session/profile files and vault are whitelisted and checkpointed; OAuth/auth/config/cache/log files are excluded. | Protected V6 backup and isolated restore passed on Malaysia; no credential-bearing paths were included. | ✅ Live backup/restore verified; restart/closeout pending |
 | Superseded Personal projection retention | The current 12-month window starts at publication, so an old projection superseded today may purge immediately. | Start the 12 months at supersession by adding `superseded_at`; preserve the current rule only if that immediate-purge behaviour is intentional. | ⏳ Open |
 
 *Settled:* `RM11-CUTOVER-1` approved 29 Aug 2026, then invalidated the same day by source drift before any write.

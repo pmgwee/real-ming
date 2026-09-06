@@ -1,6 +1,8 @@
 # Phase 4 CEO actions
 
-> **Current next step · 6 September 2026:** Engineering follows [the V6 native-first implementation plan](../docs/planning/RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. The checks below describe the recorded V5 activation; repeat phone acceptance after the native candidate is ready. No new login requirement has been established by the plan.
+> **Current next step · 7 September 2026:** Engineering follows [the V6 native-first implementation plan](../docs/planning/RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. Decision 1 is now executed: Malaysia West runs the V6 bundle, the supervised native dashboard is active privately, and backup/isolated-restore proof passed. The remaining CEO actions are native cron/memory decisions, dashboard comparison and user acceptance; no new login requirement has been established by the plan.
+
+> **Live deployment record:** [RM-40 V6 deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md). The East Asia VM remains deallocated and undeleted for rollback. Do not paste any credential values into this file.
 
 ## ✅ CLEARED — and now one test only you can run · 6 September 2026
 
@@ -162,11 +164,12 @@ retrieve it again. The editable native vault is
 projection remains `/var/lib/real-ming/obsidian`. Do not sync either directory
 to another device until its scope is reviewed.
 
-Finally run the protected backup service and inspect the manifest for the
-whitelisted native Hermes state/profile files and native-vault hashes. Restore
-that set to an isolated directory with providers, delivery and schedules
-disabled. No OAuth, auth, config, cache or log file belongs in the backup.
-These checks are required before milestone 6 can be marked accepted.
+Engineering has now run the protected backup and inspected the manifest for the
+whitelisted native Hermes state/profile files. The set was restored to an
+isolated container destination with providers, delivery and schedules
+disabled; no OAuth, auth, config, cache or log file belonged in the backup.
+Native note/recall and the deliberate memory-write approval are still required
+before milestone 6 can be marked accepted.
 
 For the isolated restore, engineering provides an explicit guarded command
 after the backup ID is known (replace only the two paths; never paste a secret):
@@ -207,11 +210,9 @@ credentials into the repository.
 
 The controlled restore boundary is documented in
 [milestone 9 evidence](../docs/evidence/RM-40-v6-milestone-9-recovery-evidence.md).
-After the first accepted native conversation, run the protected backup once,
-verify the manifest-last upload contains the Hermes native state and vault, and
-restore it to an isolated destination with providers, delivery and schedules
-disabled. Confirm SQLite integrity and native continuity before enabling
-anything in the restored copy.
+The post-deploy protected backup and isolated restore have passed on Malaysia;
+confirm SQLite integrity and native continuity in the evidence before enabling
+anything in a restored copy.
 
 Then review restart/reconciliation, cost/usage and retention evidence; update
 the baseline, readiness report and issue evidence; and only after acceptance
@@ -297,12 +298,10 @@ candidate.
 
 ## 4. Review the private dashboard
 
-The native dashboard currently answers on `127.0.0.1:9119` through a
-temporary process; the supervised `hermes-dashboard.service` is staged in the
-new candidate but is not installed/enabled on Malaysia yet. Real-Ming answers
-on `127.0.0.1:8787` and remains bearer-authenticated. After the candidate is
-approved and the unit is installed, the agent will create the private tunnel
-and open both views. Ming must visually confirm:
+The native dashboard is now supervised by `hermes-dashboard.service` on
+`127.0.0.1:9119`; Real-Ming answers on `127.0.0.1:8787` and remains
+bearer-authenticated. Through the existing private tunnel, Ming must visually
+confirm:
 
 - Hermes Runtime reports healthy and identifies the expected model/provider.
 - Conversations show metadata and durable status without prompts,
@@ -326,11 +325,11 @@ folder to another device or cloud sync service requires a separate review.
 
 ## 6. Confirm final completion evidence
 
-The earlier Malaysia West green/blue approval covers the already-executed
-candidate and East Asia rollback retention. It does **not** silently approve a
-new image/bundle, installing the staged dashboard unit, creating Telegram-
-delivering native cron jobs, or changing the protected memory-write setting;
-those are the explicit live decisions in sections 7–10.
+Decision 1 covers the approved V6 image/bundle deployment and installation of
+the supervised dashboard unit; East Asia rollback retention remains in place.
+It does **not** silently approve creating Telegram-delivering native cron jobs
+or changing the protected memory-write setting; those remain the explicit live
+decisions in sections 7–10.
 
 Before accepting completion, check that the agent reports all of these:
 
@@ -340,7 +339,8 @@ Before accepting completion, check that the agent reports all of these:
 - A new off-host backup includes Real-Ming state, the Hermes conversation map,
   all whitelisted native Hermes durable state/profile files and the native
   vault, but no OAuth/auth/config file.
-- The restore rehearsal passed manifest hashes and SQLite checks.
+- The restore rehearsal passed manifest hashes and SQLite checks (already
+  verified for generation `2026-09-06T16-48-52.608Z`).
 - East Asia was deallocated, not deleted, and remains available for rollback.
 - Malaysia West is the only active Telegram owner.
 - Repository checks passed and the runbook/status board were updated.

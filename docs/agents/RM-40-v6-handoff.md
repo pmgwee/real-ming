@@ -8,12 +8,29 @@ had `npm run check` exit 0. Current direct gates are recorded in the newest
 milestone evidence files.
 
 The latest controlled regression after the recovery addition is **69 Vitest
-files, 813 passed and 2 intentionally skipped**, exit 0; typecheck, production
+files, 814 passed and 2 intentionally skipped**, exit 0; typecheck, production
 build, deployment preflight, audit and diff checks also exited 0. No live
 provider, cron, Telegram-delivery or Obsidian action was performed by that
 regression.
 
 **Nothing is blocking. Continue at milestone 5's remainder.**
+
+## Deployment update · 7 September 2026
+
+Decision 1 was approved and executed on Malaysia West. The host now runs
+`real-ming:v6-23bd903` from commit `23bd90392ffcff7798ec3602ff2f0fc0de6d16bb`
+(image ID
+`sha256:388f0de13fbf4d313f78fa36b32fa62248bf3fe059ccfc05561e2b26b9f630f0`).
+Hermes, the supervised native dashboard, Real-Ming and the backup timer are
+active and enabled; all three listeners remain loopback-only. The authenticated
+control-plane smoke passed. A protected backup and isolated restore also
+passed; see [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md).
+
+The first backup attempt exposed and then corrected a Windows CRLF packaging
+defect. Use `git -c core.autocrlf=false archive` for future Linux deployment
+archives; commit `2c708f4` adds the repository line-ending guard. Native cron
+still has zero jobs and memory write approval is still disabled; neither was
+changed by this deployment.
 
 ## Read these first, in this order
 
@@ -65,11 +82,11 @@ Read the one for the milestone you are continuing.
   (`@MingCreativesBot`), 60 commands registered, Ming's allowlist loaded.
 - Model default is now `gpt-5.6-sol` / `openai-codex`. Codex OAuth is healthy —
   **do not re-login.**
-- Real-Ming runs image `real-ming:rev6-fb2756a` with
+- Real-Ming runs image `real-ming:v6-23bd903` with
   `REAL_MING_TELEGRAM_OWNERSHIP=native-hermes-gateway`; it polls nothing.
 - The Real-Ming extension is registered as MCP server `real-ming` (3 tools,
   enabled) from `/opt/real-ming-extension`.
-- A read-only service-account check on 6 September found the native cron
+- A read-only service-account check on 7 September found the native cron
   ticker healthy but **zero scheduled jobs**, and the protected release files
   do not yet contain the native-cron ownership/enablement flags. The fourth
   scheduled-report tool is therefore not exposed on the deployed image; the
@@ -80,17 +97,17 @@ Read the one for the milestone you are continuing.
   idempotency/project stores, `sessions/sessions.json` and `memories/USER.md`;
   the new backup helper whitelists and checkpoints these without copying
   auth/OAuth/config/cache/log material.
-- The native dashboard still answers on loopback `127.0.0.1:9119` through a
-  temporary process. The supervised `hermes-dashboard.service` is staged in
-  this repository but is not installed/enabled on the host; the Real-Ming
-  dashboard remains authenticated on `127.0.0.1:8787`.
+- The native dashboard is supervised by `hermes-dashboard.service` on loopback
+  `127.0.0.1:9119`; the Real-Ming dashboard remains authenticated on
+  `127.0.0.1:8787`. Both are private and no public port was opened.
 - East Asia VM `real-ming-control-plane` is **Stopped (deallocated)** and
   retained for rollback. Do not delete it until milestone 9. Nothing to do in
   Tailscale; leave the device registered.
 - Rollback copies on the host: `release.env.pre-rev6`,
   `real-ming.service.pre-rev6`, `config.yaml.pre-rev6`, `.env.pre-rev6`, and
   image `real-ming:phase4-af75e3c`.
-- Pre-cutover backup generation `2026-09-06T04-01-39.054Z`.
+- Post-deploy backup generation `2026-09-06T16-48-52.608Z`; the East Asia VM is
+  still retained deallocated for rollback.
 
 ## Do this next
 

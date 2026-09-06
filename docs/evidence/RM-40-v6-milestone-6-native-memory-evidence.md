@@ -60,3 +60,12 @@ The optional curated guarantees (candidate quarantine, atomic compiled
 generations and cross-domain CEO projections) remain a separate disposition
 decision after this native workflow is observed; they are not counted as
 native-memory proof.
+
+## Live deployment update · 7 September 2026
+
+On Malaysia West, Hermes reports `memory_enabled=true`,
+`user_profile_enabled=true` and `write_approval=false`. The protected V6
+backup and isolated restore now include and verify the native state/profile
+files; see the [deployment evidence](RM-40-v6-deployment-evidence-2026-09-07.md).
+The note/recall, restart-recall and deliberate memory-write approval checks
+remain pending, so milestone 6 is not yet accepted.

@@ -1,8 +1,8 @@
 # RM-40 V6 · Milestone 9 — recovery implementation and closeout boundary
 
-Prepared 6 September 2026. This records the engineering portion of recovery
-work. It does not claim that a post-conversation Azure backup has been restored
-or that Revision 6 is ready to close.
+Prepared 6 September 2026. The engineering boundary was controlled-tested on
+that date; the live deployment and recovery checks below were added on 7
+September 2026. Revision 6 is still not ready to close.
 
 ## What changed
 
@@ -36,19 +36,35 @@ or that Revision 6 is ready to close.
 4. isolated restore with SQLite integrity checks for every restored store; and
 5. tamper rejection before a destination directory is created.
 
-Latest repository regression: **69 files, 813 passed, 2 intentionally skipped**,
+Latest repository regression: **69 files, 814 passed, 2 intentionally skipped**,
 exit 0. Typecheck, production build, deployment preflight, audit and diff
 checks also exited 0.
 
+## Live deployment and recovery verification · 7 September 2026
+
+The approved V6 bundle is running on Malaysia West as
+`real-ming:v6-23bd903`, with the native Hermes gateway, supervised native
+dashboard and Real-Ming service active on loopback. The first backup start
+failed before touching state because a Windows `git archive` emitted CRLF into
+the helper shebang (`bash\r`, exit 127); `ExecStopPost` restored all services.
+An LF-safe archive made with `git -c core.autocrlf=false archive` replaced the
+helper, and commit `2c708f4` adds `.gitattributes` plus a regression test.
+
+The corrected protected backup passed with generation
+`2026-09-06T16-48-52.608Z`. Its manifest contained 12 files: the three
+retained Real-Ming stores and the whitelisted Hermes native state/profile and
+session files. No `auth.json`, `.env`, config, cache or log path was present.
+The input was mounted read-only, copied into an ephemeral container tmpfs, and
+the deployed restore CLI verified 12 files with 10 SQLite integrity checks at
+an isolated destination. No live state, providers, schedules or credentials
+were written.
+
 ## Live closeout still required
 
-Ming must still run the protected backup after the first accepted native
-conversation so Hermes native state and the native vault are present, inspect
-the manifest without exposing secrets, and restore it to an isolated
-destination with providers, delivery and schedules disabled. The Malaysia
-restart/reconcile check, cost/usage and retention review, baseline/readiness
-update, and the previously approved East Asia VM deallocation
-(stop/deallocate, never delete) remain separate acceptance actions.
+Ming must still complete the Malaysia restart/reconcile check, cost/usage and
+retention review, and final baseline/readiness closeout. The previously
+approved East Asia VM deallocation (stop/deallocate, never delete) remains a
+separate final action; it is currently retained deallocated for rollback.
 
-Milestone 9 is therefore **implemented at the recovery boundary and
-controlled-tested, but not live-verified, user-accepted or closed**.
+Milestone 9 is therefore **live-verified at the backup/isolated-restore
+boundary, but not user-accepted or closed**.
