@@ -158,6 +158,11 @@ export async function verifyControlPlaneDeployment(
       ["vault-identity", "REAL_MING_AZURE_KEY_VAULT_NAME=real-ming-vault"],
       ["immutable-release", "${REAL_MING_IMAGE}"],
       ["release-binding", "EnvironmentFile=/etc/real-ming/release.env"],
+      // The MCP extension runs as a different account and must reach this
+      // directory. Forcing a private mode here reverted that grant on every
+      // restart and broke the extension silently; setgid also makes the SQLite
+      // -wal and -shm files inherit the shared group.
+      ["shared-data-group", "-o 1000 -g real-ming-data -m 2770 /var/lib/real-ming"],
     ],
     failures,
   );
