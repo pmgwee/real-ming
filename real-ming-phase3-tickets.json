@@ -5,7 +5,7 @@
   "repository": "pmgwee/real-ming",
   "parentSpecIssue": 1,
   "ticketCount": 44,
-  "architectureDecision": "Real-Ming v1.1 Architecture Revision 5: Hermes-first intelligence behind governed Real-Ming Telegram ingress, with Trust-Domain Knowledge Vault, Hermes Knowledge Compiler, Obsidian IDE, bounded Hot Runtime Memory, and brokered Agent Brain Project Evidence",
+  "architectureDecision": "Real-Ming v1.1 Architecture Revision 6: native Hermes owns the Telegram gateway, conversation, tools and execution, with Real-Ming as a thin additive extension for Ming context, Master Tasks semantics, cross-app records and CEO views; native memory and Obsidian/LLM Wiki knowledge by default, with the Trust-Domain Knowledge Vault and Projection Broker retained as optional stronger guarantees, and brokered Agent Brain Project Evidence",
   "tickets": [
     {
       "id": "RM-01",

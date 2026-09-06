@@ -8,15 +8,28 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## 🚦 Current status
 
-*As of 2026-09-05 · run `npm run graph:status` for live truth*
+*As of 2026-09-06 · run `npm run graph:status` for live truth*
+
+**Design baseline: Architecture Revision 6 — [native Hermes + thin Real-Ming extension](../docs/architecture/real-ming-agent-diagram-v6.html), recorded in [ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md).**
+Read [why the earlier architecture drifted and what to reuse](RM-40-v6-architecture-review.md)
+and the [official Hermes capability comparison](RM-40-hermes-native-capability-review.md).
+**Deployed revision is still 5:** the bot continues to use the V5 Real-Ming Telegram/API bridge.
+The two labels are stated separately in [docs/BASELINE.md](../docs/BASELINE.md) on purpose; neither is evidence for the other.
+
+**Milestone 0 — done, 6 September.** The specification, ADRs, baseline labels, ticket-graph metadata and baseline tests are reconciled to Revision 6, and every Revision 5 requirement now carries a keep/revise/defer/remove disposition in the [requirement ledger](RM-40-v6-requirement-ledger.md). `npm run check` passes: 771 tests, exit 0.
+
+**Milestone 1 — done, 6 September. Native Hermes really codes.** On a disposable fixture repository on the Malaysia host it ran a failing test suite, searched and read the source, applied a patch and re-ran the suite — 15 native tool calls in 58 seconds — and the fix was verified independently of anything the model claimed. It also found two real defects in the installed version's scripted interface. Evidence and limits: [milestone 1 evidence](RM-40-v6-milestone-1-native-runtime-evidence.md). No Telegram traffic and no service change were involved.
+
+For future projects, use [the build-alignment lessons and reusable prompts](LESSONS-LEARNED-build-alignment.md) with the installed `$build-alignment` skill.
 
 | | |
 | --- | --- |
 | Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
 | Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
-| Waiting on you | Follow [Phase 4 CEO actions](phase-4-ceo-action.md): authorize Hermes with Codex OAuth and enroll the Malaysia host in Tailscale. The same checklist covers the later Telegram, dashboard and Obsidian CEO reviews. |
+| Next engineering work | Milestone 2 — prepare the reversible one-owner Telegram migration. Repository work; no new authorization needed. |
+| Waiting on you | Three decisions, none blocking milestone 2. See [Phase 4 CEO actions](phase-4-ceo-action.md). OAuth and Tailscale remain healthy — re-confirmed 6 September; do not sign in again. |
 
-**Phase 4 implementation status (2026-09-04).** The approved Revision 5
+**Recorded V5 implementation status (2026-09-04; not V6 acceptance).** The approved Revision 5
 Hermes-first path is implemented and covered by controlled system tests:
 Real-Ming validates identity/idempotency/secrets, binds a durable Telegram
 conversation to the private Hermes API, accepts Hermes's structured intent and
@@ -28,19 +41,21 @@ when a Knowledge generation changes. The production composition resolves the
 Hermes API-server key from the protected environment or Key Vault; Hermes, not
 Real-Ming, owns the Codex OAuth session.
 
-This implementation is now deployed as an inactive green candidate in Malaysia
-West. Production Telegram ownership has not moved yet, no public dashboard or
-SSH port is exposed, and no Notion mutation was performed during preparation.
+This implementation is active on Malaysia West, which owns production Telegram
+polling. The private dashboard is reachable. The CEO smoke proves real Hermes
+answers but exposes missing typing/formatting, a legacy role-command bypass and
+an unbound proposed-tool execution path. Full coding readiness is not proven.
 
 **Latest live audit (2026-09-05).** The approved Malaysia West replacement VM
 `real-ming-control-plane-my` is prepared with the exact reviewed Phase 4 image,
 pinned Hermes v0.21.0 commit, verified restored SQLite state, protected bridge
 key, narrowly scoped Key Vault/Blob roles and zero custom inbound NSG rules.
-Tailscale is installed and the CEO-only Obsidian destination is staged. OpenAI
-Codex OAuth and Tailscale each issued an interactive browser authorization and
-are waiting on Ming. Until both complete and Hermes passes a harmless model
-conversation, the candidate services remain inactive and the East Asia service
-remains the sole Telegram owner.
+Codex OAuth and Tailscale authorization are complete; Hermes and Real-Ming are
+active on Malaysia. The East Asia services were stopped for cutover and the VM
+is retained for rollback. The Obsidian destination is configured, but Knowledge
+Operations is not enabled by the production CLI and needs implementation work.
+See [the smoke findings](RM-40-phase4-telegram-smoke-findings.md) before treating
+the activation as complete.
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
 writable task system, Google Calendar is the calendar Source of Record, and the
@@ -163,9 +178,12 @@ Two came out of the RM-30 reviews. Neither blocks anything; both change what you
 | Select RM-17 Personal Context item | One bounded file or allowlisted Notion page plus source metadata for the first Candidate Envelope. | Approved `personal-context/working-preferences.md` snapshot for COO daily planning. | ✅ Done in RM-17 |
 | Tracer 1 milestone PR | PR #47 carried RM-07…RM-44 and was much larger than the intended milestone boundary. | Merged by the CEO on 3 September 2026. Return to one reviewable milestone per PR for Phase 4. | ✅ Done |
 | `ceo-confirmed` career claims are unverified | RM-33 accepts a claim labelled "CEO confirmed" at face value: there is no Approval record behind the label, so it is only as trustworthy as whatever gates the caller. | Bind it to a real Approval in its own ticket if you want the label to mean something. | ⏳ Open |
-| Phase 4 Telegram transport process | One governed ingress must run before Hermes sees model context. | Real-Ming owns the one Telegram polling loop; Hermes owns persistent conversation, reasoning and coding behind the private API. | ✅ Settled and staged |
+| V6 Telegram ownership | Native Hermes owns the gateway, commands, conversation and execution; Real-Ming adds selected integrations. | Follow the V6 plan for a reversible one-owner migration from the currently deployed V5 bridge. | 🔄 Recorded as ADR-0020 and Architecture Revision 6 on 6 Sep; migration pending |
+| **RM-40 (#41) acceptance criteria** | The open readiness ticket is written for Revision 5. It has no criterion for native Telegram ownership, native presentation, a real coding loop, or native memory. Passing it as written would repeat the drift the lessons document describes. | Approve adding five native-experience criteria — the exact wording is in [the requirement ledger §6](RM-40-v6-requirement-ledger.md). I will post it as an issue comment once you say yes; nothing has been written to GitHub. | ⏳ Open — decision 1 |
+| **Optional curated-knowledge guarantees** | Versioned atomic publication, contradiction quarantine and access-controlled cross-domain projection are built and controlled-tested but were never wired to a production caller. Revision 6 makes them optional rather than default. | Defer. Prove native Obsidian/LLM-Wiki knowledge first in milestone 6, then decide against observed gaps instead of in advance. The code and design are preserved either way. | ⏳ Open — decision 2 |
+| **Native default model does not match the credential** | The host's Hermes `config.yaml` defaults to `anthropic/claude-opus-4.6` over OpenRouter, while the only credential is Codex OAuth. The V5 bridge hides this by overriding every call; the native gateway would not. | Engineering will set the native default to `gpt-5.6-sol` / `openai-codex` through protected configuration before cutover. Tell me only if you want a different model for Telegram. | 🔧 Engineering; no CEO action unless you want a different model |
 | Dashboard exposure | The production dashboard is private over Tailscale/SSH and protected by a bearer token. | Tailscale enrollment, private tunnel and authenticated dashboard smoke passed; no public domain or port. | ✅ Verified privately |
-| Obsidian destination and sync | Materialization creates plain Markdown containing whichever Trust Domains are exported. | Unsynced Azure path `/var/lib/real-ming/obsidian` with CEO-only roots is configured; waiting for a live Knowledge Compiler generation. | 🔄 Source generation pending |
+| Obsidian destination and sync | Native Obsidian/Wiki use comes first; curated generated projections remain a separate optional contract. | The configured Azure output is empty and the production CLI does not enable Knowledge Operations. Follow V6 milestone 6 for native vault activation and any retained pipeline wiring. | 🔄 Developer work; device sync choice later |
 | Hermes API/OAuth activation | Real-Ming receives only a private API-server key and never copies the Codex OAuth token. | Pinned Hermes, bridge key, Codex OAuth, loopback health and harmless GPT-5.6 Sol proof all passed. | ✅ Activated |
 | Hermes session backup | `hermes.sqlite` and native Hermes `state.db` are included when present; OAuth files are excluded. | Base restore passed on Malaysia with container-scoped access. Repeat after Hermes creates the first conversation. | 🔄 Post-Hermes proof pending |
 | Superseded Personal projection retention | The current 12-month window starts at publication, so an old projection superseded today may purge immediately. | Start the 12 months at supersession by adding `superseded_at`; preserve the current rule only if that immediate-purge behaviour is intentional. | ⏳ Open |
@@ -339,7 +357,9 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [RM-11-phase-b-approval-packet.md](RM-11-phase-b-approval-packet.md) | Current exact Phase B continuation, evidence bindings, commit point, and approval sentence |
 | [CREDENTIAL-INVENTORY.md](CREDENTIAL-INVENTORY.md) | Ten tracer credentials plus the Phase 4 Hermes bridge key: owner, purpose, storage, revocation — **no values** |
 | [RM-17-personal-context-selection-runbook.md](RM-17-personal-context-selection-runbook.md) | CEO-only choice of the first bounded Personal Context item |
-| [RM-40-phase4-activation-runbook.md](RM-40-phase4-activation-runbook.md) | CEO-only Hermes, Telegram, Obsidian, dashboard and backup activation sequence |
+| [RM-40-v6-native-first-implementation-plan.md](RM-40-v6-native-first-implementation-plan.md) | Current ordered implementation and acceptance plan: native Hermes, Ming configuration and selected extensions |
+| [LESSONS-LEARNED-build-alignment.md](LESSONS-LEARNED-build-alignment.md) | Reusable kickoff-to-acceptance lessons, prompts and Build Alignment skill usage |
+| [RM-40-phase4-activation-runbook.md](RM-40-phase4-activation-runbook.md) | Historical V5 activation and recovery record; use the V6 plan for migration work |
 | [phase-4-ceo-action.md](phase-4-ceo-action.md) | Short CEO checklist for the remaining identity, Telegram and review actions needed to finish Phase 4 |
 
 ---

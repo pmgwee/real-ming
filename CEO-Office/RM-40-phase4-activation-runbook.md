@@ -1,5 +1,7 @@
 # RM-40 Phase 4 activation runbook
 
+> **V6 supersession note · 6 September 2026:** This runbook records the V5 Real-Ming Telegram/API bridge and its activation. For the selected native Hermes gateway architecture, follow [the V6 native-first implementation plan](RM-40-v6-native-first-implementation-plan.md). Start with its developer reconciliation and native baseline; do not repeat completed identity setup by default. Existing audit and rollback information below remains historical evidence.
+
 ## TL;DR
 
 The repository now contains the Hermes-first Phase 4 composition. Real-Ming
@@ -11,11 +13,11 @@ backup (the Real-Ming mapping plus Hermes native `state.db`) are implemented
 but opt-in.
 
 The bounded activation and rollback window are approved. The Malaysia West
-candidate is now active. Codex OAuth and Tailscale enrollment are complete;
-the remaining CEO action is to send the live Telegram smoke messages and
-review the resulting private dashboard and Obsidian evidence. The automated
-post-conversation backup, restore rehearsal and East Asia deallocation follow
-those checks.
+candidate is now active. Codex OAuth and Tailscale enrollment are complete.
+The CEO Telegram smoke confirmed real Hermes replies but found presentation
+and workflow defects. Developer corrections are required before repeating the
+acceptance checks; see [Telegram smoke findings](RM-40-phase4-telegram-smoke-findings.md).
+Recovery proof and final East Asia deallocation remain outstanding.
 
 ## Latest activation audit · 2026-09-05
 
@@ -40,10 +42,10 @@ SQLite `quick_check` after restore.
 Hermes Agent v0.21.0 is installed at pinned commit
 `561b053f794a1781868bb032029d589c67708119`. The isolated `real-ming` account,
 protected Hermes home, release configuration, backup configuration, systemd
-units and CEO-only host-local Obsidian destination are staged. Tailscale 1.102.3
-is installed. Hermes and candidate Real-Ming remain inactive until the two
-interactive identity checks below complete; the East Asia Real-Ming service is
-still the only Telegram polling owner.
+units and CEO-only host-local Obsidian destination are configured. Tailscale
+1.102.3 is enrolled. Hermes and Real-Ming are active on Malaysia West, and the
+East Asia services are stopped. The final cutover restore used generation
+`2026-09-05T05-01-05.634Z` and passed SQLite checks.
 
 ### Live execution checkpoint
 
@@ -51,9 +53,9 @@ still the only Telegram polling owner.
 | --- | --- | --- |
 | Prerequisites | ✅ Complete | Exact image, restore, roles, bridge key, private network and pinned Hermes verified |
 | 1. Hermes install | ✅ Complete | Codex OAuth authorized in the protected Hermes home; loopback health and harmless GPT-5.6 Sol proof passed |
-| 2. Real-Ming binding | ✅ Staged | Protected release values point to loopback Hermes with GPT-5.6 Sol, Codex OAuth and medium reasoning |
-| 3. Telegram cutover | ✅ Complete; smoke pending | Malaysia West is the sole polling owner; send the question, coding, duplicate and synthetic-secret checks |
-| 4. Obsidian | 🔄 Waiting on source generation | CEO-only export root is configured; no live Knowledge Compiler source has generated a projection yet; no sync client enabled |
+| 2. Real-Ming binding | ✅ Active | Protected release values point to loopback Hermes with GPT-5.6 Sol, Codex OAuth and medium reasoning |
+| 3. Telegram cutover | 🔄 Connected; acceptance failed | Six answers matched native Hermes records; typing/formatting and workflow integration need correction before full acceptance |
+| 4. Obsidian | 🔄 Implementation gap | CEO-only root configured, but production CLI does not enable Knowledge Operations; waiting alone cannot produce an export |
 | 5. Dashboard | ✅ Complete | Tailscale device, private SSH tunnel and authenticated dashboard smoke passed; no public port opened |
 | 6. Recovery | 🔄 Post-conversation proof pending | Base restore is proven; run a fresh state backup and restore rehearsal after the first successful Hermes conversation |
 

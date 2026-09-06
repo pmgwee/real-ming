@@ -1,48 +1,101 @@
 # Real-Ming baseline
 
-**Real-Ming v1.1 · Architecture Revision 5**
+**Real-Ming v1.1 · Architecture Revision 6**
 
-This is the single shared label for the current authoritative design baseline. Every artifact below states this label, and `test/docs/baseline.test.ts` fails the build if any of them drifts.
+Revision 6 is the authoritative **design and specification** baseline: native
+Hermes owns the Telegram gateway, conversation, tools and execution, and
+Real-Ming is a thin additive extension. See
+[ADR-0020](adr/0020-run-ming-on-the-native-hermes-runtime.md) and the
+[V6 diagram](architecture/real-ming-agent-diagram-v6.html). Every current
+artifact below states this label, and `test/docs/baseline.test.ts` fails the
+build if any of them drifts.
+
+**Deployed revision: Architecture Revision 5.** The Malaysia West host
+`real-ming-control-plane-my` still runs the Revision 5 Real-Ming Telegram
+bridge (image `real-ming:phase4-af75e3c`, Hermes v0.21.0 pinned at
+`561b053f794a1781868bb032029d589c67708119`). The design baseline and the
+deployed revision are deliberately allowed to differ and are stated separately;
+neither may be used as evidence for the other. Migration status lives in the
+[V6 implementation plan](../CEO-Office/RM-40-v6-native-first-implementation-plan.md)
+and the [requirement ledger](../CEO-Office/RM-40-v6-requirement-ledger.md).
 
 ## Artifacts
 
 | Role | Artifact | Identity |
 | --- | --- | --- |
-| Product and specification baseline | [docs/specs/real-ming-v1.1.md](specs/real-ming-v1.1.md) | Real-Ming v1.1 Personal Executive Operations Specification |
-| Current architecture diagram | [docs/architecture/real-ming-personal-agent-diagram-v5-CEO-review.html](architecture/real-ming-personal-agent-diagram-v5-CEO-review.html) | Real-Ming Architecture Revision 5 — Hermes-first / CEO review |
-| Current architecture render | [docs/architecture/real-ming-personal-agent-diagram-v5-CEO-review.png](architecture/real-ming-personal-agent-diagram-v5-CEO-review.png) | Rendered from the current architecture HTML |
-| Decision record set | [docs/adr/](adr/) | ADR 0001 through ADR 0019 |
+| Product and specification baseline | [docs/specs/real-ming-v1.1.md](specs/real-ming-v1.1.md) | Real-Ming v1.1 Personal Executive Operations Specification, Architecture Revision 6 |
+| Current architecture diagram | [docs/architecture/real-ming-agent-diagram-v6.html](architecture/real-ming-agent-diagram-v6.html) | Architecture Revision 6 — native Hermes + thin Real-Ming extension |
+| Current architecture render | [docs/architecture/real-ming-agent-diagram-v6.png](architecture/real-ming-agent-diagram-v6.png) | Revision 6 render |
+| Decision record set | [docs/adr/](adr/) | ADR 0001 through ADR 0020 |
 | Implementation graph | [real-ming-phase3-tickets.json](../real-ming-phase3-tickets.json) | Phase 3 tracer-bullet decomposition, 44 tickets |
+
+## Recorded historical baseline
+
+Revision 5 artifacts are retained unchanged as the record of the deployed
+system. Their labels are preserved rather than rewritten, and the baseline test
+enforces that preservation.
+
+| Role | Artifact | Identity |
+| --- | --- | --- |
+| Recorded V5 architecture diagram | [docs/architecture/real-ming-personal-agent-diagram-v5-CEO-review.html](architecture/real-ming-personal-agent-diagram-v5-CEO-review.html) | Real-Ming Architecture Revision 5 — deployed implementation baseline |
+| Recorded V5 architecture render | [docs/architecture/real-ming-personal-agent-diagram-v5-CEO-review.png](architecture/real-ming-personal-agent-diagram-v5-CEO-review.png) | Historical V5 render |
 
 ## Superseded artifacts
 
 | Superseded | Replaced by | Location |
 | --- | --- | --- |
 | Real-Ming v1 specification | Real-Ming v1.1 specification | Removed; history preserved in Git |
-| Architecture diagram v1 | Architecture Revision 5 | [docs/architecture/old_archieved/](architecture/old_archieved/) |
-| Architecture diagram v2 | Architecture Revision 5 | [docs/architecture/old_archieved/](architecture/old_archieved/) |
-| Architecture diagram v3 and v3 simplified | Architecture Revision 5 | [docs/architecture/old_unenhanced/](architecture/old_unenhanced/) |
-| Architecture diagram v4 final draft | Architecture Revision 5 | [docs/architecture/real-ming-personal-agent-diagram-v4-final.html](architecture/real-ming-personal-agent-diagram-v4-final.html) |
+| Architecture diagram v1 | Architecture Revision 6 | [docs/architecture/old_archieved/](architecture/old_archieved/) |
+| Architecture diagram v2 | Architecture Revision 6 | [docs/architecture/old_archieved/](architecture/old_archieved/) |
+| Architecture diagram v3 and v3 simplified | Architecture Revision 6 | [docs/architecture/old_unenhanced/](architecture/old_unenhanced/) |
+| Architecture diagram v4 final draft | Architecture Revision 6 | [docs/architecture/real-ming-personal-agent-diagram-v4-final.html](architecture/real-ming-personal-agent-diagram-v4-final.html) |
+| Architecture Revision 5 as the design target | Architecture Revision 6 | Retained above as the recorded deployed revision |
 
-`docs/architecture/real-ming-v1.html` remains the narrative v1.1 final-architecture page and is not a diagram revision.
+`docs/architecture/real-ming-v1.html` remains the narrative v1.1
+final-architecture page and is not a diagram revision.
 
 ## Architecture agreement
 
-Revision 5 is the current Phase 4 architecture. It keeps the v1.1 Trust-Domain Knowledge Vault and LLM Wiki memory architecture, and makes the Hermes-first Telegram composition explicit (ADR-0019):
+Revision 6 records the agreement below (ADR-0020, superseding the named clauses
+of ADR-0019, ADR-0014 and ADR-0018):
 
-- Ming is the sole CEO; every consequential action stops at an exact, artifact-bound Approval, and no Executive Role performs Money Movement or brokerage trading.
-- Five bounded Executive Roles — COO, CTO, Personal CFO, CAO, CMO — each report directly to the CEO, and the COO coordinates without inheriting peer authority.
-- Hermes remains the conversational, tool, scheduling, and Knowledge Compiler runtime; Real-Ming adds governance, durable work, Approval, projection, audit, and CEO surfaces.
-- Hermes performs interpretation, role selection, planning, research, coding and final answers. Real-Ming validates identity, idempotency, secret exclusion, Work Items, policy/Approval, projections, tool boundaries, provider write-backs, continuity and dashboard evidence.
-- One Telegram turn is `Ming → Real-Ming ingress → persistent Hermes conversation → Hermes structured turn plan → Real-Ming governance/projections → Hermes execution/reasoning → verified answer → Telegram`; Real-Ming never becomes a second LLM.
-- Persistent knowledge is compiled into cited, versioned Markdown across isolated Personal, Ming Creatives, Academic, Entertainment, and Finance roots plus a CEO Approved-Projection root.
-- Obsidian is the CEO-facing knowledge IDE and is never the access-control boundary; Hermes native memory stays bounded Hot Runtime Memory.
-- Agent Brain stays the source of cited Project Evidence behind the Evidence Broker, and domain systems stay Sources of Record.
-- Execution is hybrid: an always-on control plane plus the Lenovo private worker for Local-Only Work.
+- Ming is the sole CEO; every consequential action stops at an exact,
+  artifact-bound Approval, and no Executive Role performs Money Movement or
+  brokerage trading.
+- Five bounded Executive Roles — COO, CTO, Personal CFO, CAO, CMO — each report
+  directly to the CEO, and the COO coordinates without inheriting peer
+  authority. They are expressed as Ming role playbooks, not five services.
+- The native Hermes gateway is the single Telegram consumer for the bot. It
+  owns supported commands, presentation, progress and attachments.
+- Hermes owns conversation, session continuity, reasoning, tool selection,
+  research, coding, test execution, iteration and the final answer. There is no
+  mandatory turn envelope and no Real-Ming rewriting of Hermes's answer.
+- Real-Ming adds only demonstrably missing behaviour: Ming-specific context and
+  role playbooks, Notion Master Tasks semantics and cross-source
+  reconciliation, cross-app records and evidence, CEO-specific views, and
+  explicitly retained stronger guarantees. It is reached as a tool, not as a
+  gate.
+- Ordinary conversation requires no Work Item, role-selection ceremony or
+  Real-Ming record operation.
+- Native memory and session search are first-class under the ADR-0020 memory
+  policy. Sources of Record stay authoritative and Sensitive Secrets stay out.
+- Persistent knowledge uses the native Obsidian and LLM Wiki workflow. The
+  encrypted, versioned Trust-Domain vault, Candidate Envelope quarantine and
+  Projection Broker are retained as optional stronger guarantees, activated
+  only where a required guarantee is demonstrated.
+- Agent Brain stays the source of cited Project Evidence behind the Evidence
+  Broker, and domain systems stay Sources of Record.
+- Execution is hybrid: an always-on Azure control plane on private networking,
+  plus the optional Lenovo private worker for Local-Only Work.
 
 ## Changing the baseline
 
-1. Update the specification and both diagram HTML files together.
-2. Re-render both PNGs from their HTML and confirm the render visually.
-3. Update this file, including the label if the revision number changes.
-4. Run `npm run check`; the baseline test enforces label agreement and render presence.
+1. Update the specification and the current diagram HTML together.
+2. Re-render the current PNG from its HTML and confirm the render visually.
+3. Update this file, including the label if the revision number changes, and
+   move the outgoing revision into "Recorded historical baseline" rather than
+   rewriting its label.
+4. State the deployed revision separately and honestly. Promoting the design
+   baseline does not promote the deployment.
+5. Run `npm run check`; the baseline test enforces label agreement, historical
+   label preservation and render presence.

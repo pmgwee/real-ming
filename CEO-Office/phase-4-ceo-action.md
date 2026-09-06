@@ -1,16 +1,44 @@
 # Phase 4 CEO actions
 
+> **Current next step · 6 September 2026:** Engineering follows [the V6 native-first implementation plan](RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. The checks below describe the recorded V5 activation; repeat phone acceptance after the native candidate is ready. No new login requirement has been established by the plan.
+
+## Nothing is blocking engineering today · 6 September 2026
+
+Milestones 0 and 1 are complete and needed no action from you. Codex OAuth and
+Tailscale were re-confirmed healthy at 03:14 UTC — **do not sign in again**.
+Milestone 2 is repository work and needs no new authorization, so engineering
+continues while these sit open.
+
+Three decisions are waiting. None of them stops work today.
+
+| # | Decision | What I need | My recommendation |
+| --- | --- | --- | --- |
+| 1 | **RM-40 (#41) acceptance criteria** | A yes before I post an issue comment. The open readiness ticket is written for Revision 5 and contains no criterion for native Telegram ownership, native presentation, a real coding loop or native memory. Passing it as written would repeat exactly the drift we just documented. Exact proposed wording is in [the requirement ledger §6](RM-40-v6-requirement-ledger.md). **Nothing has been written to GitHub.** | Approve. Keep all six existing criteria as the controlled-test floor and add the five native-experience criteria on top. |
+| 2 | **Optional curated-knowledge guarantees** | A direction, not an urgent answer. Versioned atomic publication, contradiction quarantine and access-controlled cross-domain projection are built and controlled-tested but were never wired to a production caller. Revision 6 makes them optional rather than default. | Defer. Prove native Obsidian/LLM-Wiki knowledge works in milestone 6 first, then decide against real observed gaps. The code and design are preserved either way. |
+| 3 | **Telegram cutover window** | Not requested yet. Milestone 3 will stop the Real-Ming consumer and start the native Hermes gateway on the same bot. | I will come back with a concrete candidate, the checks, the expected effects and the rollback before asking. The Revision 5 approved image digest is not approval for a Revision 6 artifact. |
+
+**What changed on 6 September.** The specification, ADRs, baseline labels and
+tests are reconciled to Architecture Revision 6 ([ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md)),
+every Revision 5 requirement now carries an explicit keep/revise/defer/remove
+disposition, and native Hermes was proven to perform a real coding loop on a
+disposable fixture — 15 native tool calls, a real diff, an independently
+verified test exit status of 0. Two defects in the installed version's scripted
+interface were found and recorded. See
+[milestone 1 evidence](RM-40-v6-milestone-1-native-runtime-evidence.md).
+
+No production service, credential, network rule or Telegram setting was changed.
+
 ## TL;DR
 
 The Malaysia West Phase 4 candidate is active and is now the only Telegram
-polling owner. Codex OAuth and Tailscale enrollment are complete. The only
-remaining CEO actions are to send the live Telegram smoke messages and review
-the resulting private dashboard/Obsidian evidence. The agent will perform the
-post-conversation backup, restore rehearsal and approved East Asia
-deallocation after those checks.
+polling owner. Codex OAuth and Tailscale enrollment are complete. Ming supplied
+the first Telegram smoke results: real Hermes answers arrived, but the expected
+Telegram experience and complete coding workflow are not ready. Developer
+corrections come next; see [Telegram smoke findings](RM-40-phase4-telegram-smoke-findings.md).
+Backup/restore proof and final East Asia deallocation remain outstanding.
 
-Resume from **section 3** below. Do not repeat the identity steps unless the
-agent reports that the corresponding credential or device is unhealthy.
+Repeat **section 3** after the corrections are ready. Do not repeat the
+identity steps unless the corresponding credential or device is unhealthy.
 
 Do not paste any OAuth token, Telegram token, dashboard token, Key Vault
 secret or Tailscale credential into Codex, Telegram, GitHub or this file.
@@ -26,7 +54,7 @@ secret or Tailscale credential into Codex, Telegram, GitHub or this file.
 | Real-Ming on East Asia | Stopped for cutover; keep the VM for rollback until final proof |
 | Hermes bridge key | Stored in Azure Key Vault and protected host configuration; value never displayed |
 | Backup | Singapore storage generation restored and SQLite-verified |
-| Obsidian | CEO-only host-local destination staged; waiting for first live Knowledge Compiler generation; no sync enabled |
+| Obsidian | CEO-only destination configured; production Knowledge Operations wiring is missing; no sync enabled |
 | Tailscale | Malaysia device enrolled; private address verified; SSH tunnel and dashboard smoke passed |
 | Network | No public SSH, Hermes or dashboard inbound rule |
 
@@ -94,8 +122,9 @@ candidate.
    fixed worker response.
 3. Send one bounded coding request for a non-sensitive GitHub project. Do not
    ask it to merge, deploy, delete data or change production.
-4. When requested, replay the designated test update so the agent can prove
-   durable idempotency without creating a second Hermes turn or Work Item.
+4. The agent must replay the same update ID in the verification harness to
+   test durable idempotency. Sending the same text again from Telegram creates
+   a new update and does not test duplicate-update handling.
 5. When requested, send only the scanner-safe synthetic credential string
    supplied by the agent. Never use a real or previously valid credential.
 6. Report any missing, duplicated or obviously truncated reply immediately.

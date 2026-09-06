@@ -2,6 +2,8 @@
 
 Version 1.1 · 2026-08-27 · Adds the approved Trust-Domain Knowledge Vault and LLM Wiki memory architecture without changing the two-tracer rollout or human-authority boundaries.
 
+**Real-Ming v1.1 · Architecture Revision 6** · 2026-09-06 · Moves the runtime composition to native Hermes with a thin Real-Ming extension, per [ADR-0020](../adr/0020-run-ming-on-the-native-hermes-runtime.md). Outcomes, authority boundaries, Sources of Record, exclusions and the two-tracer rollout are unchanged. The clauses this revision replaces are listed under "Architecture Revision 6 composition delta". Revision 6 is the design baseline; the deployed system is still Revision 5.
+
 ## Problem Statement
 
 Ming operates several production application projects while also managing personal commitments, career work, academic responsibilities, content creation, subscriptions, finances, investments, email, calendar events, and daily tasks. The authoritative information for these responsibilities is distributed across application databases, repositories, Notion, Google Calendar, email providers, finance applications, local files, Agent Brain, GitHub, Vercel, and the Lenovo private environment. Existing assistants can answer questions or perform isolated jobs, but they do not provide one durable operating system that can coordinate all of this work, preserve authority boundaries, continue useful work while the laptop is offline, and return review-ready outcomes to Ming as CEO.
@@ -20,7 +22,7 @@ One private Telegram bot will be the primary remote command and Approval surface
 
 Master Tasks will be the canonical Notion data source for operational Work Items. Five current task databases will be backed up, migrated, reconciled, and replaced in daily use by linked Work Views for the CEO and each Executive Role. All Work Items will use one lifecycle, one Accountable Executive, optional Collaborating Executives, provenance-linked commitments, explicit risk and Approval state, and a recorded Outcome Report.
 
-The system will compose rather than replace existing systems. Hermes will remain the conversational, tool, scheduling, and Knowledge Compiler runtime. Real-Ming will provide policy, coordination, durable work, Approval, projection, audit, monitoring, and dashboard capabilities. Agent Brain will remain the source of cited Project Evidence behind an Evidence Broker. Domain systems will remain Sources of Record. Personal Context will be curated through an allowlisted Personal Context Package and encrypted Context Vault. Persistent Compiled Knowledge will be stored as cited, versioned Markdown in a Knowledge Vault with separate Trust Domain roots and a CEO Approved-Projection root. Obsidian is the CEO-facing knowledge IDE, while Executive Roles retrieve only role- and task-scoped projections. Hermes native memory remains a small, write-gated Hot Runtime Memory rather than the persistent brain.
+The system will compose rather than replace existing systems. Hermes is the product runtime: its native gateway owns the Telegram transport, supported commands and presentation, and its agent loop owns conversation, session continuity, reasoning, tool selection, research, coding, test execution and the final answer. Real-Ming is an additive extension reached as a tool, supplying only behaviour the native runtime does not provide: Ming-specific context and role playbooks, Master Tasks semantics and cross-source reconciliation, cross-app records and evidence, CEO-specific views, and explicitly retained stronger guarantees. Agent Brain will remain the source of cited Project Evidence behind an Evidence Broker. Domain systems will remain Sources of Record. Personal Context will be curated through an allowlisted Personal Context Package and encrypted Context Vault. Persistent knowledge uses the native Obsidian and LLM Wiki workflow over Markdown that Obsidian can open; the encrypted, versioned Knowledge Vault with separate Trust Domain roots and a CEO Approved-Projection root is retained as an optional stronger guarantee and is activated only where a required guarantee is demonstrated. Native Hermes memory and session search are first-class stores under the ADR-0020 memory policy, and never become the authoritative record for a task, commitment, financial figure or academic obligation.
 
 Execution will be hybrid. An isolated always-on control plane will handle Telegram, schedules, cloud APIs, cloud-accessible repositories, monitoring, and Remote-Ready Projects. The Lenovo will act as an on-demand private worker for local files, existing browser sessions, Windows-only tools, sensitive processing, and other Local-Only Work. Work that truly requires the Lenovo will queue safely while it is unavailable instead of pretending it can execute in the cloud.
 
@@ -139,16 +141,17 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 
 ### System composition and module boundaries
 
-- Hermes remains the conversational, tool, scheduling, and Knowledge Compiler runtime. Real-Ming adds durable work coordination, Executive Role routing, policy enforcement, Approval, audit, projection, monitoring, and CEO surfaces rather than introducing a second competing agent core.
-- One Telegram turn is `Ming → Real-Ming ingress (identity, idempotency, secret detection) → persistent Hermes conversation → Hermes intent/role/Work Item plan → Real-Ming Projection/Evidence Broker and policy checks → Hermes reasoning/research/coding → verified answer → Telegram`. Hermes owns interpretation and final answers; Real-Ming performs only deterministic governance, recording, integration and delivery duties.
+- Hermes is the product runtime. Its native gateway, agent loop, tools, skills, plugins, MCP servers, memory, cron and durable task board are configured rather than replaced. Real-Ming adds durable work coordination, Master Tasks semantics, policy and Approval contracts, projection, audit and CEO surfaces as an additive extension, never as a second agent core and never as a mandatory pre-model gate.
+- One Telegram turn is `Ming → native Hermes gateway → native Hermes agent loop → native tools, skills and plugins, calling the Real-Ming integration when useful → native reply`. There is no mandatory turn envelope, no second Telegram consumer, and no Real-Ming rewriting of Hermes's answer. Ordinary conversation creates no Work Item, requires no role-selection ceremony, and does not depend on a Real-Ming record operation; when an optional integration fails, the operation reports that failure and the conversation continues.
 - The system is divided into an Identity and Command Gateway, Executive Role Registry, Work Orchestrator, Policy and Approval Engine, Master Tasks integration, Source Connector layer, Context Vault, Knowledge Vault and Projection Broker, Evidence Broker, Project Portfolio, Worker Coordinator, Outcome and Audit service, Operations Read Model, dashboard, and notification service.
 - External providers are accessed through explicit adapters. Provider-specific payloads do not leak into the Work Orchestrator; adapters normalize provenance, freshness, capabilities, success, retryability, denial, and failure.
 - V1 is single-user-first, but every durable record carries an actor identity and workspace identity. Public signup, billing, and generalized role administration are deferred.
 
 ### Identity, commands, and Executive Roles
 
-- Telegram accepts commands only from the CEO's allowlisted numeric Telegram identity. Dashboard access is authenticated and resolves to the same CEO actor.
-- The COO is the default router. Explicit role addressing selects the named Executive Role without passing authority through the COO.
+- Telegram accepts commands only from the CEO's allowlisted numeric Telegram identity, enforced by the native gateway's allowlist. Dashboard access is authenticated and resolves to the same CEO actor.
+- The COO is the default perspective. Explicit role addressing selects the named Executive Role without passing authority through the COO. Hermes interprets the role address conversationally through Ming's role playbooks; it is never handled by a parser that bypasses the agent loop.
+- A role playbook expresses behaviour and is not access control. Restrictions on consequential actions are enforced by narrowed credentials and tested tool boundaries on the actual execution path, or the effect is left unavailable.
 - A command classifier distinguishes information questions, clear action requests, ambiguous requests, and multi-step/asynchronous work. Only actionable work creates a Work Item; ambiguity produces one focused clarification.
 - Executive Role definitions are durable policy records containing responsibility, allowed Trust Domains, allowed Project Evidence, Standing Authority, notification rules, and Work Views. Worker processes are ephemeral executions of those roles.
 - Every Work Item has one Accountable Executive. Collaborating Executives receive bounded sub-work or projections and cannot independently complete or approve the parent outcome.
@@ -184,8 +187,9 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 - The Knowledge Compiler follows the LLM Wiki raw/schema/wiki discipline and supports ingest, query, filing useful outputs, index maintenance, append-only logging, contradiction quarantine, linting, and atomic versioned publication.
 - Compiled Knowledge is derived and rebuildable. It may supersede a prior wiki generation but may never write to a Source of Record, rewrite canonical Agent Brain evidence, edit Agent Brain-generated projections, or silently become a personal, career, financial, academic, or project fact.
 - The Projection Broker releases Compiled Knowledge only for the current Executive Role, Work Item, purpose, and allowed Trust Domains. CTO and CMO receive distinct views over Ming Creatives; Entertainment remains isolated even without a dedicated Executive Role.
-- Hermes native `MEMORY.md` and `USER.md` are Hot Runtime Memory only. Writes require Approval, contents remain deliberately bounded, and domain corpora, daily notes, conversations, email bodies, financial data, and academic files are excluded.
-- Obsidian is the CEO-facing IDE over the Markdown roots. The durable encrypted filesystem, versioned publication, backups, policy engine, and brokers—not Obsidian—provide persistence and access control.
+- Native Hermes memory and session search are first-class stores holding Ming's stable preferences, routing conventions, project pointers and conversational continuity. Sources of Record stay authoritative: native memory never becomes the authoritative record for a task, commitment, financial figure or academic obligation. Sensitive Secrets are excluded, and domain corpora, raw inbox bodies, financial exports, academic files and Agent Brain payloads are not written wholesale into it.
+- The Knowledge Vault contracts in this section — Candidate Envelope provenance, contradiction quarantine, atomic versioned publication, `index.md`, append-only `log.md`, linting and Trust-Domain projection — are retained as optional stronger guarantees. Default persistent knowledge uses the native Obsidian and LLM Wiki workflow over an absolute vault path. A retained guarantee must be wired to a real production caller and proven end to end before it is claimed.
+- Obsidian is the CEO-facing IDE over the Markdown roots. Where a retained vault guarantee is active, the durable encrypted filesystem, versioned publication, backups, policy engine, and brokers—not Obsidian—provide persistence and access control. Exactly one writer owns each output path; a generated projection never overwrites native editable notes.
 - The Project Portfolio records Portfolio State, repository, production branch, deployment identifiers, evidence identity, responsible roles, sensitivity, health, Remote-Ready status, and relevant source links.
 
 ### Hybrid execution and workers
@@ -251,6 +255,31 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 - Knowledge Compiler jobs are scheduled only after scheduler health and recovery are available. They explicitly load their schema, index, Work Item purpose, and allowed roots rather than relying on prior-session Hot Runtime Memory.
 - Verified raw candidate payloads become purge-eligible after 30 days unless a stricter domain policy applies. Provenance identifiers, hashes, tombstones, and purge evidence remain append-only without retaining the sensitive payload; compiled generations and backups follow Trust Domain deletion and supersession policy.
 
+### Architecture Revision 6 composition delta
+
+Revision 6 changes how the system is composed, not what it must achieve. Every
+outcome, authority boundary, Source of Record and exclusion above is retained.
+The table records exactly which Revision 5 clauses were replaced, so that
+completed Revision 5 work and its evidence stay legible instead of silently
+becoming wrong.
+
+| Revision 5 clause | Revision 6 replacement | Why |
+| --- | --- | --- |
+| Real-Ming ingress owns the Telegram poller | The native Hermes gateway is the single Telegram consumer | The wrapper lost native typing, formatting, progress and attachment behaviour |
+| Every turn carries a structured Turn Plan the integration validates | No turn envelope; structured arguments apply to real tool operations only | The envelope forced ordinary chat through a machine contract and degraded readability |
+| Real-Ming selects the Executive Role and delivers a verified answer | Hermes interprets the perspective through role playbooks and answers natively | Role selection is interpretation, not governance |
+| Role-prefixed messages route through the command parser | Role-prefixed messages reach the agent loop like any other message | The parser bypassed Hermes entirely, contradicting the Hermes-first decision |
+| Hermes native memory is bounded Hot Runtime Memory requiring write Approval | Native memory and session search are first-class under the ADR-0020 memory policy | Continuity is a product requirement; Sources of Record still hold authority |
+| The encrypted versioned Knowledge Vault is the default persistent-knowledge path | Native Obsidian and LLM Wiki are the default; vault guarantees are retained as optional and activated per demonstrated need | The stronger guarantees were never production-wired; the default path must actually produce readable notes |
+| A separate Real-Ming console is the CEO surface | The native dashboard is the starting point; add only the missing CEO cross-app views | A second dashboard is an option, not a prerequisite |
+
+The one-consumer, one-scheduler-owner, one-authoritative-field and
+one-published-output invariants survive unchanged. Only their owners move.
+
+Revision 5 code, tests and evidence remain valid within their recorded scope
+and are relabelled rather than deleted. A passing Revision 5 harness scenario
+is not evidence of Revision 6 behaviour.
+
 ## Testing Decisions
 
 ### Testing philosophy
@@ -292,7 +321,8 @@ Authority will be tiered. Read, monitor, classify, summarize, and draft operatio
 - Public signup, customer billing, organizations, team invitations, generalized RBAC administration, or a multi-user product interface.
 - Five separate Telegram bots or continuously running LLM loops for the five Executive Roles.
 - A universal agent with unrestricted credentials, Project Evidence, personal context, or cross-domain memory.
-- A single flat Obsidian vault available directly to every Executive Role, treating Obsidian as an access-control system, or treating Hermes native memory as the persistent knowledge store.
+- A single flat Obsidian vault available directly to every Executive Role, treating Obsidian as an access-control system, or treating Hermes native memory as the authoritative record for a task, commitment, financial figure or academic obligation.
+- A second Telegram consumer for the same bot, a mandatory turn envelope on ordinary conversation, or a Real-Ming layer that rewrites Hermes's final answer.
 - Raw chat, inbox, financial, academic, filesystem, or Agent Brain dumps promoted directly into Compiled Knowledge or Hot Runtime Memory.
 - Replacing Google Calendar, Notion, email providers, finance applications, project databases, GitHub, Vercel, career files, content workflows, or Agent Brain as Sources of Record.
 - Indiscriminate ingestion of the entire Notion workspace, entire email history, all local files, or every Agent Brain project.

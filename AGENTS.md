@@ -77,4 +77,6 @@ Values live only in a gitignored `.env` or the secret store. Code reads variable
 
 ## Baseline
 
-Preserve **Real-Ming v1.1 · Architecture Revision 3** across `docs/BASELINE.md`, the specification, and both v3 diagrams. A test fails the build if any artifact drifts.
+Preserve **Real-Ming v1.1 · Architecture Revision 6** across `docs/BASELINE.md`, the specification, and the current V6 diagram. A test fails the build if any artifact drifts.
+
+Two labels exist and must not be conflated. The **design baseline** is Revision 6 (native Hermes owns transport, conversation and execution; Real-Ming is a thin additive extension — see `docs/adr/0020-run-ming-on-the-native-hermes-runtime.md`). The **deployed revision** is still Revision 5. Superseded revisions keep their original labels as historical evidence; the baseline test enforces that preservation rather than rewriting them.
