@@ -2,36 +2,34 @@
 
 > **Current next step · 6 September 2026:** Engineering follows [the V6 native-first implementation plan](../docs/planning/RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. The checks below describe the recorded V5 activation; repeat phone acceptance after the native candidate is ready. No new login requirement has been established by the plan.
 
-## 🚨 ONE ACTION NEEDED FROM YOU · 6 September 2026
+## ✅ CLEARED — and now one test only you can run · 6 September 2026
 
-**Stop the East Asia VM.** It is still polling your Telegram bot, and that is
-the only thing standing between you and a working native Hermes Telegram agent.
-
-Azure Portal → Virtual machines → `real-ming-control-plane` → **Stop**
-(not Delete — the VM is kept for rollback).
-
-Or, if you can SSH into it: `sudo systemctl disable --now real-ming.service`.
-Disable matters as much as stop — the service is set to start on boot, so a
-reboot would bring the conflict straight back.
-
-**Why this is not a new decision.** The activation runbook already recorded your
-approval to "deallocate — but do not delete — the East Asia VM for rollback."
-That step has been outstanding since 5 September. It is now blocking the very
-checks it was meant to follow.
-
-**Why I cannot do it.** I have no way into that machine: my SSH key is not
-authorised there, Tailscale SSH is not enabled on it, and there is no Azure CLI
-or Azure credential on your laptop for me to use. The Malaysia VM's identity can
-read Key Vault and blob storage only — it cannot stop another VM.
-
-**What happens after you stop it.** Nothing else is needed from me. Hermes is
-already configured with your bot and is retrying in the background; it will pick
-up the transport by itself. If it has given up by then, tell me and I will
-restart it in one command.
-
-The full evidence, including what I ruled out and a mistake I made and corrected
-along the way, is in
+You stopped the East Asia VM and it worked. The native Hermes gateway is now the
+single Telegram consumer for your bot, and it registered 60 native commands in
+the bot menu. Full verification is in
 [milestone 3 cutover evidence](../docs/evidence/RM-40-v6-milestone-3-cutover-evidence.md).
+
+**Leave the East Asia VM stopped but undeleted.** It is your rollback until you
+accept Revision 6. Nothing to do in Tailscale — the device goes offline on its
+own and rejoins automatically if you ever restart the VM.
+
+### The phone test
+
+Open Telegram, message the bot, and tell me what you see. This is the milestone 3
+pass criterion and I cannot produce it — I have no Telegram account.
+
+| Send this | What should happen |
+| --- | --- |
+| "Hi, what can you help me with?" | A natural reply. No role announced, no task created |
+| A short follow-up about that answer | It remembers the previous message |
+| `/help`, then look at the command menu | Native commands, including the 60 now registered |
+| "Explain async/await with a short code example" | Readable formatting and a proper code block — the thing that was broken before |
+| "As CTO, what's the release path for a DuitSini change?" | The release rules, interpreted by the agent — not a canned parser reply |
+| Something that takes a few steps | A typing indicator or progress, then an accurate result |
+| Send a photo or file | Handled, or a clear message if that type is unsupported |
+
+Tell me anything that looks wrong, however small. Presentation defects are
+exactly what the last smoke test missed.
 
 ## Where engineering stopped · 6 September 2026
 

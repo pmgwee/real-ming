@@ -4,6 +4,38 @@ Executed 6 September 2026, 03:58–04:14 UTC (11:58–12:14 Asia/Kuala_Lumpur) o
 `real-ming-control-plane-my`, under the CEO's explicit approval to use the
 production bot and make the required changes.
 
+## RESOLVED — 6 September 2026, 04:36 UTC
+
+Ming stopped the East Asia VM `real-ming-control-plane` (Azure Portal → Stop;
+status now Stopped (deallocated), VM and disk retained for rollback). The
+diagnosis below was correct: it was the external consumer.
+
+Immediately afterwards, with nothing local polling, the long-poll probe that had
+returned `409 Conflict` twice returned `ok: True`. The gateway was started and
+**Telegram connected**:
+
+```
+gateway: running | version: 0.21.0
+   api_server -> connected
+   telegram   -> connected
+[Telegram] Connected to Telegram (polling mode)
+[Telegram] set_my_commands OK ... 60 commands registered
+```
+
+Verified after connection:
+
+| Check | Result |
+| --- | --- |
+| Single consumer | Both open sockets to `149.154.166.110` are held by `hermes`. Two sockets is normal for the adapter: one long-poll, one for API calls |
+| Real-Ming not polling | In-container `REAL_MING_TELEGRAM_OWNERSHIP` = `native-hermes-gateway`; no Telegram connection from the container |
+| Allowlist loaded | The `No env user allowlists configured` warning last appeared at 04:01:41, before the credential was written, and has not recurred |
+| Native command menu | 60 commands registered with Telegram across default, private-chat and group scopes — the native command surface the Revision 5 bridge never exposed |
+| Session store | `ok` |
+
+**Ownership has moved.** The native Hermes gateway is the single Telegram
+consumer for `@MingCreativesBot`. What remains is Ming's phone matrix, which is
+the milestone 3 pass criterion and cannot be produced by engineering.
+
 ## TL;DR
 
 **The Malaysia side of the cutover is done.** Real-Ming now runs the Revision 6
