@@ -12,7 +12,7 @@ The central lesson is to maintain a traceable chain:
 
 Your initial prompt does not need to contain a perfect technical specification. The interview and engineering investigation should turn your intent into observable outcomes, expose important uncertainty and prove the riskiest interaction early.
 
-For this project's execution sequence, use [the V6 implementation plan](RM-40-v6-native-first-implementation-plan.md). For historical evidence, use [the architecture review](RM-40-v6-architecture-review.md) and [the native capability review](RM-40-hermes-native-capability-review.md).
+For this project's execution sequence, use [the V6 implementation plan](../planning/RM-40-v6-native-first-implementation-plan.md). For historical evidence, use [the architecture review](../architecture/RM-40-v6-architecture-review.md) and [the native capability review](../architecture/RM-40-hermes-native-capability-review.md).
 
 ## 1. What we learned from Real-Ming
 

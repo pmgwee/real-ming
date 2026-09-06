@@ -6,10 +6,10 @@ Prepared: 6 September 2026. Status: **implementation plan; migration not execute
 
 | Milestone | Status | Evidence |
 | --- | --- | --- |
-| 0 · Reconcile requirements and inventory the real deployment | ✅ Complete, 6 Sep 2026 | [Requirement ledger and live capability inventory](RM-40-v6-requirement-ledger.md); [ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md); [baseline](../docs/BASELINE.md); `npm run check` exit 0, 771 tests |
-| 1 · Prove the native runtime before bot cutover | ✅ Complete on the CLI path, 6 Sep 2026 | [Milestone 1 native-runtime evidence](RM-40-v6-milestone-1-native-runtime-evidence.md). Real diff, independently verified test exit 0, 15 native tool calls. Two defects recorded. Native **Telegram** presentation remains untested by design |
-| 2 · Prepare a reversible one-owner Telegram migration | ✅ Complete, 6 Sep 2026 | [Milestone 2 cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md). Composition mode implemented and proven through the System Harness; cutover and reverse procedures written; extension interface verified against the installed version |
-| 3 · Activate native Telegram and accept the core experience | 🔄 Executed 6 Sep 2026; **blocked on one CEO action** — an external consumer still polls the bot | [Milestone 3 cutover evidence](RM-40-v6-milestone-3-cutover-evidence.md). Malaysia side complete and verified; phone matrix pending transport |
+| 0 · Reconcile requirements and inventory the real deployment | ✅ Complete, 6 Sep 2026 | [Requirement ledger and live capability inventory](RM-40-v6-requirement-ledger.md); [ADR-0020](../adr/0020-run-ming-on-the-native-hermes-runtime.md); [baseline](../BASELINE.md); `npm run check` exit 0, 771 tests |
+| 1 · Prove the native runtime before bot cutover | ✅ Complete on the CLI path, 6 Sep 2026 | [Milestone 1 native-runtime evidence](../evidence/RM-40-v6-milestone-1-native-runtime-evidence.md). Real diff, independently verified test exit 0, 15 native tool calls. Two defects recorded. Native **Telegram** presentation remains untested by design |
+| 2 · Prepare a reversible one-owner Telegram migration | ✅ Complete, 6 Sep 2026 | [Milestone 2 cutover runbook](../evidence/RM-40-v6-milestone-2-cutover-runbook.md). Composition mode implemented and proven through the System Harness; cutover and reverse procedures written; extension interface verified against the installed version |
+| 3 · Activate native Telegram and accept the core experience | 🔄 Executed 6 Sep 2026; **blocked on one CEO action** — an external consumer still polls the bot | [Milestone 3 cutover evidence](../evidence/RM-40-v6-milestone-3-cutover-evidence.md). Malaysia side complete and verified; phone matrix pending transport |
 | 4 · Configure Ming's roles and connect sources | ▶️ In progress — does not need Telegram | — |
 | 5–9 | Not started | — |
 
@@ -18,7 +18,7 @@ Prepared: 6 September 2026. Status: **implementation plan; migration not execute
 
 Finish Real-Ming as **native Hermes + Ming-specific configuration/skills + the smallest useful Real-Ming extension**.
 
-The [V6 architecture](../docs/architecture/real-ming-agent-diagram-v6.html) already states this direction. The [capability review](RM-40-hermes-native-capability-review.md) explains the native features and integration limits. This plan turns that target into ordered work and acceptance gates. It supersedes the old V5 activation sequence for future migration work; the [old runbook](RM-40-phase4-activation-runbook.md) remains a record of the deployed bridge and recovery setup.
+The [V6 architecture](../architecture/real-ming-agent-diagram-v6.html) already states this direction. The [capability review](../architecture/RM-40-hermes-native-capability-review.md) explains the native features and integration limits. This plan turns that target into ordered work and acceptance gates. It supersedes the old V5 activation sequence for future migration work; the [old runbook](../../CEO-Office/RM-40-phase4-activation-runbook.md) remains a record of the deployed bridge and recovery setup.
 
 **Start at milestone 0, then prove native Hermes before expanding integrations.** Do not restart OAuth or Tailscale enrollment merely because the design changed. Their last recorded authorization succeeded. Recheck health when implementation reaches the live system.
 
@@ -94,7 +94,7 @@ Source coverage includes Notion Master Tasks and allowlisted pages; personal/car
 
 ## 4. Milestone 1 — prove the native runtime before bot cutover
 
-**Status: ✅ complete on the CLI path, 6 September 2026.** Evidence in [milestone 1 native-runtime evidence](RM-40-v6-milestone-1-native-runtime-evidence.md). Steps 1–5 are proven. Step 6 (native Telegram command/presentation matrix) is deferred to milestone 3 because it needs an authorized bot. Step 7 is **half proven**: the absence of a mandatory JSON envelope and of any Real-Ming record dependency for ordinary chat is demonstrated, but the "same requests with the Ming customization enabled" comparison cannot run until that customization exists in milestone 4. Two defects were found: one-shot mode never resumes a session and its resume flags discard `--in DIR`; and the host default model does not match the only available credential.
+**Status: ✅ complete on the CLI path, 6 September 2026.** Evidence in [milestone 1 native-runtime evidence](../evidence/RM-40-v6-milestone-1-native-runtime-evidence.md). Steps 1–5 are proven. Step 6 (native Telegram command/presentation matrix) is deferred to milestone 3 because it needs an authorized bot. Step 7 is **half proven**: the absence of a mandatory JSON envelope and of any Real-Ming record dependency for ordinary chat is demonstrated, but the "same requests with the Ming customization enabled" comparison cannot run until that customization exists in milestone 4. Two defects were found: one-shot mode never resumes a session and its resume flags discard `--in DIR`; and the host default model does not match the only available credential.
 
 **Owner:** engineering. **Dependencies:** milestone 0. **Output:** a pinned, reproducible native baseline.
 
@@ -110,7 +110,7 @@ Source coverage includes Notion Master Tasks and allowlisted pages; personal/car
 
 ## 5. Milestone 2 — prepare a reversible one-owner Telegram migration
 
-**Status: ✅ complete, 6 September 2026.** Output in the [milestone 2 cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md). Steps 1–6 and 8 are done; step 7 (the deployment artifact) stops at the approval boundary — no Revision 6 image was built, and the Revision 5 approved digest is not approval for one.
+**Status: ✅ complete, 6 September 2026.** Output in the [milestone 2 cutover runbook](../evidence/RM-40-v6-milestone-2-cutover-runbook.md). Steps 1–6 and 8 are done; step 7 (the deployment artifact) stops at the approval boundary — no Revision 6 image was built, and the Revision 5 approved digest is not approval for one.
 
 **Owner:** engineering. **Output:** a tested candidate and concrete cutover/rollback procedure.
 
@@ -274,7 +274,7 @@ Check exit codes. The browser checks require installed Chromium and must not be 
 
 ## 14. CEO-only actions and handoff
 
-No new CEO blocker is established by writing this plan. Engineering starts with milestone 0. Keep [phase-4-ceo-action.md](phase-4-ceo-action.md) updated as actual blockers are discovered.
+No new CEO blocker is established by writing this plan. Engineering starts with milestone 0. Keep [phase-4-ceo-action.md](../../CEO-Office/phase-4-ceo-action.md) updated as actual blockers are discovered.
 
 | Action | When genuinely needed | What engineering supplies first |
 | --- | --- | --- |

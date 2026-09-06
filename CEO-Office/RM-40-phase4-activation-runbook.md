@@ -1,6 +1,6 @@
 # RM-40 Phase 4 activation runbook
 
-> **V6 supersession note · 6 September 2026:** This runbook records the V5 Real-Ming Telegram/API bridge and its activation. For the selected native Hermes gateway architecture, follow [the V6 native-first implementation plan](RM-40-v6-native-first-implementation-plan.md). Start with its developer reconciliation and native baseline; do not repeat completed identity setup by default. Existing audit and rollback information below remains historical evidence.
+> **V6 supersession note · 6 September 2026:** This runbook records the V5 Real-Ming Telegram/API bridge and its activation. For the selected native Hermes gateway architecture, follow [the V6 native-first implementation plan](../docs/planning/RM-40-v6-native-first-implementation-plan.md). Start with its developer reconciliation and native baseline; do not repeat completed identity setup by default. Existing audit and rollback information below remains historical evidence.
 
 ## TL;DR
 
@@ -16,7 +16,7 @@ The bounded activation and rollback window are approved. The Malaysia West
 candidate is now active. Codex OAuth and Tailscale enrollment are complete.
 The CEO Telegram smoke confirmed real Hermes replies but found presentation
 and workflow defects. Developer corrections are required before repeating the
-acceptance checks; see [Telegram smoke findings](RM-40-phase4-telegram-smoke-findings.md).
+acceptance checks; see [Telegram smoke findings](../docs/evidence/RM-40-phase4-telegram-smoke-findings.md).
 Recovery proof and final East Asia deallocation remain outstanding.
 
 ## Latest activation audit · 2026-09-05

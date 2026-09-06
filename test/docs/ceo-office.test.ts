@@ -16,11 +16,15 @@ function officeFile(name: string): string {
 
 const officeFiles = [
   "README.md",
-  "RESUME-PROMPT.md",
+  "phase-4-ceo-action.md",
   "GATE-1-provisioning-runbook.md",
   "GATE-2-pilot-selection-runbook.md",
   "CREDENTIAL-INVENTORY.md",
 ] as const;
+
+function agentFile(name: string): string {
+  return readFileSync(`${repositoryRoot}docs/agents/${name}`, "utf8");
+}
 
 describe("CEO Office", () => {
   it.each(officeFiles)("publishes %s", (name) => {
@@ -43,10 +47,36 @@ describe("CEO Office", () => {
     for (const runbook of [
       "GATE-1-provisioning-runbook.md",
       "GATE-2-pilot-selection-runbook.md",
-      "RESUME-PROMPT.md",
       "CREDENTIAL-INVENTORY.md",
     ]) {
       expect(board).toContain(runbook);
+    }
+  });
+
+  it("keeps engineering output out of the CEO's folder", () => {
+    // The folder is where Ming looks when work stops on him. Milestone
+    // reports, evidence, plans and agent handoffs drown that signal, so they
+    // live under docs/ and only what needs his hand stays here.
+    for (const misfiled of [
+      "CEO-Office/RM-40-v6-requirement-ledger.md",
+      "CEO-Office/RM-40-v6-milestone-1-native-runtime-evidence.md",
+      "CEO-Office/RM-40-v6-milestone-3-cutover-evidence.md",
+      "CEO-Office/LESSONS-LEARNED-build-alignment.md",
+      "CEO-Office/RESUME-PROMPT.md",
+      "CEO-Office/RM-38-claude-handoff.md",
+    ]) {
+      expect(existsSync(`${repositoryRoot}${misfiled}`)).toBe(false);
+    }
+    for (const filed of [
+      "docs/planning/RM-40-v6-requirement-ledger.md",
+      "docs/evidence/RM-40-v6-milestone-1-native-runtime-evidence.md",
+      "docs/evidence/RM-40-v6-milestone-3-cutover-evidence.md",
+      "docs/architecture/RM-40-v6-architecture-review.md",
+      "docs/agents/LESSONS-LEARNED-build-alignment.md",
+      "docs/agents/RESUME-PROMPT.md",
+      "docs/agents/RM-38-claude-handoff.md",
+    ]) {
+      expect(existsSync(`${repositoryRoot}${filed}`)).toBe(true);
     }
   });
 
@@ -60,7 +90,7 @@ describe("CEO Office", () => {
   });
 
   it("tells the next run to announce pull requests and branch per milestone", () => {
-    const prompt = officeFile("RESUME-PROMPT.md");
+    const prompt = agentFile("RESUME-PROMPT.md");
 
     expect(prompt).toContain("Never let a PR appear that I have to discover");
     expect(prompt).toContain("one PR per milestone");
@@ -68,7 +98,7 @@ describe("CEO Office", () => {
   });
 
   it("carries a prompt for each agent in the rotation", () => {
-    const prompt = officeFile("RESUME-PROMPT.md");
+    const prompt = agentFile("RESUME-PROMPT.md");
 
     expect(prompt).toContain("Claude Code continuation prompt");
     expect(prompt).toContain("Codex Goal continuation prompt");
@@ -95,7 +125,7 @@ describe("CEO Office", () => {
   });
 
   it("carries a resume prompt that drives the scheduler, not ticket numbers", () => {
-    const prompt = officeFile("RESUME-PROMPT.md");
+    const prompt = agentFile("RESUME-PROMPT.md");
 
     expect(prompt).toContain("npm run graph:status");
     expect(prompt).toContain("never select from memory");

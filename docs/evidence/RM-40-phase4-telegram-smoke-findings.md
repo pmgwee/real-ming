@@ -63,7 +63,7 @@ or production image was changed during this diagnosis.
 
 ## Required next work
 
-**V6 update:** the diagnosis above stands, but the latest recommendation is to reuse the native Hermes Telegram gateway and extension APIs rather than rebuild its presentation in the wrapper. The following list records the original repair scope; use the [V6 architecture review](RM-40-v6-architecture-review.md) and [new diagram](../docs/architecture/real-ming-agent-diagram-v6.html) for the revised implementation direction.
+**V6 update:** the diagnosis above stands, but the latest recommendation is to reuse the native Hermes Telegram gateway and extension APIs rather than rebuild its presentation in the wrapper. The following list records the original repair scope; use the [V6 architecture review](../architecture/RM-40-v6-architecture-review.md) and [new diagram](../architecture/real-ming-agent-diagram-v6.html) for the revised implementation direction.
 
 1. Add typing feedback, Telegram-safe formatted delivery and appropriate long
    reply handling; allow normal formatting inside the user-facing answer.

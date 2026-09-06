@@ -18,14 +18,14 @@ not an executed migration.
 Revision 5 placed a custom Real-Ming process in front of Hermes: Real-Ming
 polled Telegram, wrapped each turn in a mandatory JSON Turn Plan, and rendered
 Hermes's answer itself. The
-[5 September Telegram smoke](../../CEO-Office/RM-40-phase4-telegram-smoke-findings.md)
+[5 September Telegram smoke](../evidence/RM-40-phase4-telegram-smoke-findings.md)
 proved that real Hermes replies were reaching Ming, and simultaneously proved
 that the product experience did not survive the wrapper: no typing indicator,
 no Telegram-safe formatting, no streamed tool progress, role-prefixed messages
 bypassing Hermes into a legacy action parser, and an unbound coding-tool path
 whose only passing test asserted a denial.
 
-The [native capability review](../../CEO-Office/RM-40-hermes-native-capability-review.md)
+The [native capability review](../architecture/RM-40-hermes-native-capability-review.md)
 established that the pinned Hermes v0.21.0 install already supplies a native
 messaging gateway, durable Kanban, cron, memory, skills, plugins, MCP and a web
 dashboard. The 6 September live inventory confirmed those subsystems are

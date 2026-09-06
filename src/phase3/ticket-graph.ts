@@ -380,7 +380,7 @@ export function renderGraphStatus(status: GraphStatus): string {
   }
 
   lines.push("");
-  lines.push("Resume afterwards with the prompt in CEO-Office/RESUME-PROMPT.md.");
+  lines.push("Resume afterwards with the prompt in docs/agents/RESUME-PROMPT.md.");
 
   return lines.join("\n");
 }

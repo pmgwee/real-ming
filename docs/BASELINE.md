@@ -10,14 +10,18 @@ Real-Ming is a thin additive extension. See
 artifact below states this label, and `test/docs/baseline.test.ts` fails the
 build if any of them drifts.
 
-**Deployed revision: Architecture Revision 5.** The Malaysia West host
-`real-ming-control-plane-my` still runs the Revision 5 Real-Ming Telegram
-bridge (image `real-ming:phase4-af75e3c`, Hermes v0.21.0 pinned at
-`561b053f794a1781868bb032029d589c67708119`). The design baseline and the
-deployed revision are deliberately allowed to differ and are stated separately;
-neither may be used as evidence for the other. Migration status lives in the
-[V6 implementation plan](../CEO-Office/RM-40-v6-native-first-implementation-plan.md)
-and the [requirement ledger](../CEO-Office/RM-40-v6-requirement-ledger.md).
+**Deployed revision: Architecture Revision 6, partially activated (6 September
+2026).** The Malaysia West host `real-ming-control-plane-my` runs image
+`real-ming:rev6-fb2756a` with `REAL_MING_TELEGRAM_OWNERSHIP=native-hermes-gateway`,
+so Real-Ming no longer polls Telegram, and the native Hermes gateway
+(v0.21.0, pinned `561b053f794a1781868bb032029d589c67708119`) holds the bot
+credential and allowlist. **The transport is not yet connected:** an external
+consumer still holds the same bot token, so the gateway is retrying. The design
+baseline and the deployed revision are stated separately on purpose and neither
+is evidence for the other. Status lives in the
+[V6 implementation plan](planning/RM-40-v6-native-first-implementation-plan.md),
+the [requirement ledger](planning/RM-40-v6-requirement-ledger.md) and the
+[cutover evidence](evidence/RM-40-v6-milestone-3-cutover-evidence.md).
 
 ## Artifacts
 
@@ -26,7 +30,7 @@ and the [requirement ledger](../CEO-Office/RM-40-v6-requirement-ledger.md).
 | Product and specification baseline | [docs/specs/real-ming-v1.1.md](specs/real-ming-v1.1.md) | Real-Ming v1.1 Personal Executive Operations Specification, Architecture Revision 6 |
 | Current architecture diagram | [docs/architecture/real-ming-agent-diagram-v6.html](architecture/real-ming-agent-diagram-v6.html) | Architecture Revision 6 — native Hermes + thin Real-Ming extension |
 | Current architecture render | [docs/architecture/real-ming-agent-diagram-v6.png](architecture/real-ming-agent-diagram-v6.png) | Revision 6 render |
-| Decision record set | [docs/adr/](adr/) | ADR 0001 through ADR 0020 |
+| Decision record set | [docs/adr/](adr) | ADR 0001 through ADR 0020 |
 | Implementation graph | [real-ming-phase3-tickets.json](../real-ming-phase3-tickets.json) | Phase 3 tracer-bullet decomposition, 44 tickets |
 
 ## Recorded historical baseline
@@ -45,10 +49,10 @@ enforces that preservation.
 | Superseded | Replaced by | Location |
 | --- | --- | --- |
 | Real-Ming v1 specification | Real-Ming v1.1 specification | Removed; history preserved in Git |
-| Architecture diagram v1 | Architecture Revision 6 | [docs/architecture/old_archieved/](architecture/old_archieved/) |
-| Architecture diagram v2 | Architecture Revision 6 | [docs/architecture/old_archieved/](architecture/old_archieved/) |
-| Architecture diagram v3 and v3 simplified | Architecture Revision 6 | [docs/architecture/old_unenhanced/](architecture/old_unenhanced/) |
-| Architecture diagram v4 final draft | Architecture Revision 6 | [docs/architecture/real-ming-personal-agent-diagram-v4-final.html](architecture/real-ming-personal-agent-diagram-v4-final.html) |
+| Architecture diagram v1 | Architecture Revision 6 | [docs/architecture/old_archieved/](architecture/old_archieved) |
+| Architecture diagram v2 | Architecture Revision 6 | [docs/architecture/old_archieved/](architecture/old_archieved) |
+| Architecture diagram v3 and v3 simplified | Architecture Revision 6 | [docs/architecture/old_unenhanced/](architecture/old_unenhanced) |
+| Architecture diagram v4 final draft | Architecture Revision 6 | Removed; history preserved in Git |
 | Architecture Revision 5 as the design target | Architecture Revision 6 | Retained above as the recorded deployed revision |
 
 `docs/architecture/real-ming-v1.html` remains the narrative v1.1

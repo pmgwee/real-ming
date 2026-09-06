@@ -4,7 +4,7 @@ Reviewed: 5 September 2026. Architecture/documentation work only; no production 
 
 ## TL;DR
 
-Use [the V6 architecture diagram](../docs/architecture/real-ming-agent-diagram-v6.html) as the latest design target.
+Use [the V6 architecture diagram](real-ming-agent-diagram-v6.html) as the latest design target.
 
 **The best fit for your stated priorities is native Hermes first, with Real-Ming as a small personalization/integration extension—not a second agent platform.** A separate control plane is not required merely for five roles, connected apps, Obsidian, memory, schedules, durable tasks or an agent dashboard. The pinned Hermes source already includes substantial support for all of these categories. See the [primary-source capability review](RM-40-hermes-native-capability-review.md).
 
@@ -28,9 +28,9 @@ There were also later refinements: preserving the exact native Telegram gateway 
 | Phase 3 did not contain a working model integration | Commit `39df4b0` corrects the readiness report: no model client, a fixed production question responder, and no deployed private worker | A credential alone could not complete the product; substantial implementation was absent |
 | The daily tracer concentrated on operational contracts | [RM-16 / issue #17](https://github.com/pmgwee/real-ming/issues/17) checks Work Items, Notion views, briefings, approvals and recovery | Those are valuable checks, but they do not establish intelligent conversation or actual Hermes execution |
 | Final readiness emphasized controlled system/provider seams | [RM-40 / issue #41](https://github.com/pmgwee/real-ming/issues/41) requires extensive harness and browser evidence, while live smoke tests remain explicit/opt-in | Controlled passing tests are not installed-runtime or CEO-experience acceptance; RM-40 was still open when checked |
-| The first Phase 4 bridge preserved a custom workflow | [Hermes client](../src/hermes/hermes-runtime-client.ts) demands one JSON plan; [Telegram front door](../src/telegram/telegram-front-door.ts) retains a legacy action parser | Calling the real Hermes API did not automatically preserve its native Telegram product |
-| One “coding” test proves denied execution, not completed coding | [Coordinator system test](../test/system/hermes-turn-coordinator.system.test.ts) expects `workspace.read` to be denied and the Work Item to remain Captured | Correctly testing a safe refusal does not prove the requested edit/test workflow |
-| The real phone test exposed the gap | [Telegram smoke findings](RM-40-phase4-telegram-smoke-findings.md): missing typing/rich formatting, role-prefix bypass, unbound proposed tools | Service health and real LLM responses were insufficient evidence of the expected agent experience |
+| The first Phase 4 bridge preserved a custom workflow | [Hermes client](../../src/hermes/hermes-runtime-client.ts) demands one JSON plan; [Telegram front door](../../src/telegram/telegram-front-door.ts) retains a legacy action parser | Calling the real Hermes API did not automatically preserve its native Telegram product |
+| One “coding” test proves denied execution, not completed coding | [Coordinator system test](../../test/system/hermes-turn-coordinator.system.test.ts) expects `workspace.read` to be denied and the Work Item to remain Captured | Correctly testing a safe refusal does not prove the requested edit/test workflow |
+| The real phone test exposed the gap | [Telegram smoke findings](../evidence/RM-40-phase4-telegram-smoke-findings.md): missing typing/rich formatting, role-prefix bypass, unbound proposed tools | Service health and real LLM responses were insufficient evidence of the expected agent experience |
 
 Historical source links: [initial v1.1 specification](https://github.com/pmgwee/real-ming/blob/80368cc/docs/specs/real-ming-v1.1.md), [readiness correction](https://github.com/pmgwee/real-ming/commit/39df4b03e04a1a56c06a7bffb87872689b1e7a4d).
 

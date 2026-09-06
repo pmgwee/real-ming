@@ -1,6 +1,6 @@
 # Phase 4 CEO actions
 
-> **Current next step · 6 September 2026:** Engineering follows [the V6 native-first implementation plan](RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. The checks below describe the recorded V5 activation; repeat phone acceptance after the native candidate is ready. No new login requirement has been established by the plan.
+> **Current next step · 6 September 2026:** Engineering follows [the V6 native-first implementation plan](../docs/planning/RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. The checks below describe the recorded V5 activation; repeat phone acceptance after the native candidate is ready. No new login requirement has been established by the plan.
 
 ## 🚨 ONE ACTION NEEDED FROM YOU · 6 September 2026
 
@@ -31,7 +31,7 @@ restart it in one command.
 
 The full evidence, including what I ruled out and a mistake I made and corrected
 along the way, is in
-[milestone 3 cutover evidence](RM-40-v6-milestone-3-cutover-evidence.md).
+[milestone 3 cutover evidence](../docs/evidence/RM-40-v6-milestone-3-cutover-evidence.md).
 
 ## Where engineering stopped · 6 September 2026
 
@@ -48,9 +48,9 @@ Two decisions remain open. Neither blocks engineering; the East Asia VM above do
 
 | # | Decision | What I need | My recommendation |
 | --- | --- | --- | --- |
-| 1 | **RM-40 (#41) acceptance criteria** | A yes before I post an issue comment. The open readiness ticket is written for Revision 5 and contains no criterion for native Telegram ownership, native presentation, a real coding loop or native memory. Passing it as written would repeat exactly the drift we just documented. Exact proposed wording is in [the requirement ledger §6](RM-40-v6-requirement-ledger.md). **Nothing has been written to GitHub.** | Approve. Keep all six existing criteria as the controlled-test floor and add the five native-experience criteria on top. |
+| 1 | **RM-40 (#41) acceptance criteria** | A yes before I post an issue comment. The open readiness ticket is written for Revision 5 and contains no criterion for native Telegram ownership, native presentation, a real coding loop or native memory. Passing it as written would repeat exactly the drift we just documented. Exact proposed wording is in [the requirement ledger §6](../docs/planning/RM-40-v6-requirement-ledger.md). **Nothing has been written to GitHub.** | Approve. Keep all six existing criteria as the controlled-test floor and add the five native-experience criteria on top. |
 | 2 | **Optional curated-knowledge guarantees** | A direction, not an urgent answer. Versioned atomic publication, contradiction quarantine and access-controlled cross-domain projection are built and controlled-tested but were never wired to a production caller. Revision 6 makes them optional rather than default. | Defer. Prove native Obsidian/LLM-Wiki knowledge works in milestone 6 first, then decide against real observed gaps. The code and design are preserved either way. |
-| 3 | **Telegram cutover window** — *executed 6 Sep under your approval; superseded by the East Asia action above* | A window when a short gap in Telegram replies is acceptable. The swap stops the Real-Ming consumer, starts the native Hermes gateway on the same bot, and is reversible. The full procedure, its reverse, the ownership table and the troubleshooting list are in [the cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md). | Pick a quiet window. Two engineering steps clear first — setting the native model explicitly and configuring the native Telegram platform — and I will do those in the same session. Telegram queues updates during the gap rather than losing them. A Revision 6 deployment artifact, if one turns out to be needed, will come to you separately; the Revision 5 approved digest is not approval for it. |
+| 3 | **Telegram cutover window** — *executed 6 Sep under your approval; superseded by the East Asia action above* | A window when a short gap in Telegram replies is acceptable. The swap stops the Real-Ming consumer, starts the native Hermes gateway on the same bot, and is reversible. The full procedure, its reverse, the ownership table and the troubleshooting list are in [the cutover runbook](../docs/evidence/RM-40-v6-milestone-2-cutover-runbook.md). | Pick a quiet window. Two engineering steps clear first — setting the native model explicitly and configuring the native Telegram platform — and I will do those in the same session. Telegram queues updates during the gap rather than losing them. A Revision 6 deployment artifact, if one turns out to be needed, will come to you separately; the Revision 5 approved digest is not approval for it. |
 
 **What changed on 6 September.** The specification, ADRs, baseline labels and
 tests are reconciled to Architecture Revision 6 ([ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md)),
@@ -59,10 +59,10 @@ disposition. Native Hermes was proven to perform a real coding loop on a
 disposable fixture — 15 native tool calls, a real diff, an independently
 verified test exit status of 0; two defects in the installed version's scripted
 interface were found and recorded
-([milestone 1 evidence](RM-40-v6-milestone-1-native-runtime-evidence.md)).
+([milestone 1 evidence](../docs/evidence/RM-40-v6-milestone-1-native-runtime-evidence.md)).
 Real-Ming can now run without owning Telegram, proven by five System Harness
 scenarios, with the cutover and its reverse written out
-([milestone 2 runbook](RM-40-v6-milestone-2-cutover-runbook.md)).
+([milestone 2 runbook](../docs/evidence/RM-40-v6-milestone-2-cutover-runbook.md)).
 
 No production service, credential, network rule or Telegram setting was changed.
 
@@ -72,7 +72,7 @@ The Malaysia West Phase 4 candidate is active and is now the only Telegram
 polling owner. Codex OAuth and Tailscale enrollment are complete. Ming supplied
 the first Telegram smoke results: real Hermes answers arrived, but the expected
 Telegram experience and complete coding workflow are not ready. Developer
-corrections come next; see [Telegram smoke findings](RM-40-phase4-telegram-smoke-findings.md).
+corrections come next; see [Telegram smoke findings](../docs/evidence/RM-40-phase4-telegram-smoke-findings.md).
 Backup/restore proof and final East Asia deallocation remain outstanding.
 
 Repeat **section 3** after the corrections are ready. Do not repeat the

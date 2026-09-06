@@ -223,7 +223,7 @@ who reads only the spec:
 
 The affected spec clauses have been revised in place and the delta is recorded
 in the specification's "Architecture Revision 6 composition delta" subsection
-and in [ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md).
+and in [ADR-0020](../adr/0020-run-ming-on-the-native-hermes-runtime.md).
 
 ## 6. Ticket-graph reconciliation
 

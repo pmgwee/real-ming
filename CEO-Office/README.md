@@ -11,20 +11,20 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 *As of 2026-09-06 · run `npm run graph:status` for live truth*
 
 **Design baseline: Architecture Revision 6 — [native Hermes + thin Real-Ming extension](../docs/architecture/real-ming-agent-diagram-v6.html), recorded in [ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md).**
-Read [why the earlier architecture drifted and what to reuse](RM-40-v6-architecture-review.md)
-and the [official Hermes capability comparison](RM-40-hermes-native-capability-review.md).
+Read [why the earlier architecture drifted and what to reuse](../docs/architecture/RM-40-v6-architecture-review.md)
+and the [official Hermes capability comparison](../docs/architecture/RM-40-hermes-native-capability-review.md).
 **Deployed revision is still 5:** the bot continues to use the V5 Real-Ming Telegram/API bridge.
 The two labels are stated separately in [docs/BASELINE.md](../docs/BASELINE.md) on purpose; neither is evidence for the other.
 
-**Milestone 0 — done, 6 September.** The specification, ADRs, baseline labels, ticket-graph metadata and baseline tests are reconciled to Revision 6, and every Revision 5 requirement now carries a keep/revise/defer/remove disposition in the [requirement ledger](RM-40-v6-requirement-ledger.md). `npm run check` passes: 771 tests, exit 0.
+**Milestone 0 — done, 6 September.** The specification, ADRs, baseline labels, ticket-graph metadata and baseline tests are reconciled to Revision 6, and every Revision 5 requirement now carries a keep/revise/defer/remove disposition in the [requirement ledger](../docs/planning/RM-40-v6-requirement-ledger.md). `npm run check` passes: 771 tests, exit 0.
 
-**Milestone 1 — done, 6 September. Native Hermes really codes.** On a disposable fixture repository on the Malaysia host it ran a failing test suite, searched and read the source, applied a patch and re-ran the suite — 15 native tool calls in 58 seconds — and the fix was verified independently of anything the model claimed. It also found two real defects in the installed version's scripted interface. Evidence and limits: [milestone 1 evidence](RM-40-v6-milestone-1-native-runtime-evidence.md). No Telegram traffic and no service change were involved.
+**Milestone 1 — done, 6 September. Native Hermes really codes.** On a disposable fixture repository on the Malaysia host it ran a failing test suite, searched and read the source, applied a patch and re-ran the suite — 15 native tool calls in 58 seconds — and the fix was verified independently of anything the model claimed. It also found two real defects in the installed version's scripted interface. Evidence and limits: [milestone 1 evidence](../docs/evidence/RM-40-v6-milestone-1-native-runtime-evidence.md). No Telegram traffic and no service change were involved.
 
-**Milestone 2 — done, 6 September.** Real-Ming can now run without owning Telegram. A new composition mode polls nothing, interprets nothing and holds no Hermes conversation, while its schedules, records and dashboard keep working; the default is unchanged, so today's deployed behaviour is untouched. Five System Harness scenarios prove it. The cutover and its reverse are written: [milestone 2 cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md).
+**Milestone 2 — done, 6 September.** Real-Ming can now run without owning Telegram. A new composition mode polls nothing, interprets nothing and holds no Hermes conversation, while its schedules, records and dashboard keep working; the default is unchanged, so today's deployed behaviour is untouched. Five System Harness scenarios prove it. The cutover and its reverse are written: [milestone 2 cutover runbook](../docs/evidence/RM-40-v6-milestone-2-cutover-runbook.md).
 
-**Milestone 3 — executed 6 September, one step short.** Real-Ming now runs the Revision 6 image and no longer polls Telegram; the native Hermes gateway holds your bot credential and allowlist. The native default model is fixed and verified, and the missing Telegram dependency is installed. **Blocked on one action from you: stop the East Asia VM, which is still polling the same bot token.** Full evidence, including a wrong conclusion I drew and corrected: [milestone 3 cutover evidence](RM-40-v6-milestone-3-cutover-evidence.md).
+**Milestone 3 — executed 6 September, one step short.** Real-Ming now runs the Revision 6 image and no longer polls Telegram; the native Hermes gateway holds your bot credential and allowlist. The native default model is fixed and verified, and the missing Telegram dependency is installed. **Blocked on one action from you: stop the East Asia VM, which is still polling the same bot token.** Full evidence, including a wrong conclusion I drew and corrected: [milestone 3 cutover evidence](../docs/evidence/RM-40-v6-milestone-3-cutover-evidence.md).
 
-For future projects, use [the build-alignment lessons and reusable prompts](LESSONS-LEARNED-build-alignment.md) with the installed `$build-alignment` skill.
+For future projects, use [the build-alignment lessons and reusable prompts](../docs/agents/LESSONS-LEARNED-build-alignment.md) with the installed `$build-alignment` skill.
 
 | | |
 | --- | --- |
@@ -58,7 +58,7 @@ Codex OAuth and Tailscale authorization are complete; Hermes and Real-Ming are
 active on Malaysia. The East Asia services were stopped for cutover and the VM
 is retained for rollback. The Obsidian destination is configured, but Knowledge
 Operations is not enabled by the production CLI and needs implementation work.
-See [the smoke findings](RM-40-phase4-telegram-smoke-findings.md) before treating
+See [the smoke findings](../docs/evidence/RM-40-phase4-telegram-smoke-findings.md) before treating
 the activation as complete.
 
 **RM-11 through RM-14 are complete and closed.** Master Tasks is your single
@@ -183,7 +183,7 @@ Two came out of the RM-30 reviews. Neither blocks anything; both change what you
 | Tracer 1 milestone PR | PR #47 carried RM-07…RM-44 and was much larger than the intended milestone boundary. | Merged by the CEO on 3 September 2026. Return to one reviewable milestone per PR for Phase 4. | ✅ Done |
 | `ceo-confirmed` career claims are unverified | RM-33 accepts a claim labelled "CEO confirmed" at face value: there is no Approval record behind the label, so it is only as trustworthy as whatever gates the caller. | Bind it to a real Approval in its own ticket if you want the label to mean something. | ⏳ Open |
 | V6 Telegram ownership | Native Hermes owns the gateway, commands, conversation and execution; Real-Ming adds selected integrations. | Follow the V6 plan for a reversible one-owner migration from the currently deployed V5 bridge. | 🔄 Recorded as ADR-0020 and Architecture Revision 6 on 6 Sep; migration pending |
-| **RM-40 (#41) acceptance criteria** | The open readiness ticket is written for Revision 5. It has no criterion for native Telegram ownership, native presentation, a real coding loop, or native memory. Passing it as written would repeat the drift the lessons document describes. | Approve adding five native-experience criteria — the exact wording is in [the requirement ledger §6](RM-40-v6-requirement-ledger.md). I will post it as an issue comment once you say yes; nothing has been written to GitHub. | ⏳ Open — decision 1 |
+| **RM-40 (#41) acceptance criteria** | The open readiness ticket is written for Revision 5. It has no criterion for native Telegram ownership, native presentation, a real coding loop, or native memory. Passing it as written would repeat the drift the lessons document describes. | Approve adding five native-experience criteria — the exact wording is in [the requirement ledger §6](../docs/planning/RM-40-v6-requirement-ledger.md). I will post it as an issue comment once you say yes; nothing has been written to GitHub. | ⏳ Open — decision 1 |
 | **Optional curated-knowledge guarantees** | Versioned atomic publication, contradiction quarantine and access-controlled cross-domain projection are built and controlled-tested but were never wired to a production caller. Revision 6 makes them optional rather than default. | Defer. Prove native Obsidian/LLM-Wiki knowledge first in milestone 6, then decide against observed gaps instead of in advance. The code and design are preserved either way. | ⏳ Open — decision 2 |
 | **Native default model does not match the credential** | The host's Hermes `config.yaml` defaults to `anthropic/claude-opus-4.6` over OpenRouter, while the only credential is Codex OAuth. The V5 bridge hides this by overriding every call; the native gateway would not. | Engineering will set the native default to `gpt-5.6-sol` / `openai-codex` through protected configuration before cutover. Tell me only if you want a different model for Telegram. | 🔧 Engineering; no CEO action unless you want a different model |
 | Dashboard exposure | The production dashboard is private over Tailscale/SSH and protected by a bearer token. | Tailscale enrollment, private tunnel and authenticated dashboard smoke passed; no public domain or port. | ✅ Verified privately |
@@ -322,7 +322,7 @@ The runbooks stay as the record of what was done: [Gate 1](GATE-1-provisioning-r
 ## ▶️ How to restart agent work
 
 1. Run `npm run graph:status` and confirm it names a ticket rather than `BLOCKED ON YOU`.
-2. Open [RESUME-PROMPT.md](RESUME-PROMPT.md) and copy the block that matches your agent.
+2. Open [RESUME-PROMPT.md](../docs/agents/RESUME-PROMPT.md) and copy the block that matches your agent.
 
 Nothing needs restarting or re-explaining. The scheduler reconciles against live GitHub, so a closed issue is all it takes.
 
@@ -351,7 +351,7 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | File | What it is |
 | --- | --- |
 | [README.md](README.md) | This status board — start here |
-| [RESUME-PROMPT.md](RESUME-PROMPT.md) | The prompt to paste to restart the graph loop |
+| [RESUME-PROMPT.md](../docs/agents/RESUME-PROMPT.md) | The prompt to paste to restart the graph loop |
 | [GATE-1-provisioning-runbook.md](GATE-1-provisioning-runbook.md) | Step-by-step: create identities, store secrets, verify |
 | [GATE-2-pilot-selection-runbook.md](GATE-2-pilot-selection-runbook.md) | Step-by-step: choose and capture the DuitSini pilot |
 | [RM-09-master-tasks-provisioning-runbook.md](RM-09-master-tasks-provisioning-runbook.md) | One-minute Notion parent-page share required to create Master Tasks |
@@ -361,8 +361,8 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [RM-11-phase-b-approval-packet.md](RM-11-phase-b-approval-packet.md) | Current exact Phase B continuation, evidence bindings, commit point, and approval sentence |
 | [CREDENTIAL-INVENTORY.md](CREDENTIAL-INVENTORY.md) | Ten tracer credentials plus the Phase 4 Hermes bridge key: owner, purpose, storage, revocation — **no values** |
 | [RM-17-personal-context-selection-runbook.md](RM-17-personal-context-selection-runbook.md) | CEO-only choice of the first bounded Personal Context item |
-| [RM-40-v6-native-first-implementation-plan.md](RM-40-v6-native-first-implementation-plan.md) | Current ordered implementation and acceptance plan: native Hermes, Ming configuration and selected extensions |
-| [LESSONS-LEARNED-build-alignment.md](LESSONS-LEARNED-build-alignment.md) | Reusable kickoff-to-acceptance lessons, prompts and Build Alignment skill usage |
+| [RM-40-v6-native-first-implementation-plan.md](../docs/planning/RM-40-v6-native-first-implementation-plan.md) | Current ordered implementation and acceptance plan: native Hermes, Ming configuration and selected extensions |
+| [LESSONS-LEARNED-build-alignment.md](../docs/agents/LESSONS-LEARNED-build-alignment.md) | Reusable kickoff-to-acceptance lessons, prompts and Build Alignment skill usage |
 | [RM-40-phase4-activation-runbook.md](RM-40-phase4-activation-runbook.md) | Historical V5 activation and recovery record; use the V6 plan for migration work |
 | [phase-4-ceo-action.md](phase-4-ceo-action.md) | Short CEO checklist for the remaining identity, Telegram and review actions needed to finish Phase 4 |
 

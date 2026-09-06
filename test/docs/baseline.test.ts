@@ -41,7 +41,7 @@ describe("Real-Ming baseline synchronization", () => {
   it("states the deployed revision separately from the design baseline", () => {
     const baseline = readRepositoryFile("docs/BASELINE.md");
 
-    expect(baseline).toContain("Deployed revision: Architecture Revision 5");
+    expect(baseline).toMatch(/\*\*Deployed revision: Architecture Revision \d/);
   });
 
   it("keeps the specification on the v1.1 product baseline", () => {

@@ -268,7 +268,7 @@ describe("Phase 3 graph status", () => {
     );
     expect(rendered).toContain("RM-04 (#5) unblocks 2 tickets");
     expect(rendered).toContain(
-      "Resume afterwards with the prompt in CEO-Office/RESUME-PROMPT.md.",
+      "Resume afterwards with the prompt in docs/agents/RESUME-PROMPT.md.",
     );
   });
 
