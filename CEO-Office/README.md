@@ -13,8 +13,7 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 **Design baseline: Architecture Revision 6 — [native Hermes + thin Real-Ming extension](../docs/architecture/real-ming-agent-diagram-v6.html), recorded in [ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md).**
 Read [why the earlier architecture drifted and what to reuse](../docs/architecture/RM-40-v6-architecture-review.md)
 and the [official Hermes capability comparison](../docs/architecture/RM-40-hermes-native-capability-review.md).
-**Deployed revision is still 5:** the bot continues to use the V5 Real-Ming Telegram/API bridge.
-The two labels are stated separately in [docs/BASELINE.md](../docs/BASELINE.md) on purpose; neither is evidence for the other.
+**Deployed revision: Revision 6, partially activated.** The native Hermes gateway owns your Telegram bot, Real-Ming runs the Revision 6 image and polls nothing, and the extension is registered as an MCP server. The two labels are stated separately in [docs/BASELINE.md](../docs/BASELINE.md) on purpose; neither is evidence for the other.
 
 **Milestone 0 — done, 6 September.** The specification, ADRs, baseline labels, ticket-graph metadata and baseline tests are reconciled to Revision 6, and every Revision 5 requirement now carries a keep/revise/defer/remove disposition in the [requirement ledger](../docs/planning/RM-40-v6-requirement-ledger.md). `npm run check` passes: 771 tests, exit 0.
 
@@ -22,9 +21,7 @@ The two labels are stated separately in [docs/BASELINE.md](../docs/BASELINE.md) 
 
 **Milestone 2 — done, 6 September.** Real-Ming can now run without owning Telegram. A new composition mode polls nothing, interprets nothing and holds no Hermes conversation, while its schedules, records and dashboard keep working; the default is unchanged, so today's deployed behaviour is untouched. Five System Harness scenarios prove it. The cutover and its reverse are written: [milestone 2 cutover runbook](../docs/evidence/RM-40-v6-milestone-2-cutover-runbook.md).
 
-**Milestone 3 — transport live, 6 September.** You stopped the East Asia VM and the conflict cleared immediately. The native Hermes gateway is now the single Telegram consumer for your bot, with 60 native commands registered and your allowlist loaded. **Your phone test is the last step** — see [Phase 4 CEO actions](phase-4-ceo-action.md).
-
-*Previously:* **executed, one step short.** Real-Ming now runs the Revision 6 image and no longer polls Telegram; the native Hermes gateway holds your bot credential and allowlist. The native default model is fixed and verified, and the missing Telegram dependency is installed. **Blocked on one action from you: stop the East Asia VM, which is still polling the same bot token.** Full evidence, including a wrong conclusion I drew and corrected: [milestone 3 cutover evidence](../docs/evidence/RM-40-v6-milestone-3-cutover-evidence.md).
+**Milestone 3 — transport live and mostly accepted, 6 September.** You stopped the East Asia VM and the conflict cleared immediately. The native gateway is the single Telegram consumer, with 60 native commands and your allowlist loaded. Your phone test passed the rows that mattered: **rich formatting and the role-prefix bypass — the two defects that failed the 5 September smoke — are both fixed**, and the whole conversation stayed in one session with zero Work Items created. Three rows are still untested because the checklist's placeholder text was sent verbatim: progress indication, attachments, and a real semantic follow-up. [Milestone 3 cutover evidence](../docs/evidence/RM-40-v6-milestone-3-cutover-evidence.md).
 
 **Milestone 4 — done for Notion and Calendar, 6 September.** Your six role playbooks are live on the agent and behave: an ordinary question got an ordinary answer with no role ceremony, a CTO question drew the release rules exactly, and "pay my Netflix bill" was refused outright. Notion Master Tasks and Google Calendar both proven with real authorized reads. **GitHub and Vercel have no credential provisioned in Key Vault at all** — that was not recorded anywhere before. [Milestone 4 evidence](../docs/evidence/RM-40-v6-milestone-4-configuration-and-sources.md).
 
@@ -37,7 +34,7 @@ For future projects, use [the build-alignment lessons and reusable prompts](../d
 | Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
 | Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
 | Next engineering work | Milestone 5 remainder — move the 07:30 brief and 21:30 roll-up to native cron with exactly one owner. Then milestone 6, native memory and Obsidian. |
-| Waiting on you | **The phone test** — message the bot and tell me what you see. Plus optional credentials and two decisions. One of them — the Telegram cutover window — now gates milestone 3. See [Phase 4 CEO actions](phase-4-ceo-action.md). OAuth and Tailscale remain healthy — re-confirmed 6 September; do not sign in again. |
+| Waiting on you | Three untested phone rows (progress, attachments, a real follow-up), optional GitHub/Vercel credentials, and two open decisions. **Nothing blocks engineering.** See [Phase 4 CEO actions](phase-4-ceo-action.md). Leave the East Asia VM stopped but undeleted; nothing to do in Tailscale. |
 
 **Recorded V5 implementation status (2026-09-04; not V6 acceptance).** The approved Revision 5
 Hermes-first path is implemented and covered by controlled system tests:
