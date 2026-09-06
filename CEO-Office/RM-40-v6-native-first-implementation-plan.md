@@ -8,8 +8,9 @@ Prepared: 6 September 2026. Status: **implementation plan; migration not execute
 | --- | --- | --- |
 | 0 · Reconcile requirements and inventory the real deployment | ✅ Complete, 6 Sep 2026 | [Requirement ledger and live capability inventory](RM-40-v6-requirement-ledger.md); [ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md); [baseline](../docs/BASELINE.md); `npm run check` exit 0, 771 tests |
 | 1 · Prove the native runtime before bot cutover | ✅ Complete on the CLI path, 6 Sep 2026 | [Milestone 1 native-runtime evidence](RM-40-v6-milestone-1-native-runtime-evidence.md). Real diff, independently verified test exit 0, 15 native tool calls. Two defects recorded. Native **Telegram** presentation remains untested by design |
-| 2 · Prepare a reversible one-owner Telegram migration | ▶️ Next — repository work, no new authorization needed | — |
-| 3–9 | Not started | — |
+| 2 · Prepare a reversible one-owner Telegram migration | ✅ Complete, 6 Sep 2026 | [Milestone 2 cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md). Composition mode implemented and proven through the System Harness; cutover and reverse procedures written; extension interface verified against the installed version |
+| 3 · Activate native Telegram and accept the core experience | ⏸️ Blocked on a CEO decision — the cutover window — plus two engineering steps named in the runbook | — |
+| 4–9 | Not started | — |
 
 
 ## TL;DR
@@ -107,6 +108,8 @@ Source coverage includes Notion Master Tasks and allowlisted pages; personal/car
 **Pass:** actual Hermes edits/tests and native capability loading are proven; the candidate can preserve the native experience. A text saying “I can code” does not pass. Telegram-specific live evidence remains pending until an authorized bot/profile is used.
 
 ## 5. Milestone 2 — prepare a reversible one-owner Telegram migration
+
+**Status: ✅ complete, 6 September 2026.** Output in the [milestone 2 cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md). Steps 1–6 and 8 are done; step 7 (the deployment artifact) stops at the approval boundary — no Revision 6 image was built, and the Revision 5 approved digest is not approval for one.
 
 **Owner:** engineering. **Output:** a tested candidate and concrete cutover/rollback procedure.
 

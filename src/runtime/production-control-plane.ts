@@ -39,6 +39,7 @@ import { resolveControlPlaneCredentials } from "./credential-resolver.js";
 import {
   createDailyOperationsControlPlane,
   type DailyOperationsControlPlane,
+  type TelegramOwnership,
 } from "./daily-operations-control-plane.js";
 import type { KnowledgeOperationalOutput } from "../knowledge/knowledge-compiler.js";
 import type { KnowledgeSource } from "../knowledge/knowledge-operations.js";
@@ -113,6 +114,11 @@ export async function createProductionControlPlane(options: {
     readonly personalContext?: PersonalContextIngestion;
     readonly retentionRequired?: boolean;
   };
+  /**
+   * Which process owns the single Telegram consumer. Defaults to the
+   * Revision 5 behaviour unless REAL_MING_TELEGRAM_OWNERSHIP says otherwise.
+   */
+  readonly telegramOwnership?: TelegramOwnership;
   /** Opt-in Hermes API-server binding. Hermes owns OAuth and model/tool reasoning. */
   readonly hermes?: {
     readonly enabled?: boolean;
@@ -212,6 +218,21 @@ export async function createProductionControlPlane(options: {
         ...(hermesModel === undefined ? {} : { model: hermesModel }),
       }
     : undefined;
+  // A typo here would silently start a second Telegram consumer beside the
+  // native gateway, which is the one failure mode the cutover exists to avoid.
+  // So an unrecognised value refuses to start rather than defaulting.
+  const configuredOwnership = optional(options.environment["REAL_MING_TELEGRAM_OWNERSHIP"]);
+  if (
+    configuredOwnership !== undefined &&
+    configuredOwnership !== "real-ming-ingress" &&
+    configuredOwnership !== "native-hermes-gateway"
+  ) {
+    throw new Error(
+      "REAL_MING_TELEGRAM_OWNERSHIP must be 'real-ming-ingress' or 'native-hermes-gateway'.",
+    );
+  }
+  const telegramOwnership: TelegramOwnership =
+    options.telegramOwnership ?? (configuredOwnership as TelegramOwnership | undefined) ?? "real-ming-ingress";
   const obsidianDirectory = options.obsidian?.directory ?? optional(options.environment["REAL_MING_OBSIDIAN_DIRECTORY"]);
   const obsidianRoots = options.obsidian?.roots ?? optionalObsidianRoots(options.environment["REAL_MING_OBSIDIAN_ROOTS"]);
   const obsidian = obsidianDirectory === undefined
@@ -336,6 +357,7 @@ export async function createProductionControlPlane(options: {
         ? {}
         : { effectVerifier: options.effectVerifier }),
       telegram,
+      telegramOwnership,
       ceoTelegramId: required("REAL_MING_TELEGRAM_CEO_ID"),
       ceoTelegramChatId: required("REAL_MING_TELEGRAM_CEO_ID"),
       auditPseudonymKey: required("REAL_MING_VAULT_KEY"),
@@ -380,6 +402,7 @@ export async function createProductionControlPlane(options: {
     });
     return {
       dashboardOrigin: controlPlane.dashboardOrigin,
+      telegramOwnership: controlPlane.telegramOwnership,
       projectPortfolio: controlPlane.projectPortfolio,
       projectEvidence: controlPlane.projectEvidence,
       bindPortfolioProject: (request: ProjectEvidenceBindingRequest) =>

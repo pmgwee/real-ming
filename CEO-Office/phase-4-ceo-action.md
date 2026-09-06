@@ -2,29 +2,35 @@
 
 > **Current next step · 6 September 2026:** Engineering follows [the V6 native-first implementation plan](RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. The checks below describe the recorded V5 activation; repeat phone acceptance after the native candidate is ready. No new login requirement has been established by the plan.
 
-## Nothing is blocking engineering today · 6 September 2026
+## Where engineering stopped · 6 September 2026
 
-Milestones 0 and 1 are complete and needed no action from you. Codex OAuth and
-Tailscale were re-confirmed healthy at 03:14 UTC — **do not sign in again**.
-Milestone 2 is repository work and needs no new authorization, so engineering
-continues while these sit open.
+Milestones 0, 1 and 2 are complete and needed no action from you. Codex OAuth
+and Tailscale were re-confirmed healthy at 03:14 UTC — **do not sign in again**.
 
-Three decisions are waiting. None of them stops work today.
+Engineering has now reached the first change you would actually feel. Milestone
+3 stops the current Telegram consumer and starts the native Hermes gateway on
+the same bot, so it waits for decision 3 below. Everything up to that point is
+done, tested and reversible.
+
+Three decisions are waiting. Decision 3 is the one that gates further work.
 
 | # | Decision | What I need | My recommendation |
 | --- | --- | --- | --- |
 | 1 | **RM-40 (#41) acceptance criteria** | A yes before I post an issue comment. The open readiness ticket is written for Revision 5 and contains no criterion for native Telegram ownership, native presentation, a real coding loop or native memory. Passing it as written would repeat exactly the drift we just documented. Exact proposed wording is in [the requirement ledger §6](RM-40-v6-requirement-ledger.md). **Nothing has been written to GitHub.** | Approve. Keep all six existing criteria as the controlled-test floor and add the five native-experience criteria on top. |
 | 2 | **Optional curated-knowledge guarantees** | A direction, not an urgent answer. Versioned atomic publication, contradiction quarantine and access-controlled cross-domain projection are built and controlled-tested but were never wired to a production caller. Revision 6 makes them optional rather than default. | Defer. Prove native Obsidian/LLM-Wiki knowledge works in milestone 6 first, then decide against real observed gaps. The code and design are preserved either way. |
-| 3 | **Telegram cutover window** | Not requested yet. Milestone 3 will stop the Real-Ming consumer and start the native Hermes gateway on the same bot. | I will come back with a concrete candidate, the checks, the expected effects and the rollback before asking. The Revision 5 approved image digest is not approval for a Revision 6 artifact. |
+| 3 | **Telegram cutover window** — *this one gates milestone 3* | A window when a short gap in Telegram replies is acceptable. The swap stops the Real-Ming consumer, starts the native Hermes gateway on the same bot, and is reversible. The full procedure, its reverse, the ownership table and the troubleshooting list are in [the cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md). | Pick a quiet window. Two engineering steps clear first — setting the native model explicitly and configuring the native Telegram platform — and I will do those in the same session. Telegram queues updates during the gap rather than losing them. A Revision 6 deployment artifact, if one turns out to be needed, will come to you separately; the Revision 5 approved digest is not approval for it. |
 
 **What changed on 6 September.** The specification, ADRs, baseline labels and
 tests are reconciled to Architecture Revision 6 ([ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md)),
-every Revision 5 requirement now carries an explicit keep/revise/defer/remove
-disposition, and native Hermes was proven to perform a real coding loop on a
+and every Revision 5 requirement now carries an explicit keep/revise/defer/remove
+disposition. Native Hermes was proven to perform a real coding loop on a
 disposable fixture — 15 native tool calls, a real diff, an independently
-verified test exit status of 0. Two defects in the installed version's scripted
-interface were found and recorded. See
-[milestone 1 evidence](RM-40-v6-milestone-1-native-runtime-evidence.md).
+verified test exit status of 0; two defects in the installed version's scripted
+interface were found and recorded
+([milestone 1 evidence](RM-40-v6-milestone-1-native-runtime-evidence.md)).
+Real-Ming can now run without owning Telegram, proven by five System Harness
+scenarios, with the cutover and its reverse written out
+([milestone 2 runbook](RM-40-v6-milestone-2-cutover-runbook.md)).
 
 No production service, credential, network rule or Telegram setting was changed.
 

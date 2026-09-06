@@ -130,8 +130,16 @@ const refusingResponder: QuestionResponder = {
   },
 };
 
+/**
+ * Which process holds the single Telegram consumer. Telegram permits one
+ * reliable polling owner; Architecture Revision 6 moves that owner to the
+ * native Hermes gateway (ADR-0020) without relaxing the invariant.
+ */
+export type TelegramOwnership = "real-ming-ingress" | "native-hermes-gateway";
+
 export interface DailyOperationsControlPlane {
   readonly dashboardOrigin: string;
+  readonly telegramOwnership: TelegramOwnership;
   readonly projectPortfolio: ProjectPortfolio | undefined;
   readonly projectEvidence: ProjectEvidenceBroker | undefined;
   bindPortfolioProject(request: ProjectEvidenceBindingRequest): void;
@@ -201,6 +209,11 @@ export async function createDailyOperationsControlPlane(options: {
     readonly personalContext?: PersonalContextIngestion;
     readonly retentionRequired?: boolean;
   };
+  /**
+   * Which process owns the single Telegram consumer. Defaults to the
+   * Revision 5 behaviour so nothing changes until the cutover runs.
+   */
+  readonly telegramOwnership?: TelegramOwnership;
   /** Optional real Hermes API-server runtime. Real-Ming remains the governance boundary. */
   readonly hermes?: {
     readonly runtime: HermesRuntimeClient;
@@ -214,6 +227,9 @@ export async function createDailyOperationsControlPlane(options: {
   };
 }): Promise<DailyOperationsControlPlane> {
   const now = options.now ?? (() => new Date().toISOString());
+  const telegramOwnership: TelegramOwnership =
+    options.telegramOwnership ?? "real-ming-ingress";
+  const ownsTelegram = telegramOwnership === "real-ming-ingress";
   const state = new OperationsState(options.statePath);
   const projectEvidence =
     options.evidenceProvider === undefined || options.portfolio === undefined
@@ -300,7 +316,11 @@ export async function createDailyOperationsControlPlane(options: {
         state,
         pages: () => knowledgeCompiler?.pages() ?? [],
       });
-  const hermesCoordinator: HermesTurnCoordinator | undefined = options.hermes === undefined
+  // Revision 6 retires the mandatory JSON turn envelope. When the native
+  // gateway owns conversation, Real-Ming must hold no Hermes conversation of
+  // its own, or two systems would claim the same session and the CEO would
+  // get two answers to one message.
+  const hermesCoordinator: HermesTurnCoordinator | undefined = options.hermes === undefined || !ownsTelegram
     ? undefined
     : createHermesTurnCoordinator({
         runtime: options.hermes.runtime,
@@ -600,14 +620,23 @@ export async function createDailyOperationsControlPlane(options: {
     });
   };
 
-  const supervisor = createControlPlaneSupervisor({
-    pollTelegram: async () => {
-      const recovery = await frontDoor.retryPendingDeliveries();
-      if (recovery.failed > 0 || recovery.uncertain > 0) {
-        recordExceptionNoticeHealthOutcome("failed");
-      } else if (recovery.sent > 0) {
-        recordExceptionNoticeHealthOutcome("healthy");
-      }
+  // Delivery recovery is an outbound-notification concern, not an ingress one.
+  // Revision 5 ran it inside the polling loop; Revision 6 hands the consumer
+  // away, so the retry has to keep an owner of its own or a durable failed
+  // brief would sit unsent forever after cutover.
+  const recoverPendingDeliveries = async (): Promise<void> => {
+    const recovery = await frontDoor.retryPendingDeliveries();
+    if (recovery.failed > 0 || recovery.uncertain > 0) {
+      recordExceptionNoticeHealthOutcome("failed");
+    } else if (recovery.sent > 0) {
+      recordExceptionNoticeHealthOutcome("healthy");
+    }
+    if (recovery.failed > 0 || recovery.uncertain > 0) {
+      throw new Error("Telegram delivery recovery remains unresolved.");
+    }
+  };
+
+  const pollTelegram = async (): Promise<void> => {
       const cursor = state.telegramIngressCursor();
       const read = await options.telegram.read({ reference: `offset:${cursor + 1}` });
       if (read.kind === "failed") {
@@ -644,11 +673,19 @@ export async function createDailyOperationsControlPlane(options: {
       if (polled.failed > 0) {
         throw new Error("A Telegram update could not be handled.");
       }
-      if (recovery.failed > 0 || recovery.uncertain > 0) {
-        throw new Error("Telegram delivery recovery remains unresolved.");
-      }
-    },
+  };
+
+  const supervisor = createControlPlaneSupervisor({
+    ...(ownsTelegram
+      ? {
+          pollTelegram: async () => {
+            await recoverPendingDeliveries();
+            await pollTelegram();
+          },
+        }
+      : {}),
     tickSchedule: async () => {
+      if (!ownsTelegram) await recoverPendingDeliveries();
       const primary = await scheduler.tick();
       const knowledge = await knowledgeRuntime?.scheduler.tick();
       if (
@@ -692,6 +729,7 @@ export async function createDailyOperationsControlPlane(options: {
 
   return {
     dashboardOrigin: dashboard.origin,
+    telegramOwnership,
     projectPortfolio: options.portfolio,
     projectEvidence,
     bindPortfolioProject(request) {

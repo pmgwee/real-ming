@@ -29,9 +29,15 @@ export interface ControlPlaneSupervisor {
  * Nothing about the cause of a failure enters the cycle record. These records
  * go to the service journal on every pass, and a provider's exception message
  * routinely carries the request URL, which for Telegram contains the bot token.
+ *
+ * Under Architecture Revision 6 the native Hermes gateway owns the Telegram
+ * consumer, so `pollTelegram` is omitted and the ingress loop reports
+ * `stopped`. That is deliberately distinct from `failed`: a health record
+ * claiming a failed ingress would page the CEO about a migration that worked.
  */
 export function createControlPlaneSupervisor(options: {
-  readonly pollTelegram: () => Promise<unknown>;
+  /** Omitted when another process owns the single Telegram consumer. */
+  readonly pollTelegram?: () => Promise<unknown>;
   readonly tickSchedule: () => Promise<unknown>;
   readonly now: () => string;
   readonly wait?: () => Promise<void>;
@@ -54,7 +60,9 @@ export function createControlPlaneSupervisor(options: {
 
   const supervisor: ControlPlaneSupervisor = {
     async runCycle(): Promise<ControlPlaneCycle> {
-      const telegram = await attempt(options.pollTelegram);
+      const poll = options.pollTelegram;
+      const telegram: CycleOutcome =
+        poll === undefined ? { kind: "stopped" } : await attempt(poll);
       const schedule = await attempt(options.tickSchedule);
       const cycle = { at: options.now(), telegram, schedule };
       // Bookkeeping about the loops must not be able to kill the loops. This

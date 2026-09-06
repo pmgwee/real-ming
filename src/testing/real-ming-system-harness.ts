@@ -2336,6 +2336,7 @@ export function createRealMingSystemHarness(options: {
 }
 
 export interface ControlPlaneSystemHarness {
+  telegramOwnership(): import("../runtime/daily-operations-control-plane.js").TelegramOwnership;
   queueTelegramUpdate(update: {
     readonly updateId: number;
     readonly senderId: string;
@@ -2386,6 +2387,8 @@ export async function createControlPlaneSystemHarness(options: {
   readonly telegramSendFailures?: number;
   /** Enable a fully controlled Hermes API edge for production-composition tests. */
   readonly hermesEnabled?: boolean;
+  /** Rehearse the Revision 6 cutover, where the native gateway owns Telegram. */
+  readonly telegramOwnership?: import("../runtime/daily-operations-control-plane.js").TelegramOwnership;
 }): Promise<ControlPlaneSystemHarness> {
   const now = options.now ?? (() => new Date().toISOString());
   const dashboardToken = "controlled-dashboard-access-token";
@@ -2495,10 +2498,14 @@ export async function createControlPlaneSystemHarness(options: {
       options.notionLedgerPath ?? `${options.statePath}.notion-ledger`,
     fetch: controlledFetch,
     dashboardPort: 0,
+    ...(options.telegramOwnership === undefined
+      ? {}
+      : { telegramOwnership: options.telegramOwnership }),
     now,
   });
 
   return {
+    telegramOwnership: () => controlPlane.telegramOwnership,
     queueTelegramUpdate: (update) => {
       updates.push({
         update_id: update.updateId,
