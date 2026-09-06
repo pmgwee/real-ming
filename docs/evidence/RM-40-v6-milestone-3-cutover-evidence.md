@@ -36,6 +36,61 @@ Verified after connection:
 consumer for `@MingCreativesBot`. What remains is Ming's phone matrix, which is
 the milestone 3 pass criterion and cannot be produced by engineering.
 
+## Phone matrix · 6 September 2026, 12:40–12:42 Asia/Kuala_Lumpur
+
+Ming ran the matrix against `@MingCreativesBot`. **The two defects that failed
+the 5 September smoke are fixed**, and one native capability appeared that the
+Revision 5 bridge never had.
+
+| Test | Result | Verdict |
+| --- | --- | --- |
+| "Hi, what can you help me with?" | A natural capability answer. No role announced, no Work Item, no template | ✅ |
+| Follow-up in the same chat | Whole conversation stayed in **one session**: `20260906_044002_66dc9dc2`, 16 messages, 04:40:01 → 04:42:16 | ✅ structurally; see the gap below |
+| `/help` and the command menu | Full native menu across two pages, plus **59 skill commands** — including Ming's own playbooks exposed as `/cao`, `/cto` and the rest | ✅ new capability |
+| Formatted answer with code | A real fenced code block plus a clean bulleted explanation | ✅ **was broken in Revision 5** |
+| "As CTO, what's the release path for a DuitSini change?" | `📚 Reading skill cto`, then the eight-step release path, Approval voided by a new commit, migrations needing their own Approval and rollback | ✅ **was bypassed entirely in Revision 5** |
+| Work Items created by the whole conversation | `work_items` count unchanged at **33** | ✅ |
+| Tools invoked | 2 × `skill_view` — visible to Ming as "Reading skill cto", nothing hidden | ✅ |
+
+### Two Revision 5 defects retired
+
+1. **Rich formatting.** The smoke findings recorded "Provider harness sends
+   Markdown without `parse_mode`", so markup could not render. The native
+   gateway produced a proper code block.
+2. **Role-prefix bypass.** The smoke findings recorded `CTO: …` entering the
+   legacy action parser "with no additional Hermes call". The native path
+   loaded the `cto` skill and the agent answered from it.
+
+### Session continuity, resolved
+
+Milestone 1 found that one-shot CLI mode never resumes a session, and flagged
+that gateway continuity could not be inferred from it. It now has its own
+evidence: all seven exchanges are one session with 16 messages. **The one-shot
+defect does not affect the product path.**
+
+### Three rows were not actually exercised
+
+Ming pasted the checklist's placeholder text verbatim rather than a real case,
+so these remain untested and are **not** claimed:
+
+| Row | Why it did not test anything |
+| --- | --- |
+| Follow-up context | The message sent was the literal string "A short follow-up about that answer", so the agent correctly asked what he wanted to know. Session structure is proven; semantic recall is not |
+| Multi-step request | The message sent was "Something multi-step", so no work ran. **Typing indicator and progress remain unverified** |
+| Photo or file | The message sent was "A photo or file" as text. Attachment handling remains unverified |
+
+### One presentation fix applied
+
+Every reply quoted Ming's message back, which is noise in a one-to-one chat.
+`platforms.telegram.reply_to_mode` was unset and defaulting to quoting.
+
+Setting it exposed a YAML trap worth recording: `hermes config set … off` stores
+the **boolean** `False`, because YAML 1.1 treats `off` as false. The adapter
+reads `getattr(config, 'reply_to_mode', 'first') or 'first'`, so `False` falls
+through to `'first'` — the change would have left quoting on. It is now written
+as the quoted string `"off"`, which the adapter's `== "off"` check matches, and
+`hermes config get` returns `off`.
+
 ## TL;DR
 
 **The Malaysia side of the cutover is done.** Real-Ming now runs the Revision 6
