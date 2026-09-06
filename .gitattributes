@@ -1,0 +1,6 @@
+# Linux entrypoints and systemd units must remain LF-delimited when checked out
+# or packaged on Windows. A CR before the shebang newline makes /usr/bin/env
+# look for an executable named `bash\r` on the production host.
+deploy/**/*.sh text eol=lf
+deploy/systemd/* text eol=lf
+hermes/**/*.sh text eol=lf

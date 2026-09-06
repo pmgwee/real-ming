@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -671,6 +671,23 @@ describe("RM-15 production-equivalent control plane composition", () => {
     } finally {
       await after.close();
       rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Linux deployment entrypoints free of carriage returns", () => {
+    const linuxFiles = [
+      "deploy/backup-control-plane.sh",
+      "deploy/verify-deployment.sh",
+      "deploy/systemd/hermes.service",
+      "deploy/systemd/hermes-dashboard.service",
+      "deploy/systemd/real-ming.service",
+      "deploy/systemd/real-ming-backup.service",
+      "deploy/systemd/real-ming-backup.timer",
+      "hermes/deploy-skills.sh",
+    ];
+
+    for (const relativePath of linuxFiles) {
+      expect(readFileSync(join(process.cwd(), relativePath), "utf8"), relativePath).not.toContain("\r");
     }
   });
 
