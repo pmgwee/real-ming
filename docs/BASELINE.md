@@ -15,10 +15,13 @@ build if any of them drifts.
 `real-ming:rev6-fb2756a` with `REAL_MING_TELEGRAM_OWNERSHIP=native-hermes-gateway`,
 so Real-Ming no longer polls Telegram, and the native Hermes gateway
 (v0.21.0, pinned `561b053f794a1781868bb032029d589c67708119`) holds the bot
-credential and allowlist. **The transport is not yet connected:** an external
-consumer still holds the same bot token, so the gateway is retrying. The design
-baseline and the deployed revision are stated separately on purpose and neither
-is evidence for the other. Status lives in the
+credential and allowlist. **The transport is live:** the gateway connected at
+04:36 UTC on 6 September once the competing East Asia consumer was stopped, and
+it is the single Telegram consumer for the bot with 60 native commands
+registered. Ming's phone matrix passed for conversation, commands, formatting
+and role playbooks; progress indication and attachments remain untested. The
+design baseline and the deployed revision are stated separately on purpose and
+neither is evidence for the other. Status lives in the
 [V6 implementation plan](planning/RM-40-v6-native-first-implementation-plan.md),
 the [requirement ledger](planning/RM-40-v6-requirement-ledger.md) and the
 [cutover evidence](evidence/RM-40-v6-milestone-3-cutover-evidence.md).

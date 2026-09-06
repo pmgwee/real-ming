@@ -250,6 +250,15 @@ import type { EmailMessage, GmailEmailAdapter } from "../providers/email-provide
 import type { CutoverBindings } from "../migration/master-tasks-cutover.js";
 import type { HermesRuntimeClient } from "../hermes/contracts.js";
 import {
+  executionLinkStatePath,
+  SqliteExecutionLinkStore,
+} from "../integration/execution-link.js";
+import {
+  createRealMingTools,
+  type RealMingToolDefinition,
+  type RealMingToolResult,
+} from "../integration/real-ming-tools.js";
+import {
   createHermesSessionStore,
   type HermesSessionStore,
 } from "../hermes/hermes-session-store.js";
@@ -547,6 +556,12 @@ export interface RealMingSystemHarness {
   acknowledgeCeoAction(
     action: NormalizedCeoAction,
   ): Promise<WorkItemAcknowledgement>;
+  /** The Real-Ming extension Hermes reaches as tools. Not a separate seam. */
+  realMingTools(): readonly RealMingToolDefinition[];
+  callRealMingTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): RealMingToolResult;
   listCalendarEvents(request: {
     readonly calendarId: string;
   }): Promise<ProviderReadResult<readonly CalendarEvent[]>>;
@@ -1130,6 +1145,27 @@ export function createRealMingSystemHarness(options: {
   };
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
+  // Opened on first use, not at construction. Several scenarios deliberately
+  // make harness construction throw, and a handle opened before that point is
+  // never closed -- which on Windows leaves the temp directory undeletable and
+  // fails an unrelated test's cleanup.
+  let executionLinks: SqliteExecutionLinkStore | undefined;
+  const links = (): SqliteExecutionLinkStore => {
+    executionLinks ??= new SqliteExecutionLinkStore(
+      executionLinkStatePath(options.statePath),
+    );
+    return executionLinks;
+  };
+  const realMingTools = createRealMingTools({
+    workItems: () => state.workItems(),
+    workItem: (id) => state.workItem(id),
+    links: {
+      link: (request) => links().link(request),
+      forWorkItem: (workItemId) => links().forWorkItem(workItemId),
+      close: () => links().close(),
+    },
+    now: () => (options.now ?? (() => new Date().toISOString()))(),
+  });
   const deploymentCandidateStore = new SqliteDeploymentCandidateStore(
     deploymentCandidateStatePath(options.statePath),
   );
@@ -2082,6 +2118,8 @@ export function createRealMingSystemHarness(options: {
       return entertainmentEmailDigest.run();
     },
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
+    realMingTools: () => realMingTools.list(),
+    callRealMingTool: (name, args) => realMingTools.call(name, args),
     listCalendarEvents: ({ calendarId }) =>
       calendarAdapter.listEvents(calendarId),
     reconcileCalendarCommitment: (request) =>
@@ -2330,6 +2368,7 @@ export function createRealMingSystemHarness(options: {
       deploymentPromotionStore.close();
       knowledgeVault?.close();
       hermesStore?.close();
+      executionLinks?.close();
       state.close();
     },
   };

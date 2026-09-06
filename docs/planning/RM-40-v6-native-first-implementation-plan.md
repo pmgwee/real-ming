@@ -11,7 +11,7 @@ Prepared: 6 September 2026. Status: **implementation plan; migration not execute
 | 2 · Prepare a reversible one-owner Telegram migration | ✅ Complete, 6 Sep 2026 | [Milestone 2 cutover runbook](../evidence/RM-40-v6-milestone-2-cutover-runbook.md). Composition mode implemented and proven through the System Harness; cutover and reverse procedures written; extension interface verified against the installed version |
 | 3 · Activate native Telegram and accept the core experience | 🔄 Transport live and phone matrix mostly passed, 6 Sep 2026; **3 rows still untested** (progress indicator, attachments, semantic recall) | [Milestone 3 cutover evidence](../evidence/RM-40-v6-milestone-3-cutover-evidence.md). Native gateway is the single consumer, 60 commands registered, allowlist loaded; phone matrix is the pass criterion |
 | 4 · Configure Ming's roles and connect sources | ✅ Complete for Notion and Calendar, 6 Sep 2026; GitHub and Vercel need credentials | [Milestone 4 evidence](../evidence/RM-40-v6-milestone-4-configuration-and-sources.md). Six skills live and behaviour-verified; two sources proven by real authorized reads; two have no credential provisioned |
-| 5 · Add the missing task, schedule and action contracts | ▶️ Next | — |
+| 5 · Add the missing task, schedule and action contracts | 🔄 Extension live 6 Sep 2026; **scheduler ownership not started** | [Milestone 5 evidence](../evidence/RM-40-v6-milestone-5-extension-evidence.md). Real-Ming is an MCP server, registered and called by the agent with correct task semantics; the brief and roll-up still belong to Real-Ming |
 | 6–9 | Not started | — |
 
 
