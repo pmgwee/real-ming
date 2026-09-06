@@ -4,6 +4,54 @@
 
 > **Live deployment record:** [RM-40 V6 deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md). The East Asia VM remains deallocated and undeleted for rollback. Do not paste any credential values into this file.
 
+## 🚦 TWO DECISIONS · 7 September 2026
+
+Engineering is at the point where the next two steps change what you receive
+and what the agent remembers. Both need your word. Everything not gated on them
+has been done, and two real defects were found and fixed on the way.
+
+### Decision A · Turn the daily brief and roll-up over to native cron
+
+Today Real-Ming both composes and delivers them. Native cron would take the
+trigger and delivery; Real-Ming keeps composing the content from your four
+sources. Right now native cron has **zero jobs**, so nothing is scheduled by it.
+
+What I would do, in order, and stop at any failure:
+
+1. Deploy the current extension build so `real_ming_run_scheduled_report` exists
+   (the host still runs the 6 September build with three tools).
+2. Create exactly two jobs — 07:30 and 21:30 `Asia/Kuala_Lumpur` — pinned to
+   `gpt-5.6-sol` / `openai-codex`.
+3. Run each once, deliberately. **You would receive two Telegram messages.**
+4. Verify native run history, correct KL time, and no duplicate after a restart.
+5. Only then switch ownership, leaving the old scheduler as the rollback until
+   the switch is proven.
+
+**Why it needs you:** step 3 sends real messages to your phone, and step 5
+changes who owns a job you rely on daily. Getting it wrong means either no brief
+or two.
+
+**Found before asking:** the procedure would have scheduled both jobs in **UTC**.
+`30 7 * * *` would have fired at 15:30 KL — your morning brief arriving
+mid-afternoon, every day, with nothing visibly broken. Hermes reads its own
+`timezone` config key, not the host clock, and neither was set. Fixed and
+verified at `+08:00` before any job exists.
+
+### Decision B · Supervised Hermes memory writes
+
+`memory.write_approval` is currently `false`, so the agent writes to its memory
+without asking. Milestone 6 needs your policy, and I will not change it silently.
+
+| Option | What it means |
+| --- | --- |
+| Leave `false` | Memory just works. Nothing interrupts you. The agent decides what is worth remembering |
+| Set `true` | Every memory write waits for your approval. Nothing is remembered you did not see — and an unattended cron run cannot write memory at all |
+
+**My recommendation: leave it `false`,** and revisit if you ever see it remember
+something wrong. Approval-gating memory tends to mean memory silently stops
+working, which is worse than an occasional bad note you can correct. Your
+Sensitive Secret exclusions do not depend on this setting.
+
 ## ✅ CLEARED — and now one test only you can run · 6 September 2026
 
 You stopped the East Asia VM and it worked. The native Hermes gateway is now the
