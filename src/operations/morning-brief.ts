@@ -406,6 +406,38 @@ export interface MorningBriefRunner {
   run(): Promise<MorningBriefResult>;
 }
 
+export interface MorningBriefComposer {
+  /** Compose only; delivery and scheduler ownership live outside this seam. */
+  compose(): Promise<MorningBrief>;
+}
+
+export function createMorningBriefComposer(options: {
+  readonly state: OperationsState;
+  readonly listEvents: (
+    window: CalendarWindow,
+  ) => Promise<ProviderReadResult<readonly CalendarEvent[]>>;
+  readonly now?: () => string;
+}): MorningBriefComposer {
+  const now = options.now ?? (() => new Date().toISOString());
+  return {
+    async compose(): Promise<MorningBrief> {
+      const currentNow = now();
+      const occurrence = morningBriefOccurrence(currentNow);
+      const calendar = observeCalendar(
+        await options.listEvents(morningBriefWindow(occurrence.occurrenceDate)),
+        occurrence.occurrenceDate,
+      );
+      return buildMorningBrief({
+        now: currentNow,
+        workItems: options.state.workItems(),
+        calendar,
+        approvals: (workItemId) => options.state.approvals(workItemId),
+        auditTrail: (workItemId) => options.state.auditTrail(workItemId),
+      });
+    },
+  };
+}
+
 export function createMorningBriefRunner(options: {
   readonly state: OperationsState;
   readonly listEvents: (
@@ -415,20 +447,14 @@ export function createMorningBriefRunner(options: {
   readonly now?: () => string;
 }): MorningBriefRunner {
   const now = options.now ?? (() => new Date().toISOString());
+  const composer = createMorningBriefComposer({
+    state: options.state,
+    listEvents: options.listEvents,
+    now,
+  });
   return {
     async run(): Promise<MorningBriefResult> {
-      const occurrence = morningBriefOccurrence(now());
-      const calendar = observeCalendar(
-        await options.listEvents(morningBriefWindow(occurrence.occurrenceDate)),
-        occurrence.occurrenceDate,
-      );
-      const brief = buildMorningBrief({
-        now: now(),
-        workItems: options.state.workItems(),
-        calendar,
-        approvals: (workItemId) => options.state.approvals(workItemId),
-        auditTrail: (workItemId) => options.state.auditTrail(workItemId),
-      });
+      const brief = await composer.compose();
       // An identical retry deduplicates; a retry whose picture has changed is
       // a correction, not a duplicate, and must still reach the CEO. Keying on
       // the occurrence plus the rendered text gives both.

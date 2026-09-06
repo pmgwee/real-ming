@@ -1,4 +1,4 @@
-import type { RealMingTools } from "./real-ming-tools.js";
+import type { RealMingToolResult, RealMingTools } from "./real-ming-tools.js";
 
 /**
  * A minimal MCP server over stdio: newline-delimited JSON-RPC 2.0.
@@ -105,6 +105,63 @@ export function handleMcpRequest(
   }
 }
 
+/**
+ * Async companion for tool registries that cross a provider/API boundary.
+ * Keeping the original synchronous handler intact preserves the tiny contract
+ * used by existing tests and by the three read/link tools.
+ */
+export async function handleMcpRequestAsync(
+  request: JsonRpcRequest,
+  tools: RealMingTools,
+  serverName = "real-ming",
+): Promise<McpResponse | undefined> {
+  if (tools.callAsync === undefined) return handleMcpRequest(request, tools, serverName);
+  const id = request.id ?? null;
+  const method = request.method ?? "";
+  if (method.startsWith("notifications/")) return undefined;
+  if (method !== "tools/call") return handleMcpRequest(request, tools, serverName);
+
+  const name = request.params?.["name"];
+  const rawArguments = request.params?.["arguments"];
+  if (typeof name !== "string") {
+    return {
+      jsonrpc: "2.0",
+      id,
+      error: { code: -32602, message: "tools/call requires a tool name." },
+    };
+  }
+  const args =
+    typeof rawArguments === "object" && rawArguments !== null
+      ? (rawArguments as Record<string, unknown>)
+      : {};
+  let result: RealMingToolResult;
+  try {
+    result = await tools.callAsync(name, args);
+  } catch {
+    // A provider seam should normally turn failures into a typed tool result,
+    // but the MCP server must still answer if a future implementation throws.
+    // Dropping the response would leave Hermes waiting until its whole cron
+    // request times out.
+    result = { kind: "failed" as const, reason: "Tool call failed." };
+  }
+  return {
+    jsonrpc: "2.0",
+    id,
+    result: {
+      content: [
+        {
+          type: "text",
+          text:
+            result.kind === "ok"
+              ? JSON.stringify(result.value, null, 2)
+              : result.reason,
+        },
+      ],
+      isError: result.kind === "failed",
+    },
+  };
+}
+
 /** Split a growing buffer into complete lines, returning the unfinished tail. */
 export function splitFramedLines(buffer: string): {
   readonly lines: readonly string[];
@@ -122,6 +179,7 @@ export function serveMcpOverStdio(options: {
   readonly serverName?: string;
 }): void {
   let buffer = "";
+  let pending = Promise.resolve();
   options.input.setEncoding?.("utf8");
   options.input.on("data", (chunk: string) => {
     buffer += chunk;
@@ -141,9 +199,26 @@ export function serveMcpOverStdio(options: {
         );
         continue;
       }
-      const response = handleMcpRequest(request, options.tools, options.serverName);
-      if (response !== undefined) {
-        options.output.write(`${JSON.stringify(response)}\n`);
+      if (options.tools.callAsync === undefined) {
+        const response = handleMcpRequest(request, options.tools, options.serverName);
+        if (response !== undefined) {
+          options.output.write(`${JSON.stringify(response)}\n`);
+        }
+      } else {
+        // MCP clients expect responses in request order. Serializing the small
+        // queue also prevents two cron retries from composing concurrently.
+        pending = pending
+          .then(async () => {
+            const response = await handleMcpRequestAsync(
+              request,
+              options.tools,
+              options.serverName,
+            );
+            if (response !== undefined) {
+              options.output.write(`${JSON.stringify(response)}\n`);
+            }
+          })
+          .catch(() => undefined);
       }
     }
   });

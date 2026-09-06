@@ -1,5 +1,7 @@
 import type { WorkItem, WorkItemState } from "../operations/contracts.js";
 import type { ExecutionLinkStore } from "./execution-link.js";
+import type { NativeScheduledReportRequest } from "../operations/native-scheduled-reports.js";
+import type { NativeCronReportClient } from "./native-cron-client.js";
 
 /**
  * The Real-Ming extension: the small set of operations native Hermes cannot
@@ -24,6 +26,11 @@ export type RealMingToolResult =
 export interface RealMingTools {
   list(): readonly RealMingToolDefinition[];
   call(name: string, args: Record<string, unknown>): RealMingToolResult;
+  /** Optional asynchronous boundary used by the native cron composition tool. */
+  callAsync?: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => Promise<RealMingToolResult>;
 }
 
 /**
@@ -102,7 +109,10 @@ export function createRealMingTools(options: {
   readonly workItem: (id: string) => WorkItem | undefined;
   readonly links: ExecutionLinkStore;
   readonly now: () => string;
+  /** Present only when native Hermes cron has been staged for this process. */
+  readonly scheduledReports?: NativeCronReportClient;
 }): RealMingTools {
+  const scheduledReports = options.scheduledReports;
   const definitions: readonly RealMingToolDefinition[] = [
     {
       name: "real_ming_list_work_items",
@@ -154,7 +164,52 @@ export function createRealMingTools(options: {
         required: ["workItemId", "nativeTaskId", "idempotencyKey"],
       },
     },
+    ...(scheduledReports === undefined
+      ? []
+      : [
+          {
+            name: "real_ming_run_scheduled_report",
+            description:
+              "Compose one Real-Ming morning brief or executive roll-up for native Hermes cron. Return the exact text field as your final response so Hermes can deliver it through its native Telegram gateway. If delivery is skipped, return [SILENT]. Do not call Telegram tools or add a preamble.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                job: {
+                  type: "string",
+                  enum: ["morning-brief", "executive-roll-up"],
+                },
+                runId: {
+                  type: "string",
+                  description: "Native Hermes cron execution/session identifier.",
+                },
+                occurrenceDate: {
+                  type: "string",
+                  description: "Optional Kuala Lumpur operating date (YYYY-MM-DD).",
+                },
+              },
+              required: ["job"],
+            },
+          } satisfies RealMingToolDefinition,
+        ]),
   ];
+
+  const scheduledReportRequest = (
+    args: Record<string, unknown>,
+  ): NativeScheduledReportRequest | undefined => {
+    const job = requiredString(args, "job");
+    if (job !== "morning-brief" && job !== "executive-roll-up") return undefined;
+    const runId = args["runId"];
+    const occurrenceDate = args["occurrenceDate"];
+    return {
+      job,
+      ...(typeof runId === "string" && runId.trim().length > 0
+        ? { runId: runId.trim() }
+        : {}),
+      ...(typeof occurrenceDate === "string" && occurrenceDate.trim().length > 0
+        ? { occurrenceDate: occurrenceDate.trim() }
+        : {}),
+    };
+  };
 
   return {
     list: () => definitions,
@@ -234,9 +289,43 @@ export function createRealMingTools(options: {
             value: { ...result.link, deduplicated: result.deduplicated },
           };
         }
+        case "real_ming_run_scheduled_report":
+          return scheduledReports === undefined
+            ? {
+                kind: "failed",
+                reason: "Native Hermes cron report composition is not enabled.",
+              }
+            : {
+                kind: "failed",
+                reason:
+                  "This scheduled report tool requires the asynchronous MCP call path.",
+              };
         default:
           return { kind: "failed", reason: `Unknown tool ${name}.` };
       }
     },
+    ...(scheduledReports === undefined
+      ? {}
+      : {
+          callAsync: async (name: string, args: Record<string, unknown>) => {
+            if (name !== "real_ming_run_scheduled_report") {
+              return createRealMingTools({
+                  workItems: options.workItems,
+                  workItem: options.workItem,
+                  links: options.links,
+                  now: options.now,
+                }).call(name, args);
+            }
+            const request = scheduledReportRequest(args);
+            if (request === undefined) {
+              return {
+                kind: "failed" as const,
+                reason:
+                  "job is required and must be morning-brief or executive-roll-up.",
+              };
+            }
+            return scheduledReports.run(request);
+          },
+        }),
   };
 }

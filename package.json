@@ -20,9 +20,11 @@
     "notion:cutover-master-tasks": "npm run build --silent && node --env-file-if-exists=.env dist/config/notion-master-tasks-cutover-cli.js",
     "control-plane:start": "npm run build --silent && node --env-file-if-exists=.env dist/config/control-plane-cli.js",
     "control-plane:backup": "npm run build --silent && node dist/config/control-plane-backup-cli.js",
+    "control-plane:restore": "npm run build --silent && node dist/config/control-plane-restore-cli.js",
     "control-plane:smoke": "npm run build --silent && node --env-file-if-exists=.env dist/config/control-plane-smoke-cli.js",
     "control-plane:deployment-preflight": "npm run build --silent && node dist/config/control-plane-deployment-preflight-cli.js",
-    "mcp:serve": "npm run build --silent && node --env-file-if-exists=.env dist/config/real-ming-mcp-cli.js"
+    "mcp:serve": "npm run build --silent && node --env-file-if-exists=.env dist/config/real-ming-mcp-cli.js",
+    "native-cron:manifest": "npm run build --silent && node dist/config/native-cron-manifest-cli.js"
   },
   "devDependencies": {
     "@types/node": "24.13.3",

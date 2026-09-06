@@ -686,6 +686,8 @@ export class OperationsState {
         started_at TEXT NOT NULL,
         completed_at TEXT,
         outcome TEXT,
+        owner TEXT NOT NULL DEFAULT 'real-ming',
+        run_id TEXT,
         PRIMARY KEY (job, occurrence_date)
       );
 
@@ -696,6 +698,29 @@ export class OperationsState {
         completed_at TEXT NOT NULL,
         PRIMARY KEY (job, occurrence_date, attempt)
       );
+
+      CREATE TABLE IF NOT EXISTS scheduler_run_outputs (
+        job TEXT NOT NULL,
+        occurrence_date TEXT NOT NULL,
+        owner TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        payload_digest TEXT NOT NULL,
+        payload_text TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (job, occurrence_date, payload_digest)
+      );
+
+      CREATE TRIGGER IF NOT EXISTS scheduler_run_outputs_reject_update
+      BEFORE UPDATE ON scheduler_run_outputs
+      BEGIN
+        SELECT RAISE(ABORT, 'scheduler_run_outputs are append-only');
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS scheduler_run_outputs_reject_delete
+      BEFORE DELETE ON scheduler_run_outputs
+      BEGIN
+        SELECT RAISE(ABORT, 'scheduler_run_outputs are append-only');
+      END;
 
       CREATE TABLE IF NOT EXISTS control_plane_health (
         component TEXT PRIMARY KEY,
@@ -862,6 +887,7 @@ export class OperationsState {
     this.#ensureOutcomeReportSchema();
     this.#ensureTelegramAuditSchema();
     this.#ensureTelegramReviewControlSchema();
+    this.#ensureSchedulerSchema();
     this.#backfillRm01OutcomeEffects();
     this.#backfillOutcomeReportRevisions();
   }
@@ -1856,6 +1882,10 @@ export class OperationsState {
     readonly startedAt: string;
     readonly staleAfterMs?: number;
     readonly maxAttempts?: number;
+    /** The process that owns this occurrence. Legacy callers are Real-Ming. */
+    readonly owner?: string;
+    /** The caller's durable execution identifier, when one exists. */
+    readonly runId?: string;
   }): {
     readonly kind:
       | "claimed"
@@ -1897,14 +1927,23 @@ export class OperationsState {
     this.#database
       .prepare(
         `INSERT INTO scheduler_runs
-           (job, occurrence_date, scheduled_at, started_at, completed_at, outcome)
-         VALUES (?, ?, ?, ?, NULL, NULL)
+           (job, occurrence_date, scheduled_at, started_at, completed_at, outcome, owner, run_id)
+         VALUES (?, ?, ?, ?, NULL, NULL, ?, ?)
          ON CONFLICT(job, occurrence_date) DO UPDATE SET
            started_at = excluded.started_at,
            completed_at = NULL,
-           outcome = NULL`,
+           outcome = NULL,
+           owner = excluded.owner,
+           run_id = excluded.run_id`,
       )
-      .run(run.job, run.occurrenceDate, run.scheduledAt, run.startedAt);
+      .run(
+        run.job,
+        run.occurrenceDate,
+        run.scheduledAt,
+        run.startedAt,
+        run.owner ?? "real-ming",
+        run.runId ?? null,
+      );
     return { kind: staleReclaimed ? "stale-reclaimed" : "claimed" };
   }
 
@@ -1913,6 +1952,11 @@ export class OperationsState {
     occurrenceDate: string,
     completedAt: string,
     outcome: "succeeded" | "failed",
+    output?: {
+      readonly owner: string;
+      readonly runId: string;
+      readonly payloadText: string;
+    },
   ): void {
     if (outcome === "failed") {
       this.#database
@@ -1933,6 +1977,69 @@ export class OperationsState {
          WHERE job = ? AND occurrence_date = ?`,
       )
       .run(completedAt, outcome, job, occurrenceDate);
+    if (output !== undefined && outcome === "succeeded") {
+      const payloadDigest = createHash("sha256")
+        .update(output.payloadText)
+        .digest("hex");
+      this.#database
+        .prepare(
+          `INSERT OR IGNORE INTO scheduler_run_outputs
+             (job, occurrence_date, owner, run_id, payload_digest, payload_text, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          job,
+          occurrenceDate,
+          output.owner,
+          output.runId,
+          payloadDigest,
+          output.payloadText,
+          completedAt,
+        );
+    }
+  }
+
+  /**
+   * Return the last successfully composed payload for a scheduled occurrence.
+   * This is deliberately separate from scheduler health: dashboards receive
+   * only the digest and run identity, while the native Hermes cron tool can
+   * replay the exact text after a delivery or process restart.
+   */
+  schedulerRunOutput(
+    job: string,
+    occurrenceDate: string,
+  ): {
+    readonly owner: string;
+    readonly runId: string;
+    readonly payloadDigest: string;
+    readonly payloadText: string;
+    readonly createdAt: string;
+  } | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT owner, run_id, payload_digest, payload_text, created_at
+         FROM scheduler_run_outputs
+         WHERE job = ? AND occurrence_date = ?
+         ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+      )
+      .get(job, occurrenceDate) as unknown as
+      | {
+          readonly owner: string;
+          readonly run_id: string;
+          readonly payload_digest: string;
+          readonly payload_text: string;
+          readonly created_at: string;
+        }
+      | undefined;
+    return row === undefined
+      ? undefined
+      : {
+          owner: row.owner,
+          runId: row.run_id,
+          payloadDigest: row.payload_digest,
+          payloadText: row.payload_text,
+          createdAt: row.created_at,
+        };
   }
 
   /**
@@ -1970,13 +2077,15 @@ export class OperationsState {
   }
 
   schedulerRuns(): readonly {
-    readonly job: string;
-    readonly occurrenceDate: string;
-    readonly scheduledAt: string;
-    readonly startedAt: string;
-    readonly completedAt: string | null;
-    readonly outcome: string | null;
-  }[] {
+      readonly job: string;
+      readonly occurrenceDate: string;
+      readonly scheduledAt: string;
+      readonly startedAt: string;
+      readonly completedAt: string | null;
+      readonly outcome: string | null;
+      readonly owner: string;
+      readonly runId: string | null;
+    }[] {
     return (
       this.#database
         .prepare("SELECT * FROM scheduler_runs ORDER BY occurrence_date ASC, rowid ASC")
@@ -1985,17 +2094,21 @@ export class OperationsState {
         readonly occurrence_date: string;
         readonly scheduled_at: string;
         readonly started_at: string;
-        readonly completed_at: string | null;
-        readonly outcome: string | null;
-      }[]
+          readonly completed_at: string | null;
+          readonly outcome: string | null;
+          readonly owner: string;
+          readonly run_id: string | null;
+        }[]
     ).map((row) => ({
       job: row.job,
       occurrenceDate: row.occurrence_date,
       scheduledAt: row.scheduled_at,
       startedAt: row.started_at,
-      completedAt: row.completed_at,
-      outcome: row.outcome,
-    }));
+        completedAt: row.completed_at,
+        outcome: row.outcome,
+        owner: row.owner,
+        runId: row.run_id,
+      }));
   }
 
   schedulerFailureHistory(): readonly {
@@ -3336,6 +3449,25 @@ export class OperationsState {
       this.#database.exec(
         "ALTER TABLE outcome_reports ADD COLUMN revision INTEGER NOT NULL DEFAULT 1;",
       );
+    }
+  }
+
+  #ensureSchedulerSchema(): void {
+    const columns = this.#database
+      .prepare("PRAGMA table_info(scheduler_runs)")
+      .all() as unknown as TableColumnRow[];
+    const names = new Set(columns.map((column) => column.name));
+
+    // Existing V1.1 databases predate native Hermes cron ownership. SQLite
+    // migrations are additive so the old Real-Ming scheduler remains readable
+    // and can be rolled back without rewriting its history.
+    if (!names.has("owner")) {
+      this.#database.exec(
+        "ALTER TABLE scheduler_runs ADD COLUMN owner TEXT NOT NULL DEFAULT 'real-ming';",
+      );
+    }
+    if (!names.has("run_id")) {
+      this.#database.exec("ALTER TABLE scheduler_runs ADD COLUMN run_id TEXT;");
     }
   }
 

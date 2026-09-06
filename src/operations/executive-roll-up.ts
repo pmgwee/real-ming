@@ -256,19 +256,21 @@ export interface ExecutiveRollUpRunner {
   run(): Promise<ExecutiveRollUpResult>;
 }
 
-export function createExecutiveRollUpRunner(options: {
+export interface ExecutiveRollUpComposer {
+  /** Compose only; native Hermes owns scheduling and Telegram delivery. */
+  compose(): Promise<ExecutiveRollUp>;
+}
+
+export function createExecutiveRollUpComposer(options: {
   readonly state: OperationsState;
   readonly workspaceId: string;
-  readonly admit: (
-    notice: ExceptionNotice,
-  ) => Promise<ExceptionNoticeAdmission>;
   readonly now?: () => string;
-}): ExecutiveRollUpRunner {
+}): ExecutiveRollUpComposer {
   const now = options.now ?? (() => new Date().toISOString());
   return {
-    async run(): Promise<ExecutiveRollUpResult> {
+    async compose(): Promise<ExecutiveRollUp> {
       const currentNow = now();
-      const rollUp = buildExecutiveRollUp({
+      return buildExecutiveRollUp({
         now: currentNow,
         workItems: options.state
           .workItems()
@@ -280,6 +282,27 @@ export function createExecutiveRollUpRunner(options: {
           excludeInProgressJob: executiveRollUpJob,
         }),
       });
+    },
+  };
+}
+
+export function createExecutiveRollUpRunner(options: {
+  readonly state: OperationsState;
+  readonly workspaceId: string;
+  readonly admit: (
+    notice: ExceptionNotice,
+  ) => Promise<ExceptionNoticeAdmission>;
+  readonly now?: () => string;
+}): ExecutiveRollUpRunner {
+  const now = options.now ?? (() => new Date().toISOString());
+  const composer = createExecutiveRollUpComposer({
+    state: options.state,
+    workspaceId: options.workspaceId,
+    now,
+  });
+  return {
+    async run(): Promise<ExecutiveRollUpResult> {
+      const rollUp = await composer.compose();
       // An identical retry deduplicates; an evening whose picture has changed
       // is a correction, not a duplicate.
       const admission = await options.admit({

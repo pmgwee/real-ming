@@ -6,6 +6,7 @@ import {
   SqliteExecutionLinkStore,
 } from "../integration/execution-link.js";
 import { serveMcpOverStdio } from "../integration/mcp-stdio.js";
+import { createNativeCronReportClient } from "../integration/native-cron-client.js";
 import { createRealMingTools } from "../integration/real-ming-tools.js";
 import { OperationsState } from "../operations/operations-state.js";
 
@@ -48,12 +49,29 @@ function main(): void {
     process.exit(0);
   });
 
+  const nativeCronEnabled =
+    (process.env["REAL_MING_NATIVE_CRON_ENABLED"] ?? "").trim().toLowerCase() ===
+    "true";
+  const bridgeKey =
+    process.env["REAL_MING_HERMES_API_KEY"]?.trim() ??
+    process.env["API_SERVER_KEY"]?.trim();
+  const scheduledReports =
+    nativeCronEnabled && bridgeKey !== undefined && bridgeKey.length > 0
+      ? createNativeCronReportClient({
+          endpoint:
+            process.env["REAL_MING_NATIVE_CRON_ENDPOINT"]?.trim() ||
+            "http://127.0.0.1:8787/internal/native-cron/run",
+          apiKey: bridgeKey,
+        })
+      : undefined;
+
   serveMcpOverStdio({
     tools: createRealMingTools({
       workItems: () => state.workItems(),
       workItem: (id) => state.workItem(id),
       links,
       now: () => new Date().toISOString(),
+      ...(scheduledReports === undefined ? {} : { scheduledReports }),
     }),
     input: process.stdin,
     output: process.stdout,

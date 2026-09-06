@@ -119,6 +119,8 @@ export async function createProductionControlPlane(options: {
    * Revision 5 behaviour unless REAL_MING_TELEGRAM_OWNERSHIP says otherwise.
    */
   readonly telegramOwnership?: TelegramOwnership;
+  /** Which process owns scheduled brief/roll-up trigger and delivery. */
+  readonly schedulerOwnership?: "real-ming" | "native-hermes-cron";
   /** Opt-in Hermes API-server binding. Hermes owns OAuth and model/tool reasoning. */
   readonly hermes?: {
     readonly enabled?: boolean;
@@ -233,6 +235,25 @@ export async function createProductionControlPlane(options: {
   }
   const telegramOwnership: TelegramOwnership =
     options.telegramOwnership ?? (configuredOwnership as TelegramOwnership | undefined) ?? "real-ming-ingress";
+  const configuredSchedulerOwnership = optional(
+    options.environment["REAL_MING_SCHEDULER_OWNERSHIP"],
+  );
+  if (
+    configuredSchedulerOwnership !== undefined &&
+    configuredSchedulerOwnership !== "real-ming" &&
+    configuredSchedulerOwnership !== "native-hermes-cron"
+  ) {
+    throw new Error(
+      "REAL_MING_SCHEDULER_OWNERSHIP must be 'real-ming' or 'native-hermes-cron'.",
+    );
+  }
+  const schedulerOwnership =
+    options.schedulerOwnership ??
+    (configuredSchedulerOwnership as
+      | "real-ming"
+      | "native-hermes-cron"
+      | undefined) ??
+    "real-ming";
   const obsidianDirectory = options.obsidian?.directory ?? optional(options.environment["REAL_MING_OBSIDIAN_DIRECTORY"]);
   const obsidianRoots = options.obsidian?.roots ?? optionalObsidianRoots(options.environment["REAL_MING_OBSIDIAN_ROOTS"]);
   const obsidian = obsidianDirectory === undefined
@@ -358,6 +379,8 @@ export async function createProductionControlPlane(options: {
         : { effectVerifier: options.effectVerifier }),
       telegram,
       telegramOwnership,
+      schedulerOwnership,
+      ...(hermesApiKey === undefined ? {} : { nativeCronApiKey: hermesApiKey }),
       ceoTelegramId: required("REAL_MING_TELEGRAM_CEO_ID"),
       ceoTelegramChatId: required("REAL_MING_TELEGRAM_CEO_ID"),
       auditPseudonymKey: required("REAL_MING_VAULT_KEY"),
@@ -403,6 +426,7 @@ export async function createProductionControlPlane(options: {
     return {
       dashboardOrigin: controlPlane.dashboardOrigin,
       telegramOwnership: controlPlane.telegramOwnership,
+      schedulerOwnership: controlPlane.schedulerOwnership,
       projectPortfolio: controlPlane.projectPortfolio,
       projectEvidence: controlPlane.projectEvidence,
       bindPortfolioProject: (request: ProjectEvidenceBindingRequest) =>
@@ -418,6 +442,7 @@ export async function createProductionControlPlane(options: {
       entertainmentEmailDigest: controlPlane.entertainmentEmailDigest,
       hermesOverview: controlPlane.hermesOverview,
       materializeObsidian: controlPlane.materializeObsidian,
+      runNativeScheduledReport: (request) => controlPlane.runNativeScheduledReport(request),
       runCycle: () => controlPlane.runCycle(),
       run: () => controlPlane.run(),
       stop: () => controlPlane.stop(),

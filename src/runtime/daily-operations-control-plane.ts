@@ -26,11 +26,25 @@ import {
   morningBriefJobName,
   releaseHeldJobName,
   schedulerJobInventory,
+  type SchedulerOwner,
 } from "../operations/daily-operations-scheduler.js";
 import { createExceptionNoticeRhythm } from "../operations/exception-notice-rhythm.js";
 import { createProviderObservationCoordinator } from "../operations/provider-observation-coordinator.js";
-import { createExecutiveRollUpRunner } from "../operations/executive-roll-up.js";
-import { createMorningBriefRunner } from "../operations/morning-brief.js";
+import {
+  createExecutiveRollUpComposer,
+  createExecutiveRollUpRunner,
+} from "../operations/executive-roll-up.js";
+import {
+  createMorningBriefComposer,
+  createMorningBriefRunner,
+} from "../operations/morning-brief.js";
+import {
+  createNativeScheduledReportService,
+  nativeScheduledReportOwner,
+  type NativeScheduledReportRequest,
+  type NativeScheduledReportResult,
+  type NativeScheduledReportService,
+} from "../operations/native-scheduled-reports.js";
 import {
   createOperationsGateway,
   type MaterialBlockerReason,
@@ -39,6 +53,7 @@ import { createPrivateWorkerVerifier } from "../workers/private-worker.js";
 import { OperationsState } from "../operations/operations-state.js";
 import type { DashboardServer } from "../dashboard/dashboard-server.js";
 import { createDashboardServer } from "../dashboard/dashboard-server.js";
+import type { NativeHermesDashboardStatus } from "../dashboard/dashboard-read-model.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 import {
@@ -140,6 +155,7 @@ export type TelegramOwnership = "real-ming-ingress" | "native-hermes-gateway";
 export interface DailyOperationsControlPlane {
   readonly dashboardOrigin: string;
   readonly telegramOwnership: TelegramOwnership;
+  readonly schedulerOwnership: SchedulerOwner;
   readonly projectPortfolio: ProjectPortfolio | undefined;
   readonly projectEvidence: ProjectEvidenceBroker | undefined;
   bindPortfolioProject(request: ProjectEvidenceBindingRequest): void;
@@ -151,6 +167,10 @@ export interface DailyOperationsControlPlane {
   readonly entertainmentEmailDigest: EntertainmentEmailDigestRunner | undefined;
   readonly hermesOverview: () => import("../hermes/hermes-turn-coordinator.js").HermesConversationOverview | undefined;
   readonly materializeObsidian: () => ObsidianMaterializationResult | undefined;
+  /** Native Hermes cron calls this boundary and delivers the returned text. */
+  readonly runNativeScheduledReport: (
+    request: NativeScheduledReportRequest,
+  ) => Promise<NativeScheduledReportResult>;
   runCycle(): Promise<ControlPlaneCycle>;
   run(): Promise<void>;
   stop(): void;
@@ -214,6 +234,10 @@ export async function createDailyOperationsControlPlane(options: {
    * Revision 5 behaviour so nothing changes until the cutover runs.
    */
   readonly telegramOwnership?: TelegramOwnership;
+  /** Which process owns the scheduled brief/roll-up trigger and delivery. */
+  readonly schedulerOwnership?: SchedulerOwner;
+  /** Shared Hermes bridge key for the loopback native-cron endpoint. */
+  readonly nativeCronApiKey?: string;
   /** Optional real Hermes API-server runtime. Real-Ming remains the governance boundary. */
   readonly hermes?: {
     readonly runtime: HermesRuntimeClient;
@@ -229,6 +253,8 @@ export async function createDailyOperationsControlPlane(options: {
   const now = options.now ?? (() => new Date().toISOString());
   const telegramOwnership: TelegramOwnership =
     options.telegramOwnership ?? "real-ming-ingress";
+  const schedulerOwnership: SchedulerOwner =
+    options.schedulerOwnership ?? "real-ming";
   const ownsTelegram = telegramOwnership === "real-ming-ingress";
   const state = new OperationsState(options.statePath);
   const projectEvidence =
@@ -331,6 +357,45 @@ export async function createDailyOperationsControlPlane(options: {
         workItem: (id) => state.workItem(id),
         now,
       });
+  // In Revision 6 the native gateway owns the Telegram conversation. Keep a
+  // small, read-only reachability check in the Real-Ming dashboard without
+  // fabricating legacy coordinator sessions or copying Hermes conversation
+  // content into the control plane.
+  const nativeHermesHealth =
+    options.hermes === undefined || ownsTelegram
+      ? undefined
+      : async (): Promise<NativeHermesDashboardStatus> => {
+          const configuredHermes = options.hermes;
+          if (configuredHermes === undefined) {
+            // The branch is unreachable by construction, but retaining an
+            // explicit failed status makes a future configuration race safe.
+            return {
+              owner: "native-hermes-gateway",
+              status: "failed",
+              model: null,
+              checkedAt: now(),
+              lastFailure: "Native Hermes runtime is not configured.",
+            };
+          }
+          try {
+            const health = await configuredHermes.runtime.health();
+            return {
+              owner: "native-hermes-gateway",
+              status: health.status,
+              model: health.model ?? configuredHermes.model ?? null,
+              checkedAt: now(),
+              lastFailure: health.failure ?? null,
+            };
+          } catch {
+            return {
+              owner: "native-hermes-gateway",
+              status: "failed",
+              model: configuredHermes.model ?? null,
+              checkedAt: now(),
+              lastFailure: "Native Hermes health check failed.",
+            };
+          }
+        };
   const frontDoor = createTelegramFrontDoor({
     ceoTelegramId: options.ceoTelegramId,
     ceoTelegramChatId: options.ceoTelegramChatId,
@@ -468,9 +533,14 @@ export async function createDailyOperationsControlPlane(options: {
         ...(entertainmentEmailDigest === undefined ? [] : [entertainmentEmailDigestJobDefinition]),
         ...(knowledgeRuntime === undefined ? [] : knowledgeJobInventory),
       ];
-  const primarySchedulerJobs = entertainmentEmailDigest === undefined
+  const configuredPrimarySchedulerJobs = entertainmentEmailDigest === undefined
     ? schedulerJobInventory
     : [...schedulerJobInventory, entertainmentEmailDigestJobDefinition];
+  const primarySchedulerJobs = configuredPrimarySchedulerJobs.filter(
+    (job) =>
+      schedulerOwnership !== nativeScheduledReportOwner ||
+      job.owner !== nativeScheduledReportOwner,
+  );
   const runEntertainmentEmailDigest = async (): Promise<void> => {
     if (entertainmentEmailDigest === undefined) return;
     const result = await entertainmentEmailDigest.run();
@@ -508,7 +578,7 @@ export async function createDailyOperationsControlPlane(options: {
     );
     recordExceptionNoticeHealth(admission);
   };
-  const morningBrief = createMorningBriefRunner({
+  const morningBriefComposer = createMorningBriefComposer({
     state,
     listEvents: async (window) => {
       const result = await options.listCalendarEvents(window);
@@ -527,7 +597,31 @@ export async function createDailyOperationsControlPlane(options: {
       );
       return result;
     },
+    now,
+  });
+  const morningBrief = createMorningBriefRunner({
+    state,
+    listEvents: async (window) => {
+      const result = await options.listCalendarEvents(window);
+      await observeProvider?.(
+        providerObservationFromRead(
+          {
+            provider: "google-calendar",
+            accountReference: "google-calendar:real-ming",
+          },
+          "calendar:primary",
+          result,
+          now(),
+        ),
+      );
+      return result;
+    },
     admit: admitTracked,
+    now,
+  });
+  const rollUpComposer = createExecutiveRollUpComposer({
+    state,
+    workspaceId,
     now,
   });
   const rollUp = createExecutiveRollUpRunner({
@@ -536,6 +630,13 @@ export async function createDailyOperationsControlPlane(options: {
     admit: admitTracked,
     now,
   });
+  const nativeScheduledReports: NativeScheduledReportService =
+    createNativeScheduledReportService({
+      state,
+      morningBrief: morningBriefComposer,
+      executiveRollUp: rollUpComposer,
+      now,
+    });
   const scheduler = createDailyOperationsScheduler({
     state,
     now,
@@ -579,6 +680,16 @@ export async function createDailyOperationsControlPlane(options: {
     schedulerJobs,
     ...(knowledgeRuntime === undefined ? {} : { knowledgeHealth: () => knowledgeRuntime.domainHealth }),
     ...(hermesCoordinator === undefined ? {} : { hermesHealth: () => hermesCoordinator.overview() }),
+    ...(nativeHermesHealth === undefined ? {} : { nativeHermesHealth }),
+    ...(options.nativeCronApiKey === undefined
+      ? {}
+      : {
+          nativeCron: {
+            apiKey: options.nativeCronApiKey,
+            run: (request: NativeScheduledReportRequest) =>
+              nativeScheduledReports.run(request),
+          },
+        }),
     credentials: [
       {
         actorId: "ceo:ming",
@@ -730,6 +841,7 @@ export async function createDailyOperationsControlPlane(options: {
   return {
     dashboardOrigin: dashboard.origin,
     telegramOwnership,
+    schedulerOwnership,
     projectPortfolio: options.portfolio,
     projectEvidence,
     bindPortfolioProject(request) {
@@ -763,6 +875,7 @@ export async function createDailyOperationsControlPlane(options: {
     entertainmentEmailDigest,
     hermesOverview: () => hermesCoordinator?.overview(),
     materializeObsidian: () => lastObsidianMaterialization,
+    runNativeScheduledReport: (request) => nativeScheduledReports.run(request),
     runCycle: () => supervisor.runCycle(),
     run: () => supervisor.run(),
     stop: () => supervisor.stop(),

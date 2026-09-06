@@ -14,8 +14,10 @@ exactly, and correctly treats `Ready for CEO Review` as *not finished*.
 This is the disposition milestone 4 chose: Master Tasks reaches the agent
 **with** its semantics rather than as a raw write credential.
 
-**Not done in this milestone:** scheduler ownership. The 07:30 brief and 21:30
-roll-up are still delivered by Real-Ming, not native cron.
+The scheduler-ownership slice is now implemented in the repository and has its
+own [controlled evidence](RM-40-v6-milestone-5-scheduler-ownership-evidence.md).
+The Malaysia host still keeps the old owner until the CEO performs the live
+native-cron cutover; no production job was created by that change.
 
 ## 1. What was built
 
@@ -125,20 +127,18 @@ storage arrangement. The mitigation that would actually close it is a separate
 read projection the extension writes and the agent reads, which is real work and
 is **not** done. Recorded as an open item rather than waved away.
 
-## 5. What remains in milestone 5
+## 5. Remaining milestone-5 acceptance
 
-**Scheduler ownership — not started.** The 07:30 brief and 21:30 roll-up are
-still composed and delivered by Real-Ming. Native cron has zero jobs. Moving
-them means splitting two things that currently share a name:
+The repository now has an explicit field-authority map for Master Tasks,
+version-aware Notion upserts backed by a durable source-version ledger, and
+controlled tests that refuse an overwrite after an external page edit. The
+Operations Gateway already reports a failed projection after its bounded retry
+and records provider health rather than claiming a cross-app success.
 
-- *Composing* the brief — reconciling commitments, overdue items, pending
-  Approvals across four sources — is domain logic worth keeping.
-- *Scheduling and delivering* it — cron, DND windows, weekend rhythm, retry — is
-  what native cron should own.
+The native `real-ming` skill now tells Hermes when to call the three extension
+tools, how to link a native task idempotently, and that native commands,
+plugins, MCP, formatting, progress and attachments remain Hermes-owned.
 
-Getting that wrong in either direction either loses the brief's content or
-leaves two schedulers firing it twice. It is the next piece of work.
-
-Also outstanding from the plan: field-by-field write authority for Notion,
-version-aware updates against Master Tasks, and proving a record-sync failure is
-reported honestly rather than silently swallowed.
+Live acceptance is still required for the native cron owner switch and for a
+real Notion read-back after the version check. The two native jobs remain zero
+until the CEO follows the [cutover procedure](../planning/RM-40-v6-native-cron-cutover.md).

@@ -282,15 +282,23 @@ import {
 
 import {
   createMorningBriefRunner,
+  createMorningBriefComposer,
   type MorningBriefResult,
   type MorningBriefRunner,
 } from "../operations/morning-brief.js";
 
 import {
   createExecutiveRollUpRunner,
+  createExecutiveRollUpComposer,
   type ExecutiveRollUpResult,
   type ExecutiveRollUpRunner,
 } from "../operations/executive-roll-up.js";
+import {
+  createNativeScheduledReportService,
+  type NativeScheduledReportRequest,
+  type NativeScheduledReportResult,
+  type NativeScheduledReportService,
+} from "../operations/native-scheduled-reports.js";
 import {
   createPersonalContextIngestion,
   type PersonalContextCandidate,
@@ -537,6 +545,9 @@ export interface RealMingSystemHarness {
   }): Promise<ResolvedCredentials>;
   runMorningBrief(): Promise<MorningBriefResult>;
   runExecutiveRollUp(): Promise<ExecutiveRollUpResult>;
+  runNativeScheduledReport(
+    request: NativeScheduledReportRequest,
+  ): Promise<NativeScheduledReportResult>;
   admitExceptionNotice(
     notification: ExceptionNotice,
   ): Promise<ExceptionNoticeAdmission>;
@@ -1797,12 +1808,26 @@ export function createRealMingSystemHarness(options: {
       hangFor: (job) => forcedHangs.delete(job),
     });
   }
+  const executiveRollUpComposer = createExecutiveRollUpComposer({
+    state,
+    workspaceId: "workspace:real-ming",
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
   const executiveRollUp: ExecutiveRollUpRunner = createExecutiveRollUpRunner({
     state,
     workspaceId: "workspace:real-ming",
     admit: admitTracked,
     ...(options.now === undefined ? {} : { now: options.now }),
   });
+  const morningBriefComposer =
+    options.morningBrief === undefined
+      ? undefined
+      : createMorningBriefComposer({
+          state,
+          listEvents: (window) =>
+            calendarAdapter.listEvents(calendarId, window),
+          ...(options.now === undefined ? {} : { now: options.now }),
+        });
   const morningBrief: MorningBriefRunner | undefined =
     options.morningBrief === undefined
       ? undefined
@@ -1811,6 +1836,15 @@ export function createRealMingSystemHarness(options: {
           listEvents: (window) =>
             calendarAdapter.listEvents(calendarId, window),
           admit: admitTracked,
+          ...(options.now === undefined ? {} : { now: options.now }),
+        });
+  const nativeScheduledReports: NativeScheduledReportService | undefined =
+    morningBriefComposer === undefined
+      ? undefined
+      : createNativeScheduledReportService({
+          state,
+          morningBrief: morningBriefComposer,
+          executiveRollUp: executiveRollUpComposer,
           ...(options.now === undefined ? {} : { now: options.now }),
         });
 
@@ -1939,6 +1973,14 @@ export function createRealMingSystemHarness(options: {
       return morningBrief.run();
     },
     runExecutiveRollUp: () => executiveRollUp.run(),
+    runNativeScheduledReport: (request) => {
+      if (nativeScheduledReports === undefined) {
+        throw new Error(
+          "This harness was not configured with native scheduled reports.",
+        );
+      }
+      return nativeScheduledReports.run(request);
+    },
     admitExceptionNotice: admitTracked,
     recordExceptionNoticeRecovery: async (signature) => {
       const admission = await exceptionNoticeRhythm.recordRecovery(signature);
@@ -2376,6 +2418,7 @@ export function createRealMingSystemHarness(options: {
 
 export interface ControlPlaneSystemHarness {
   telegramOwnership(): import("../runtime/daily-operations-control-plane.js").TelegramOwnership;
+  schedulerOwnership(): "real-ming" | "native-hermes-cron";
   queueTelegramUpdate(update: {
     readonly updateId: number;
     readonly senderId: string;
@@ -2385,6 +2428,9 @@ export interface ControlPlaneSystemHarness {
   failNextTelegramPoll(): void;
   telegramPollRequests(): readonly unknown[];
   runCycle(): ReturnType<DailyOperationsControlPlane["runCycle"]>;
+  runNativeScheduledReport(
+    request: NativeScheduledReportRequest,
+  ): ReturnType<DailyOperationsControlPlane["runNativeScheduledReport"]>;
   dashboardOverview(): Promise<DashboardOverview>;
   hermesOverview(): ReturnType<DailyOperationsControlPlane["hermesOverview"]>;
   telegramMessages(): readonly TelegramOutboundMessage[];
@@ -2428,6 +2474,8 @@ export async function createControlPlaneSystemHarness(options: {
   readonly hermesEnabled?: boolean;
   /** Rehearse the Revision 6 cutover, where the native gateway owns Telegram. */
   readonly telegramOwnership?: import("../runtime/daily-operations-control-plane.js").TelegramOwnership;
+  /** Rehearse native Hermes cron ownership of the two scheduled reports. */
+  readonly schedulerOwnership?: "real-ming" | "native-hermes-cron";
 }): Promise<ControlPlaneSystemHarness> {
   const now = options.now ?? (() => new Date().toISOString());
   const dashboardToken = "controlled-dashboard-access-token";
@@ -2436,6 +2484,7 @@ export async function createControlPlaneSystemHarness(options: {
   let telegramSendFailures = options.telegramSendFailures ?? 0;
   let telegramPollFailures = 0;
   const pollRequests: unknown[] = [];
+  let controlledNotionPageCounter = 0;
   const controlledFetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     if (options.hermesEnabled === true && url.endsWith("/health")) {
@@ -2506,7 +2555,18 @@ export async function createControlPlaneSystemHarness(options: {
       return Response.json({ object: "list", results: [], has_more: false, next_cursor: null });
     }
     if (url.endsWith("api.notion.com/v1/pages")) {
-      return Response.json({ object: "page", id: `controlled-page-${messages.length}` });
+      const pageId = `controlled-page-${controlledNotionPageCounter}`;
+      controlledNotionPageCounter += 1;
+      // The production adapter requires Notion's server version so it can
+      // bind a subsequent overwrite to the page that was last read. Keep the
+      // controlled edge faithful to that contract instead of returning an
+      // identity-only page stub.
+      return Response.json({
+        object: "page",
+        id: pageId,
+        created_time: now(),
+        last_edited_time: now(),
+      });
     }
     throw new Error(`Controlled production edge received an unexpected request: ${new URL(url).host}.`);
   }) as typeof fetch;
@@ -2540,11 +2600,18 @@ export async function createControlPlaneSystemHarness(options: {
     ...(options.telegramOwnership === undefined
       ? {}
       : { telegramOwnership: options.telegramOwnership }),
+    ...(options.schedulerOwnership === undefined
+      ? {}
+      : { schedulerOwnership: options.schedulerOwnership }),
+    ...(options.hermesEnabled === true
+      ? { nativeCronApiKey: "controlled-hermes-api-key" }
+      : {}),
     now,
   });
 
   return {
     telegramOwnership: () => controlPlane.telegramOwnership,
+    schedulerOwnership: () => controlPlane.schedulerOwnership,
     queueTelegramUpdate: (update) => {
       updates.push({
         update_id: update.updateId,
@@ -2562,6 +2629,8 @@ export async function createControlPlaneSystemHarness(options: {
       telegramPollFailures += 1;
     },
     runCycle: () => controlPlane.runCycle(),
+    runNativeScheduledReport: (request) =>
+      controlPlane.runNativeScheduledReport(request),
     dashboardOverview: async () => {
       const response = await fetch(`${controlPlane.dashboardOrigin}/api/overview`, {
         headers: { Authorization: `Bearer ${dashboardToken}` },

@@ -368,6 +368,7 @@ export interface NotionProvisioningContractHarness {
   viewNames(): readonly string[];
   masterTaskPageCreateCount(): number;
   masterTaskPageUpdateCount(): number;
+  simulateMasterTaskExternalEdit(workItemId: string, lastEditedTime: string): void;
 }
 
 export function createNotionProvisioningContractHarness(options: {
@@ -608,6 +609,25 @@ export function createNotionProvisioningContractHarness(options: {
     viewNames: () => views.map((view) => view.name),
     masterTaskPageCreateCount: () => pagesCreated,
     masterTaskPageUpdateCount: () => pagesUpdated,
+    simulateMasterTaskExternalEdit: (workItemId, lastEditedTime) => {
+      const page = pages.find((candidate) => {
+        const properties = candidate["properties"];
+        if (!isRecord(properties)) return false;
+        const property = properties["Work Item ID"];
+        if (!isRecord(property)) return false;
+        const richText = property["rich_text"];
+        return Array.isArray(richText) &&
+          richText.some(
+            (entry) =>
+              isRecord(entry) &&
+              (entry["plain_text"] === workItemId ||
+                (isRecord(entry["text"]) &&
+                  entry["text"]["content"] === workItemId)),
+          );
+      });
+      if (page === undefined) throw new Error("Controlled Master Tasks page not found.");
+      page["last_edited_time"] = lastEditedTime;
+    },
   };
 }
 

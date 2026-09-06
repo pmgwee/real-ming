@@ -148,6 +148,32 @@ describe("RM-40 native-gateway composition mode", () => {
     }
   });
 
+  it("shows native Hermes reachability without inventing legacy conversation sessions", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm40-native-dashboard-"));
+    const harness = await createControlPlaneSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      telegramOwnership: "native-hermes-gateway",
+      hermesEnabled: true,
+      now: () => "2026-09-06T04:17:00.000Z",
+    });
+
+    try {
+      const overview = await harness.dashboardOverview();
+
+      expect(overview.hermes).toBeUndefined();
+      expect(overview.nativeHermes).toMatchObject({
+        owner: "native-hermes-gateway",
+        status: "healthy",
+        model: "gpt-5.6-sol",
+        checkedAt: "2026-09-06T04:17:00.000Z",
+        lastFailure: null,
+      });
+    } finally {
+      await harness.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("still owns Telegram by default, so nothing changes until the cutover runs", async () => {
     const directory = mkdtempSync(join(tmpdir(), "real-ming-rm40-default-owner-"));
     const harness = await createControlPlaneSystemHarness({
