@@ -10,8 +10,9 @@ Prepared: 6 September 2026. Status: **implementation plan; migration not execute
 | 1 · Prove the native runtime before bot cutover | ✅ Complete on the CLI path, 6 Sep 2026 | [Milestone 1 native-runtime evidence](../evidence/RM-40-v6-milestone-1-native-runtime-evidence.md). Real diff, independently verified test exit 0, 15 native tool calls. Two defects recorded. Native **Telegram** presentation remains untested by design |
 | 2 · Prepare a reversible one-owner Telegram migration | ✅ Complete, 6 Sep 2026 | [Milestone 2 cutover runbook](../evidence/RM-40-v6-milestone-2-cutover-runbook.md). Composition mode implemented and proven through the System Harness; cutover and reverse procedures written; extension interface verified against the installed version |
 | 3 · Activate native Telegram and accept the core experience | 🔄 Executed 6 Sep 2026; **blocked on one CEO action** — an external consumer still polls the bot | [Milestone 3 cutover evidence](../evidence/RM-40-v6-milestone-3-cutover-evidence.md). Malaysia side complete and verified; phone matrix pending transport |
-| 4 · Configure Ming's roles and connect sources | ▶️ In progress — does not need Telegram | — |
-| 5–9 | Not started | — |
+| 4 · Configure Ming's roles and connect sources | ✅ Complete for Notion and Calendar, 6 Sep 2026; GitHub and Vercel need credentials | [Milestone 4 evidence](../evidence/RM-40-v6-milestone-4-configuration-and-sources.md). Six skills live and behaviour-verified; two sources proven by real authorized reads; two have no credential provisioned |
+| 5 · Add the missing task, schedule and action contracts | ▶️ Next | — |
+| 6–9 | Not started | — |
 
 
 ## TL;DR

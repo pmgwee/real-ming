@@ -24,13 +24,15 @@ The two labels are stated separately in [docs/BASELINE.md](../docs/BASELINE.md) 
 
 **Milestone 3 — executed 6 September, one step short.** Real-Ming now runs the Revision 6 image and no longer polls Telegram; the native Hermes gateway holds your bot credential and allowlist. The native default model is fixed and verified, and the missing Telegram dependency is installed. **Blocked on one action from you: stop the East Asia VM, which is still polling the same bot token.** Full evidence, including a wrong conclusion I drew and corrected: [milestone 3 cutover evidence](../docs/evidence/RM-40-v6-milestone-3-cutover-evidence.md).
 
+**Milestone 4 — done for Notion and Calendar, 6 September.** Your six role playbooks are live on the agent and behave: an ordinary question got an ordinary answer with no role ceremony, a CTO question drew the release rules exactly, and "pay my Netflix bill" was refused outright. Notion Master Tasks and Google Calendar both proven with real authorized reads. **GitHub and Vercel have no credential provisioned in Key Vault at all** — that was not recorded anywhere before. [Milestone 4 evidence](../docs/evidence/RM-40-v6-milestone-4-configuration-and-sources.md).
+
 For future projects, use [the build-alignment lessons and reusable prompts](../docs/agents/LESSONS-LEARNED-build-alignment.md) with the installed `$build-alignment` skill.
 
 | | |
 | --- | --- |
 | Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
 | Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
-| Next engineering work | Milestone 4 — Ming role playbooks and source connections. Proceeding now; it does not need Telegram. |
+| Next engineering work | Milestone 5 — task, schedule and action contracts through a Real-Ming extension. Does not need Telegram. |
 | Waiting on you | **Stop the East Asia VM `real-ming-control-plane`** — it is still polling the Telegram bot and blocks the cutover. Plus two open decisions. One of them — the Telegram cutover window — now gates milestone 3. See [Phase 4 CEO actions](phase-4-ceo-action.md). OAuth and Tailscale remain healthy — re-confirmed 6 September; do not sign in again. |
 
 **Recorded V5 implementation status (2026-09-04; not V6 acceptance).** The approved Revision 5
