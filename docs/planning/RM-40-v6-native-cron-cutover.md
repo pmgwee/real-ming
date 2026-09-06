@@ -63,9 +63,35 @@ hermes cron create '30 21 * * *' '<ROLLUP_PROMPT>' \
 ```
 
 Pin the job model/provider so a later global model change cannot silently alter
-unattended cost or behaviour. The host must use `Asia/Kuala_Lumpur`; confirm
-with `timedatectl`. Set `cron.wrap_response=false` in the Hermes profile so the
-native response is not wrapped in a second cron header/footer.
+unattended cost or behaviour. Set `cron.wrap_response=false` in the Hermes
+profile so the native response is not wrapped in a second cron header/footer.
+
+**Timezone — corrected 7 September 2026.** An earlier version of this procedure
+said the *host* must use `Asia/Kuala_Lumpur`, confirmed with `timedatectl`.
+That is wrong and following it would have rewritten every host log timestamp
+for no reason. `hermes_time.now()` resolves in this order:
+
+1. the `HERMES_TIMEZONE` environment variable,
+2. the top-level `timezone` key in the Hermes profile config,
+3. the server's local time.
+
+The host is deliberately `Etc/UTC` and stays that way. What must be set is the
+Hermes profile:
+
+```bash
+hermes config set timezone Asia/Kuala_Lumpur
+```
+
+This was applied on 7 September while zero cron jobs existed, so nothing
+rescheduled. Verified: `hermes_time.now()` returns `+08:00`.
+
+Had this been missed, `30 7 * * *` would have fired at 07:30 **UTC** — 15:30 in
+Kuala Lumpur — and the morning brief would have arrived mid-afternoon. Confirm
+the offset before creating either job:
+
+```bash
+hermes config get timezone
+```
 
 If a job with the same name already exists, edit it instead of creating a
 duplicate:
