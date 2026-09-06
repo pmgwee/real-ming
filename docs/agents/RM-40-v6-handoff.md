@@ -1,9 +1,17 @@
 # RM-40 · V6 handoff — continue from milestone 5
 
 Written 6 September 2026 at the end of a Claude Code session. Branch
-`codex/rm-40-readiness`, HEAD `17d67c5`, nine commits ahead of the previous
-checkpoint `16e8bc7`. Working tree clean, `npm run check` exit 0 (801 passed,
-2 skipped), `npm audit --audit-level=high` exit 0.
+`codex/rm-40-readiness`, baseline checkpoint HEAD `c65890e`, twelve commits
+ahead of the previous checkpoint `16e8bc7`. The continuation below adds deliberately
+uncommitted milestone 5–9 implementation/evidence; the last clean checkpoint
+had `npm run check` exit 0. Current direct gates are recorded in the newest
+milestone evidence files.
+
+The latest controlled regression after the recovery addition is **69 Vitest
+files, 813 passed and 2 intentionally skipped**, exit 0; typecheck, production
+build, deployment preflight, audit and diff checks also exited 0. No live
+provider, cron, Telegram-delivery or Obsidian action was performed by that
+regression.
 
 **Nothing is blocking. Continue at milestone 5's remainder.**
 
@@ -29,7 +37,7 @@ checkpoint `16e8bc7`. Working tree clean, `npm run check` exit 0 (801 passed,
    skill at `C:/Users/quekm/.codex/skills/build-alignment/SKILL.md` and its
    `references/checkpoints.md`.
 
-Milestone evidence lives in `docs/evidence/RM-40-v6-milestone-{1,2,3,4,5}-*.md`.
+Milestone evidence lives in `docs/evidence/RM-40-v6-milestone-{1,2,3,4,5,6,7,8,9}-*.md`.
 Read the one for the milestone you are continuing.
 
 ## Where things actually stand
@@ -39,13 +47,13 @@ Read the one for the milestone you are continuing.
 | 0 · Reconcile requirements | ✅ Complete |
 | 1 · Prove the native runtime | ✅ Complete (CLI path). Step 6 folded into milestone 3 |
 | 2 · Reversible one-owner migration | ✅ Complete |
-| 3 · Activate native Telegram | ✅ Transport live and mostly accepted. **3 phone rows untested** |
+| 3 · Activate native Telegram | ✅ Transport live and core phone matrix user-observed accepted; staged progress, attachment handling and semantic recall are recorded |
 | 4 · Roles and sources | ✅ Notion + Calendar. **GitHub/Vercel have no credential** |
-| 5 · Task, schedule and action contracts | 🔄 **Extension live; scheduler ownership not started** ← resume here |
-| 6 · Native memory, Obsidian, cited knowledge | Not started |
-| 7 · Private dashboard and CEO outcomes | Not started |
-| 8 · Complete acceptance scenarios | Not started |
-| 9 · Recovery, readiness, close the milestone | Not started |
+| 5 · Task, schedule and action contracts | 🔄 **Extension live; scheduler composition implemented; live cron cutover pending** |
+| 6 · Native memory, Obsidian, cited knowledge | 🔄 Native config/vault foundation and backup wiring implemented; live note/recall/restore acceptance pending |
+| 7 · Private dashboard and CEO outcomes | 🔄 Native Hermes dashboard live-observed privately; authenticated Real-Ming comparison and CEO outcomes review pending |
+| 8 · Complete acceptance scenarios | 🔄 Acceptance matrix and controlled regression assembled; live/user acceptance pending |
+| 9 · Recovery, readiness, close the milestone | 🔄 Manifest-verified isolated restore and native-state backup coverage controlled-tested; live restore/restart and closeout pending |
 
 ### Live system
 
@@ -61,6 +69,21 @@ Read the one for the milestone you are continuing.
   `REAL_MING_TELEGRAM_OWNERSHIP=native-hermes-gateway`; it polls nothing.
 - The Real-Ming extension is registered as MCP server `real-ming` (3 tools,
   enabled) from `/opt/real-ming-extension`.
+- A read-only service-account check on 6 September found the native cron
+  ticker healthy but **zero scheduled jobs**, and the protected release files
+  do not yet contain the native-cron ownership/enablement flags. The fourth
+  scheduled-report tool is therefore not exposed on the deployed image; the
+  repository manifest and bridge are staged for a deliberate cutover.
+- Native memory and the user profile are enabled, but `memory.write_approval`
+  remains `false` pending Ming's live policy acceptance. The native state
+  directory contains `state.db`, Kanban, cron executions, response/evidence/
+  idempotency/project stores, `sessions/sessions.json` and `memories/USER.md`;
+  the new backup helper whitelists and checkpoints these without copying
+  auth/OAuth/config/cache/log material.
+- The native dashboard still answers on loopback `127.0.0.1:9119` through a
+  temporary process. The supervised `hermes-dashboard.service` is staged in
+  this repository but is not installed/enabled on the host; the Real-Ming
+  dashboard remains authenticated on `127.0.0.1:8787`.
 - East Asia VM `real-ming-control-plane` is **Stopped (deallocated)** and
   retained for rollback. Do not delete it until milestone 9. Nothing to do in
   Tailscale; leave the device registered.
@@ -74,7 +97,14 @@ Read the one for the milestone you are continuing.
 ### 1. Finish milestone 5 — scheduler ownership
 
 The 07:30 brief and 21:30 roll-up are still Real-Ming's. Native cron has **zero
-jobs**. The work is to split two things that currently share one name:
+jobs**. The scheduler-ownership slice is now implemented in the repository but
+not enabled on the host: the existing builders are split from delivery, native
+cron has one authenticated MCP composition operation, scheduler rows carry
+owner/run IDs plus replayable output artifacts, and Master Tasks writes carry a
+durable source-version check. The next live slice is to stage and verify
+exactly two native jobs plus one real Notion read-back, then switch ownership
+deliberately. The implementation still splits two things that currently share
+one name:
 
 - **Composing** the brief — reconciling commitments, overdue Work Items, pending
   Approvals, incidents across four sources (`morning-brief.ts` 451 lines,
@@ -89,15 +119,39 @@ up with two schedulers firing it twice. Migrate with last-success/run IDs and an
 explicit disable-then-enable order, exactly one owner per job, and verify
 Asia/Kuala_Lumpur times and no duplicate delivery after a restart.
 
-Also outstanding in milestone 5: field-by-field write authority for Notion,
-version-aware updates against Master Tasks, proving a record-sync failure is
-reported honestly rather than swallowed, and binding retained exact-action
-Approvals to their immutable artifact so a stale Approval has no effect.
+Also outstanding in milestone 5: live verification of the field/version
+boundary, proving the native cron cutover and restart behavior on the Malaysia
+host, and binding any newly retained exact-action operation to its immutable
+artifact so a stale Approval has no effect. The existing Operations Gateway
+approval engine already has controlled stale-target tests.
 
 ### 2. Then milestones 6 → 9 in dependency order
 
 Follow the plan. Do not skip ahead; each milestone's pass criterion is written
 there.
+
+Milestone 6 now has a controlled foundation: the native memory policy fragment,
+an absolute Hermes-owned Obsidian vault separate from the generated CEO
+projection, and per-file native-vault/native-state backup coverage. Use
+`docs/evidence/RM-40-v6-milestone-6-native-memory-evidence.md` for the live
+configuration, note/recall, restart and restore checks. Do not call it complete
+until those checks are performed on Malaysia.
+
+Milestone 7 now has a controlled native-gateway dashboard boundary: the
+Real-Ming view reports only Hermes reachability/model metadata in native mode;
+native session and command details remain in Hermes. Use
+`docs/evidence/RM-40-v6-milestone-7-dashboard-evidence.md` for the private
+dashboard comparison and CEO-acceptance checks.
+
+Milestone 8 now has an explicit acceptance matrix in
+`docs/evidence/RM-40-v6-milestone-8-acceptance-evidence.md`; it records the
+controlled evidence already available and keeps every phone/provider/dashboard
+check that needs Ming in the CEO queue. Milestone 9 has a controlled restore
+boundary in `src/runtime/control-plane-backup.ts`, with evidence in
+`docs/evidence/RM-40-v6-milestone-9-recovery-evidence.md`. The backup helper
+stages a closed list of native Hermes databases plus session/profile files; it
+does not copy auth, OAuth, config, cache or log material. Neither milestone is
+called live-verified or accepted until its external checks are performed.
 
 ## Rules that were established this session — keep them
 
@@ -124,14 +178,15 @@ soak, then delete. `REAL_MING_TELEGRAM_OWNERSHIP` is exactly that switch.
 
 **Deletion order** (from the module inventory):
 
-1. **Trigger now met — do this early in your session:** milestone 3's phone
-   matrix passed for conversation, commands, formatting and role playbooks, so
-   `src/telegram/` (1,496), `src/hermes/` (1,183),
-   `src/runtime/telegram-ingress.ts` (55),
-   `src/operations/executive-role-router.ts` (52) and
-   `src/operations/command-classifier.ts` (32) can go — **but first** confirm
-   nothing still imports them in the native path, and keep the composition-mode
-   default working. Roughly 2,800 lines in one reviewable commit.
+1. **Native transport is live, but the whole-path deletion trigger is not met.**
+   The import-graph check still finds the legacy Telegram/Hermes modules in the
+   rollback/default composition, shared Telegram contracts used by retained
+   notifications, and the role router used by Master Tasks/calendar/knowledge.
+   Do not delete those files yet. First split the shared contracts and remove
+   fallback imports in one reviewable follow-up after live scheduler,
+   memory and dashboard proof; then delete only the item whose replacement and
+   rollback window are verified. This preserves the working default path while
+   the native deployment is still partially accepted.
 2. After milestone 5 moves the schedule: `providers/telegram-provider-adapter.ts`
    (660).
 3. After milestone 6's decision: `src/knowledge/` (3,659), or wire it.
@@ -180,9 +235,12 @@ Do not claim a milestone complete on mocked tests. Verify by **exit code**.
 
 ## Open items for Ming — none blocking
 
-1. **Three untested phone rows:** progress indication during multi-step work,
-   attachment handling, and a real semantic follow-up. The checklist's
-   placeholder text was sent verbatim, so these were never exercised.
+1. **The core Telegram phone rows are now user-observed.** Ming exercised
+   screenshot attachment handling, semantic recall (including after the
+   controlled Hermes restart), and staged progress/tool activity during a real
+   multi-step request; see
+   `docs/evidence/RM-40-v6-telegram-memory-acceptance-2026-09-06.md`. Broader
+   V6 coding, dashboard, scheduler and recovery scenarios remain.
 2. **GitHub and Vercel read tokens** — neither `real-ming-github-read-token` nor
    `real-ming-vercel-read-token` exists in Key Vault, so Repository Center and
    deployment lineage run against empty strings. Values go straight into Key

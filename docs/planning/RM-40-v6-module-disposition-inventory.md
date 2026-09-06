@@ -30,7 +30,7 @@ proves the replacement works, then they go in one reviewable deletion.
 | --- | ---: | --- |
 | `src/telegram/` | 1,496 | Native gateway. Includes the legacy action parser that caused the 5 September `CTO:` bypass |
 | `src/hermes/` | 1,183 | Nothing. This is the *bridge* to Hermes — the runtime client, turn coordinator and session store. When Hermes owns the conversation there is nothing left to bridge |
-| `src/providers/telegram-provider-adapter.ts` | 660 | Native transport. Retires after milestone 5, not milestone 3 — it still delivers the 07:30 brief until native cron takes over |
+| `src/providers/telegram-provider-adapter.ts` | 660 | Legacy transport. Retires only after every remaining provider-delivered notification (including exception/approval notices) has a live native owner; the morning brief and roll-up are the first migration slice |
 | `src/runtime/telegram-ingress.ts` | 55 | Native gateway |
 | `src/operations/executive-role-router.ts` | 52 | Ming role playbooks; Hermes interprets the perspective |
 | `src/operations/command-classifier.ts` | 32 | Hermes decides what a message is |
@@ -109,9 +109,24 @@ either loses the brief's content or leaves two schedulers firing it twice.
 
 ## Deletion order, once the cutover proves the replacement
 
+The first native phone rows are live, but the **whole-path deletion trigger is
+not yet met**. A 6 September import-graph check found that the current
+composition root still imports the legacy Telegram/Hermes modules for the
+rollback/default path, while `telegram/contracts.ts` remains a shared type
+boundary for retained provider notifications, `executive-role-router.ts`
+still supplies domain routing used by Master Tasks and calendar/knowledge
+code, and the optional legacy Hermes coordinator remains a typed dashboard and
+fallback dependency. These are not safe deletions just because native Hermes
+owns the production bot. Split the shared contracts and remove the fallback
+imports in a focused follow-up after live scheduler/memory/dashboard proof;
+until then keep the old files as rollback evidence.
+
 1. After milestone 3 passes the phone matrix: `src/telegram/`, `src/hermes/`,
    `telegram-ingress.ts`, the role router and command classifier.
-2. After milestone 5 moves the schedule: `telegram-provider-adapter.ts`.
+2. After milestone 5 moves every provider-delivered notification and the
+   rollback window closes: `telegram-provider-adapter.ts`. Moving the two
+   scheduled reports alone is not enough while exception/approval notices still
+   use the legacy provider.
 3. After milestone 6's decision: `src/knowledge/`, or keep it and wire it.
 4. After milestone 7's comparison: `src/dashboard/`, or keep a thin read model
    behind an extension tab.

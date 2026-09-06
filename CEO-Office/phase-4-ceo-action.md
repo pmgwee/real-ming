@@ -21,12 +21,12 @@ pass criterion and I cannot produce it — I have no Telegram account.
 | Send this | What should happen |
 | --- | --- |
 | "Hi, what can you help me with?" | A natural reply. No role announced, no task created |
-| A short follow-up about that answer | It remembers the previous message |
+| A short follow-up about that answer | It remembers the previous message — user-observed and passed with the Blue Lantern/November recall check |
 | `/help`, then look at the command menu | Native commands, including the 60 now registered |
 | "Explain async/await with a short code example" | Readable formatting and a proper code block — the thing that was broken before |
 | "As CTO, what's the release path for a DuitSini change?" | The release rules, interpreted by the agent — not a canned parser reply |
-| Something that takes a few steps | A typing indicator or progress, then an accurate result |
-| Send a photo or file | Handled, or a clear message if that type is unsupported |
+| Something that takes a few steps | A typing indicator or progress, then an accurate result — staged progress/tool activity is now user-observed and passed |
+| Send a photo or file | Handled, or a clear message if that type is unsupported — screenshot handling is now user-observed and passed |
 
 Tell me anything that looks wrong, however small. Presentation defects are
 exactly what the last smoke test missed.
@@ -98,6 +98,125 @@ secret or Tailscale credential into Codex, Telegram, GitHub or this file.
 
 The complete technical sequence and rollback plan remain in
 [RM-40-phase4-activation-runbook.md](RM-40-phase4-activation-runbook.md).
+
+## 7. Native Hermes scheduled reports — pending CEO cutover
+
+The repository now separates report composition from scheduling and delivery.
+Real-Ming still composes the 07:30 Morning Brief and 21:30 Executive Roll-Up;
+native Hermes cron will trigger them and deliver the exact returned text through
+the already-connected native Telegram gateway. No live cron job has been
+created or run by the implementation work.
+
+**Latest live preflight (6 September):** the native cron ticker is healthy but
+has zero jobs; the deployed `real-ming` MCP server still exposes three tools,
+not the staged scheduled-report tool; and the protected release files do not
+yet contain the native-cron flags. This is the expected safe staged state, not
+a failed Telegram gateway.
+
+Ming must perform the live cutover because it creates Telegram-delivering
+scheduled jobs and changes the production owner. Follow the engineering
+[native cron cutover procedure](../docs/planning/RM-40-v6-native-cron-cutover.md)
+after the new image is deployed. The procedure includes the read-only
+preflight, exact manifest, one-run/restart verification, ownership switch and
+rollback.
+
+Before switching ownership, confirm all of the following personally:
+
+- exactly two native jobs exist, in `Asia/Kuala_Lumpur`, addressed to the
+  protected CEO Telegram destination;
+- each job calls the fourth `real-ming_run_scheduled_report` MCP operation and
+  returns the builder's readable text without a cron wrapper;
+- one deliberate run per job appears in both Hermes history and the private
+  dashboard, with no duplicate after a Hermes restart; and
+- only after that verification, the two protected ownership flags are changed
+  to `native-hermes-cron`/`true` and the services are restarted.
+
+Do not paste the Telegram chat id, bridge key or any provider credential into
+this file, an issue, a prompt or the evidence bundle. Keep the old scheduler
+enabled until the cutover procedure reaches its explicit switch step.
+
+## 8. Native Hermes memory and Obsidian acceptance — pending CEO checks
+
+Engineering has prepared the native configuration and recovery wiring. Review
+the secret-free [configuration fragment](../hermes/config.native-first.example.yaml)
+and [milestone 6 evidence](../docs/evidence/RM-40-v6-milestone-6-native-memory-evidence.md).
+The live preflight confirms native memory and the user profile are enabled;
+`memory.write_approval` is still `false`, so no persistent memory write should
+be treated as accepted until you deliberately apply the setting below.
+The commands below change only Hermes' non-secret settings; run them as the
+`real-ming` service account on Malaysia after the current gateway is healthy:
+
+```bash
+hermes config set memory.memory_enabled true
+hermes config set memory.user_profile_enabled true
+hermes config set memory.memory_char_limit 2200
+hermes config set memory.user_char_limit 1375
+hermes config set memory.write_approval true
+hermes config check
+```
+
+Then confirm the native `obsidian` and `llm-wiki` skills, create one small
+source-cited note, retrieve it in a follow-up Telegram turn, restart Hermes and
+retrieve it again. The editable native vault is
+`/var/lib/hermes-real-ming/obsidian-vault`; the generated Real-Ming CEO
+projection remains `/var/lib/real-ming/obsidian`. Do not sync either directory
+to another device until its scope is reviewed.
+
+Finally run the protected backup service and inspect the manifest for the
+whitelisted native Hermes state/profile files and native-vault hashes. Restore
+that set to an isolated directory with providers, delivery and schedules
+disabled. No OAuth, auth, config, cache or log file belongs in the backup.
+These checks are required before milestone 6 can be marked accepted.
+
+For the isolated restore, engineering provides an explicit guarded command
+after the backup ID is known (replace only the two paths; never paste a secret):
+
+```bash
+npm run control-plane:restore -- --live \
+  --backup /var/lib/real-ming/backups/<backup-id> \
+  --destination /var/lib/real-ming/recovery-rehearsal/<backup-id>
+```
+
+The destination must be new and must remain disconnected from providers,
+delivery and schedules. A non-zero exit means the manifest or SQLite
+integrity check failed; stop and report it rather than retrying against a
+different destination.
+
+## 9. V6 acceptance matrix — pending CEO review
+
+The engineering matrix in
+[milestone 8 evidence](../docs/evidence/RM-40-v6-milestone-8-acceptance-evidence.md)
+keeps controlled tests separate from live/user acceptance. After the native
+cron and memory checks above, review these remaining rows from an authorized
+phone and Tailscale device:
+
+- attachments, semantic follow-up and progress during a real multi-step Telegram request are now user-observed; see the [Telegram/memory acceptance evidence](../docs/evidence/RM-40-v6-telegram-memory-acceptance-2026-09-06.md);
+- one bounded DuitSini coding task, including a real diff, test result and
+  failure/retry behavior;
+- one read-back of the linked Notion Master Task, preserving the status
+  meanings and review-ready distinction;
+- the private native and Real-Ming dashboard views side by side; and
+- one Lenovo-off task proving Azure continuity and an honest unavailable result
+  for laptop-only tools.
+
+Record only visible answers, artifact/provider read-backs, correlation IDs and
+timestamps. Do not paste raw transcripts, hidden reasoning, chat IDs or
+credentials into the repository.
+
+## 10. V6 recovery and closeout — pending CEO execution
+
+The controlled restore boundary is documented in
+[milestone 9 evidence](../docs/evidence/RM-40-v6-milestone-9-recovery-evidence.md).
+After the first accepted native conversation, run the protected backup once,
+verify the manifest-last upload contains the Hermes native state and vault, and
+restore it to an isolated destination with providers, delivery and schedules
+disabled. Confirm SQLite integrity and native continuity before enabling
+anything in the restored copy.
+
+Then review restart/reconciliation, cost/usage and retention evidence; update
+the baseline, readiness report and issue evidence; and only after acceptance
+deallocate the retained East Asia VM. Deallocate/stop is reversible; deletion
+is not approved.
 
 ## 1. Authorize Hermes to use the Codex subscription
 
@@ -178,8 +297,12 @@ candidate.
 
 ## 4. Review the private dashboard
 
-The agent will create the private tunnel and open the dashboard. Ming must
-visually confirm:
+The native dashboard currently answers on `127.0.0.1:9119` through a
+temporary process; the supervised `hermes-dashboard.service` is staged in the
+new candidate but is not installed/enabled on Malaysia yet. Real-Ming answers
+on `127.0.0.1:8787` and remains bearer-authenticated. After the candidate is
+approved and the unit is installed, the agent will create the private tunnel
+and open both views. Ming must visually confirm:
 
 - Hermes Runtime reports healthy and identifies the expected model/provider.
 - Conversations show metadata and durable status without prompts,
@@ -203,17 +326,20 @@ folder to another device or cloud sync service requires a separate review.
 
 ## 6. Confirm final completion evidence
 
-No additional infrastructure approval is required: Ming already approved the
-Malaysia West green/blue activation and deallocation without deletion of the
-East Asia VM after successful proof.
+The earlier Malaysia West green/blue approval covers the already-executed
+candidate and East Asia rollback retention. It does **not** silently approve a
+new image/bundle, installing the staged dashboard unit, creating Telegram-
+delivering native cron jobs, or changing the protected memory-write setting;
+those are the explicit live decisions in sections 7–10.
 
 Before accepting completion, check that the agent reports all of these:
 
 - Hermes OAuth, loopback health and GPT-5.6 Sol conversation passed.
 - Telegram question, coding request, duplicate and secret-refusal checks passed.
 - Private dashboard and Obsidian review passed.
-- A new off-host backup includes Real-Ming state, the Hermes conversation map
-  and Hermes native conversation state, but no OAuth file.
+- A new off-host backup includes Real-Ming state, the Hermes conversation map,
+  all whitelisted native Hermes durable state/profile files and the native
+  vault, but no OAuth/auth/config file.
 - The restore rehearsal passed manifest hashes and SQLite checks.
 - East Asia was deallocated, not deleted, and remains available for rollback.
 - Malaysia West is the only active Telegram owner.

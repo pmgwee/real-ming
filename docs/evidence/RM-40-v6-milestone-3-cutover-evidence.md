@@ -234,3 +234,22 @@ The phone matrix — native commands, formatting, typing indicator, attachments,
 session continuity and a real coding request over Telegram — has not run. It
 cannot until the transport connects. That remains the milestone 3 pass
 criterion and it is Ming's to judge.
+
+## Addendum · later phone evidence (6 September 2026)
+
+The older status paragraphs above are preserved as execution-time history. The
+following user-supplied observations supersede their phone-row status:
+
+- A screenshot attachment was sent to the native bot. Hermes identified the
+  YouTube interface, heading, visible counts and plugin tree, and the reply
+  rendered with a heading, syntax-highlighted code block, copy affordance,
+  bullets and preserved indentation. Attachment handling and formatting are
+  user-observed **passed**.
+- A real semantic recall question was answered after `/new`, and again after
+  the controlled Hermes service restart. Blue Lantern and November were
+  recalled without being repeated. Semantic continuity is user-observed
+  **passed**; the later cleanup request removed the test profile entry while
+  preserving conversation history.
+- A real multi-step request with visible Telegram typing/progress behavior is
+  still **pending**. This remains the only untested phone row in the current
+  acceptance queue.
