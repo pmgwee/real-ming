@@ -25,6 +25,64 @@ async function inspect(
   }
 }
 
+/**
+ * Configuration the composition reads from the environment but that is
+ * deliberately not passed into the container yet. Each entry needs a reason,
+ * because the alternative -- silence -- is what let a live option exist in the
+ * code and in `release.env` while never reaching the process that reads it.
+ */
+const undeployedRuntimeEnvironment: ReadonlyMap<string, string> = new Map([
+  ["REAL_MING_GITHUB_READ_TOKEN", "Repository Center adapters are supplied by the composition root, not the cloud unit."],
+  ["REAL_MING_VERCEL_READ_TOKEN", "Same as the GitHub read token."],
+  ["REAL_MING_GIT_REPOSITORY_PATH", "Local checkout path; meaningless inside the container."],
+  ["REAL_MING_PORTFOLIO_PROJECTS_JSON", "Portfolio records are seeded by the composition root, not the unit."],
+  ["REAL_MING_GOOGLE_CALENDAR_ID", "Not deployed; the composition falls back to the primary calendar."],
+]);
+
+/**
+ * Every `REAL_MING_*` name the deployed composition reads must either reach the
+ * container or be listed above. A `--env` flag that was never added is
+ * invisible: the option parses, the operator sets it in `release.env`, and the
+ * process silently uses the default. That happened once with the Revision 6
+ * Telegram ownership switch, which left a second Telegram consumer polling.
+ */
+async function verifyContainerEnvironmentPassthrough(
+  repositoryRoot: string,
+  failures: string[],
+): Promise<void> {
+  const sources = [
+    "src/runtime/production-control-plane.ts",
+    "src/config/control-plane-cli.ts",
+  ];
+  const names = new Set<string>();
+  for (const source of sources) {
+    let content: string;
+    try {
+      content = await readFile(join(repositoryRoot, source), "utf8");
+    } catch {
+      failures.push(`${source}:missing`);
+      return;
+    }
+    for (const match of content.matchAll(/(?:environment|process\.env)\["(REAL_MING_[A-Z_]+)"\]/g)) {
+      names.add(match[1]!);
+    }
+  }
+  let unit: string;
+  try {
+    unit = await readFile(
+      join(repositoryRoot, "deploy/systemd/real-ming.service"),
+      "utf8",
+    );
+  } catch {
+    return; // Already reported by the unit inspection.
+  }
+  for (const name of [...names].sort()) {
+    if (undeployedRuntimeEnvironment.has(name)) continue;
+    if (unit.includes(`--env ${name}`)) continue;
+    failures.push(`deploy/systemd/real-ming.service:unpassed-env:${name}`);
+  }
+}
+
 /** Verify the deployment package that `npm run check` is about to ship. */
 export async function verifyControlPlaneDeployment(
   repositoryRoot: string,
@@ -127,6 +185,7 @@ export async function verifyControlPlaneDeployment(
     ],
     failures,
   );
+  await verifyContainerEnvironmentPassthrough(repositoryRoot, failures);
   return failures.length === 0
     ? { kind: "passed", failures: [] }
     : { kind: "failed", failures };

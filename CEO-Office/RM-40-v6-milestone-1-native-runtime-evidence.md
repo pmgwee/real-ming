@@ -161,6 +161,7 @@ plainly instead of confabulating the values. Both are the required behaviour.
 | Codex OAuth health | Recorded 5 Sep | **Re-confirmed 6 Sep** | 15 API calls succeeded; no re-login needed |
 | Session continuity | Assumed | **Failed on the one-shot path**; store-level accumulation verified | Gateway continuity remains unproven and is milestone 3 work |
 | Native Telegram presentation | Failed at R5 | Unchanged — **not attempted** | Deliberately out of scope here |
+| Native behaviour before vs after Ming customization | Not started | **Not proven** | The customization does not exist yet; milestone 4 work |
 
 Nothing in this milestone is production-wired or user-accepted. It proves the
 runtime can do the work; it does not prove Ming's product experience.
@@ -177,7 +178,24 @@ No service, unit file, credential, network rule or production store was modified
 so there is nothing else to roll back. The four milestone sessions remain in
 `state.db` as evidence and can be pruned with `hermes sessions delete <id>`.
 
-## 8. Next increment
+## 8. Scope correction, recorded 6 September 2026
+
+An earlier version of this document and of the plan claimed steps 1-5 **and 7**
+were proven. Step 7 asks for the ordinary-chat and coding requests to be
+rehearsed *with the proposed Ming customization enabled*. That customization
+does not exist yet, so only half of step 7 is proven:
+
+| Step 7 clause | State |
+| --- | --- |
+| No mandatory JSON answer envelope | **Proven** — the CLI path carries no envelope at all |
+| No dependency on a Real-Ming record operation for simple chat | **Proven** — Real-Ming was not involved in any of the four invocations |
+| The same requests rehearsed with the Ming customization enabled | **Not proven** — the skill pack is milestone 4 work |
+
+The comparison that step 7 actually exists for -- native behaviour before
+versus after personalization -- therefore remains outstanding. It belongs to
+milestone 4, and this document is not evidence for it.
+
+## 9. Next increment
 
 Milestone 2 — prepare a reversible one-owner Telegram migration. It is
 repository work and needs no new authorization: trace the control-plane

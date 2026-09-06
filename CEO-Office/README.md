@@ -22,7 +22,7 @@ The two labels are stated separately in [docs/BASELINE.md](../docs/BASELINE.md) 
 
 **Milestone 2 — done, 6 September.** Real-Ming can now run without owning Telegram. A new composition mode polls nothing, interprets nothing and holds no Hermes conversation, while its schedules, records and dashboard keep working; the default is unchanged, so today's deployed behaviour is untouched. Five System Harness scenarios prove it. The cutover and its reverse are written: [milestone 2 cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md).
 
-**Milestone 3 needs you.** It stops the current Telegram consumer and starts the native Hermes gateway on the same bot. That is the first change Ming would feel, so it waits for your decision on the window. Two engineering steps clear first, both named in the runbook.
+**Milestone 3 — executed 6 September, one step short.** Real-Ming now runs the Revision 6 image and no longer polls Telegram; the native Hermes gateway holds your bot credential and allowlist. The native default model is fixed and verified, and the missing Telegram dependency is installed. **Blocked on one action from you: stop the East Asia VM, which is still polling the same bot token.** Full evidence, including a wrong conclusion I drew and corrected: [milestone 3 cutover evidence](RM-40-v6-milestone-3-cutover-evidence.md).
 
 For future projects, use [the build-alignment lessons and reusable prompts](LESSONS-LEARNED-build-alignment.md) with the installed `$build-alignment` skill.
 
@@ -30,8 +30,8 @@ For future projects, use [the build-alignment lessons and reusable prompts](LESS
 | --- | --- |
 | Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
 | Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
-| Next engineering work | Milestone 3 — activate native Telegram. Waiting on your cutover-window decision; two engineering prerequisites are named in the [cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md). |
-| Waiting on you | Three decisions. One of them — the Telegram cutover window — now gates milestone 3. See [Phase 4 CEO actions](phase-4-ceo-action.md). OAuth and Tailscale remain healthy — re-confirmed 6 September; do not sign in again. |
+| Next engineering work | Milestone 4 — Ming role playbooks and source connections. Proceeding now; it does not need Telegram. |
+| Waiting on you | **Stop the East Asia VM `real-ming-control-plane`** — it is still polling the Telegram bot and blocks the cutover. Plus two open decisions. One of them — the Telegram cutover window — now gates milestone 3. See [Phase 4 CEO actions](phase-4-ceo-action.md). OAuth and Tailscale remain healthy — re-confirmed 6 September; do not sign in again. |
 
 **Recorded V5 implementation status (2026-09-04; not V6 acceptance).** The approved Revision 5
 Hermes-first path is implemented and covered by controlled system tests:

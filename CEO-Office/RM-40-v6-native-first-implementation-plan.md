@@ -9,8 +9,9 @@ Prepared: 6 September 2026. Status: **implementation plan; migration not execute
 | 0 · Reconcile requirements and inventory the real deployment | ✅ Complete, 6 Sep 2026 | [Requirement ledger and live capability inventory](RM-40-v6-requirement-ledger.md); [ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md); [baseline](../docs/BASELINE.md); `npm run check` exit 0, 771 tests |
 | 1 · Prove the native runtime before bot cutover | ✅ Complete on the CLI path, 6 Sep 2026 | [Milestone 1 native-runtime evidence](RM-40-v6-milestone-1-native-runtime-evidence.md). Real diff, independently verified test exit 0, 15 native tool calls. Two defects recorded. Native **Telegram** presentation remains untested by design |
 | 2 · Prepare a reversible one-owner Telegram migration | ✅ Complete, 6 Sep 2026 | [Milestone 2 cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md). Composition mode implemented and proven through the System Harness; cutover and reverse procedures written; extension interface verified against the installed version |
-| 3 · Activate native Telegram and accept the core experience | ⏸️ Blocked on a CEO decision — the cutover window — plus two engineering steps named in the runbook | — |
-| 4–9 | Not started | — |
+| 3 · Activate native Telegram and accept the core experience | 🔄 Executed 6 Sep 2026; **blocked on one CEO action** — an external consumer still polls the bot | [Milestone 3 cutover evidence](RM-40-v6-milestone-3-cutover-evidence.md). Malaysia side complete and verified; phone matrix pending transport |
+| 4 · Configure Ming's roles and connect sources | ▶️ In progress — does not need Telegram | — |
+| 5–9 | Not started | — |
 
 
 ## TL;DR
@@ -93,7 +94,7 @@ Source coverage includes Notion Master Tasks and allowlisted pages; personal/car
 
 ## 4. Milestone 1 — prove the native runtime before bot cutover
 
-**Status: ✅ complete on the CLI path, 6 September 2026.** Evidence in [milestone 1 native-runtime evidence](RM-40-v6-milestone-1-native-runtime-evidence.md). Steps 1–5 and 7 are proven; step 6 (native Telegram command/presentation matrix) is deliberately deferred to the cutover milestone because it needs an authorized bot or a separate test bot. Two defects were found: one-shot mode never resumes a session and its resume flags discard `--in DIR`; and the host default model does not match the only available credential.
+**Status: ✅ complete on the CLI path, 6 September 2026.** Evidence in [milestone 1 native-runtime evidence](RM-40-v6-milestone-1-native-runtime-evidence.md). Steps 1–5 are proven. Step 6 (native Telegram command/presentation matrix) is deferred to milestone 3 because it needs an authorized bot. Step 7 is **half proven**: the absence of a mandatory JSON envelope and of any Real-Ming record dependency for ordinary chat is demonstrated, but the "same requests with the Ming customization enabled" comparison cannot run until that customization exists in milestone 4. Two defects were found: one-shot mode never resumes a session and its resume flags discard `--in DIR`; and the host default model does not match the only available credential.
 
 **Owner:** engineering. **Dependencies:** milestone 0. **Output:** a pinned, reproducible native baseline.
 

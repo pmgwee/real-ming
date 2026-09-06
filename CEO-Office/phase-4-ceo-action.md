@@ -2,23 +2,55 @@
 
 > **Current next step · 6 September 2026:** Engineering follows [the V6 native-first implementation plan](RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. The checks below describe the recorded V5 activation; repeat phone acceptance after the native candidate is ready. No new login requirement has been established by the plan.
 
+## 🚨 ONE ACTION NEEDED FROM YOU · 6 September 2026
+
+**Stop the East Asia VM.** It is still polling your Telegram bot, and that is
+the only thing standing between you and a working native Hermes Telegram agent.
+
+Azure Portal → Virtual machines → `real-ming-control-plane` → **Stop**
+(not Delete — the VM is kept for rollback).
+
+Or, if you can SSH into it: `sudo systemctl disable --now real-ming.service`.
+Disable matters as much as stop — the service is set to start on boot, so a
+reboot would bring the conflict straight back.
+
+**Why this is not a new decision.** The activation runbook already recorded your
+approval to "deallocate — but do not delete — the East Asia VM for rollback."
+That step has been outstanding since 5 September. It is now blocking the very
+checks it was meant to follow.
+
+**Why I cannot do it.** I have no way into that machine: my SSH key is not
+authorised there, Tailscale SSH is not enabled on it, and there is no Azure CLI
+or Azure credential on your laptop for me to use. The Malaysia VM's identity can
+read Key Vault and blob storage only — it cannot stop another VM.
+
+**What happens after you stop it.** Nothing else is needed from me. Hermes is
+already configured with your bot and is retrying in the background; it will pick
+up the transport by itself. If it has given up by then, tell me and I will
+restart it in one command.
+
+The full evidence, including what I ruled out and a mistake I made and corrected
+along the way, is in
+[milestone 3 cutover evidence](RM-40-v6-milestone-3-cutover-evidence.md).
+
 ## Where engineering stopped · 6 September 2026
 
 Milestones 0, 1 and 2 are complete and needed no action from you. Codex OAuth
 and Tailscale were re-confirmed healthy at 03:14 UTC — **do not sign in again**.
 
-Engineering has now reached the first change you would actually feel. Milestone
-3 stops the current Telegram consumer and starts the native Hermes gateway on
-the same bot, so it waits for decision 3 below. Everything up to that point is
-done, tested and reversible.
+Milestone 3 executed under your approval. The Malaysia side is complete: Real-Ming
+runs the Revision 6 image and no longer polls Telegram, and the native Hermes
+gateway holds your bot credential and allowlist. Two defects from earlier
+milestones are fixed and verified, and a third — found only by deploying for
+real — is fixed with a build check that stops it recurring.
 
-Three decisions are waiting. Decision 3 is the one that gates further work.
+Two decisions remain open. Neither blocks engineering; the East Asia VM above does.
 
 | # | Decision | What I need | My recommendation |
 | --- | --- | --- | --- |
 | 1 | **RM-40 (#41) acceptance criteria** | A yes before I post an issue comment. The open readiness ticket is written for Revision 5 and contains no criterion for native Telegram ownership, native presentation, a real coding loop or native memory. Passing it as written would repeat exactly the drift we just documented. Exact proposed wording is in [the requirement ledger §6](RM-40-v6-requirement-ledger.md). **Nothing has been written to GitHub.** | Approve. Keep all six existing criteria as the controlled-test floor and add the five native-experience criteria on top. |
 | 2 | **Optional curated-knowledge guarantees** | A direction, not an urgent answer. Versioned atomic publication, contradiction quarantine and access-controlled cross-domain projection are built and controlled-tested but were never wired to a production caller. Revision 6 makes them optional rather than default. | Defer. Prove native Obsidian/LLM-Wiki knowledge works in milestone 6 first, then decide against real observed gaps. The code and design are preserved either way. |
-| 3 | **Telegram cutover window** — *this one gates milestone 3* | A window when a short gap in Telegram replies is acceptable. The swap stops the Real-Ming consumer, starts the native Hermes gateway on the same bot, and is reversible. The full procedure, its reverse, the ownership table and the troubleshooting list are in [the cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md). | Pick a quiet window. Two engineering steps clear first — setting the native model explicitly and configuring the native Telegram platform — and I will do those in the same session. Telegram queues updates during the gap rather than losing them. A Revision 6 deployment artifact, if one turns out to be needed, will come to you separately; the Revision 5 approved digest is not approval for it. |
+| 3 | **Telegram cutover window** — *executed 6 Sep under your approval; superseded by the East Asia action above* | A window when a short gap in Telegram replies is acceptable. The swap stops the Real-Ming consumer, starts the native Hermes gateway on the same bot, and is reversible. The full procedure, its reverse, the ownership table and the troubleshooting list are in [the cutover runbook](RM-40-v6-milestone-2-cutover-runbook.md). | Pick a quiet window. Two engineering steps clear first — setting the native model explicitly and configuring the native Telegram platform — and I will do those in the same session. Telegram queues updates during the gap rather than losing them. A Revision 6 deployment artifact, if one turns out to be needed, will come to you separately; the Revision 5 approved digest is not approval for it. |
 
 **What changed on 6 September.** The specification, ADRs, baseline labels and
 tests are reconciled to Architecture Revision 6 ([ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md)),
