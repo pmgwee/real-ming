@@ -75,7 +75,7 @@ Genuinely undecided. Deciding now would be guessing.
 | Path | Lines | The question |
 | --- | ---: | --- |
 | `src/knowledge/` | 3,659 | CEO decision 2. Native Obsidian + LLM Wiki cover the default case. These 3,659 lines buy versioned atomic publication, contradiction quarantine, provenance validation and scoped cross-domain projection — none of it ever production-wired. Decide against observed gaps in milestone 6 |
-| `src/dashboard/` | 1,119 | Milestone 7. The native dashboard plus a small extension tab may be enough |
+| `src/dashboard/` | 1,119 | **Resolved 7 Sep 2026: keep.** The native dashboard has no concept of a Work Item, an Accountable Executive or an artifact-bound Approval, so it cannot replace this read model. See [the dashboard comparison](../evidence/RM-40-v6-milestone-7-comparison-2026-09-07.md). What may still change is delivery — an authenticated tab inside the native dashboard rather than a separate service |
 | `src/workers/` | 627 | The Lenovo private worker. Native delegation and terminal may cover it |
 
 ## Archive — 2,608 lines, 7%
