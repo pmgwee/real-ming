@@ -267,4 +267,121 @@ describe("RM-40 Real-Ming extension tools", () => {
       );
     });
   });
+
+  /**
+   * Ming reads three mailboxes for one question: what needs his reply. The
+   * agent must name which mailbox it read, because "no job replies" is a
+   * different fact depending on whether it looked at his personal mail or his
+   * university account.
+   */
+  describe("mailboxes", () => {
+    // Identifiers and source references belong to the adapter, which the
+    // Provider Adapter Contract Harness covers. This seam is about which
+    // mailbox was read and what the agent is told.
+    const jobReply = {
+      from: "Recruiting <talent@example.com>",
+      subject: "Your application",
+      snippet: "We would like to invite you to a first interview.",
+      receivedAt: "2026-09-06T01:00:00.000Z",
+      unread: true,
+    };
+
+    function startWithMail(
+      mail: NonNullable<Parameters<typeof createRealMingSystemHarness>[0]["mail"]>,
+    ): RealMingSystemHarness {
+      const directory = mkdtempSync(join(tmpdir(), "real-ming-rm40-mail-"));
+      directories.push(directory);
+      const harness = createRealMingSystemHarness({
+        statePath: join(directory, "state.sqlite"),
+        telegram: { ceoTelegramId: "100000001" },
+        now: () => "2026-09-06T05:00:00.000Z",
+        mail,
+      });
+      harnesses.push(harness);
+      return harness;
+    }
+
+    it("offers mail only where a mailbox is actually configured", () => {
+      expect(
+        startHarness()
+          .realMingTools()
+          .map((tool) => tool.name),
+      ).not.toContain("real_ming_search_mail");
+
+      expect(
+        startWithMail({ mailboxes: ["personal@example.com"] })
+          .realMingTools()
+          .map((tool) => tool.name),
+      ).toContain("real_ming_search_mail");
+    });
+
+    it("names the mailboxes it can read, so the agent picks rather than guesses", () => {
+      // With three accounts and no list, an agent reads whichever one it
+      // assumes is default and reports the answer as if it covered them all.
+      const tool = startWithMail({
+        mailboxes: ["personal@example.com", "student@example.edu"],
+      })
+        .realMingTools()
+        .find((entry) => entry.name === "real_ming_search_mail");
+
+      expect(tool?.description).toContain("personal@example.com");
+      expect(tool?.description).toContain("student@example.edu");
+    });
+
+    it("returns the messages that mailbox actually holds", async () => {
+      const harness = startWithMail({
+        mailboxes: ["personal@example.com"],
+        messages: { "personal@example.com": [jobReply] },
+      });
+
+      const result = await harness.callRealMingToolAsync("real_ming_search_mail", {
+        mailbox: "personal@example.com",
+        query: "is:unread",
+      });
+
+      expect(result.kind).toBe("ok");
+      const value = (result as { readonly value: Record<string, unknown> }).value;
+      expect(value["mailbox"]).toBe("personal@example.com");
+      expect(value["messages"]).toEqual([
+        {
+          from: "Recruiting <talent@example.com>",
+          subject: "Your application",
+          snippet: "We would like to invite you to a first interview.",
+          receivedAt: "2026-09-06T01:00:00.000Z",
+          unread: true,
+        },
+      ]);
+    });
+
+    it("refuses an unknown mailbox instead of quietly reading another", async () => {
+      // Silently falling back to the default mailbox answers a question Ming
+      // did not ask, in a way that reads as if it did.
+      const harness = startWithMail({ mailboxes: ["personal@example.com"] });
+
+      const result = await harness.callRealMingToolAsync("real_ming_search_mail", {
+        mailbox: "someone-else@example.com",
+      });
+
+      expect(result.kind).toBe("failed");
+      expect((result as { readonly reason: string }).reason).toContain(
+        "someone-else@example.com",
+      );
+    });
+
+    it("reports an unreachable mailbox instead of an empty inbox", async () => {
+      const harness = startWithMail({
+        mailboxes: ["personal@example.com"],
+        unavailable: true,
+      });
+
+      const result = await harness.callRealMingToolAsync("real_ming_search_mail", {
+        mailbox: "personal@example.com",
+      });
+
+      expect(result.kind).toBe("failed");
+      expect((result as { readonly reason: string }).reason).toMatch(
+        /could not be read/i,
+      );
+    });
+  });
 });

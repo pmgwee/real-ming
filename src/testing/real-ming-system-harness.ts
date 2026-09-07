@@ -380,6 +380,28 @@ export interface ControlledVaultOptions {
   readonly onRead?: () => void;
 }
 
+/**
+ * Ming's mailboxes as the extension sees them. The Gmail wire shape is proved
+ * by the Provider Adapter Contract Harness; this seam is about which mailbox
+ * the agent read and what it is told when it cannot read one.
+ */
+export interface ControlledMailOptions {
+  readonly mailboxes: readonly string[];
+  readonly messages?: Readonly<
+    Record<
+      string,
+      readonly {
+        readonly from: string;
+        readonly subject: string;
+        readonly snippet: string;
+        readonly receivedAt: string;
+        readonly unread: boolean;
+      }[]
+    >
+  >;
+  readonly unavailable?: boolean;
+}
+
 export interface ControlledCalendarOptions {
   readonly events: readonly CalendarEvent[];
   readonly failure?: "unavailable" | "authentication-failed";
@@ -1141,6 +1163,7 @@ export function createRealMingSystemHarness(options: {
   readonly legacyTaskSources?: readonly LegacyTaskSource[];
   readonly cutover?: ControlledCutoverOptions;
   readonly calendar?: ControlledCalendarOptions;
+  readonly mail?: ControlledMailOptions;
   readonly morningBrief?: ControlledMorningBriefOptions;
   readonly schedulerRunnerTimeoutMs?: number;
   readonly personalContext?: {
@@ -1212,6 +1235,23 @@ export function createRealMingSystemHarness(options: {
                 })),
               };
             },
+          },
+        }),
+    ...(options.mail === undefined
+      ? {}
+      : {
+          mail: {
+            mailboxes: options.mail.mailboxes,
+            search: async ({ mailbox }: { readonly mailbox: string }) =>
+              options.mail?.unavailable === true
+                ? {
+                    kind: "unavailable" as const,
+                    reason: "Controlled mailbox failure.",
+                  }
+                : {
+                    kind: "ok" as const,
+                    messages: options.mail?.messages?.[mailbox] ?? [],
+                  },
           },
         }),
   });

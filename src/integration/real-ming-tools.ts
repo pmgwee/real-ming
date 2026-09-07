@@ -61,6 +61,33 @@ export interface CalendarAgendaClient {
   }): Promise<CalendarAgendaResult>;
 }
 
+/** One message, reduced to what "does this need a reply" is decided from. */
+export interface MailSummary {
+  readonly from: string;
+  readonly subject: string;
+  readonly snippet: string;
+  readonly receivedAt: string;
+  readonly unread: boolean;
+}
+
+export type MailSearchResult =
+  | { readonly kind: "ok"; readonly messages: readonly MailSummary[] }
+  | { readonly kind: "unavailable"; readonly reason: string };
+
+/**
+ * Ming reads several mailboxes, so the client names which ones exist rather
+ * than assuming a default. An agent that cannot see the list reads whichever
+ * mailbox it assumes and reports the answer as though it covered them all.
+ */
+export interface MailboxClient {
+  readonly mailboxes: readonly string[];
+  search(request: {
+    readonly mailbox: string;
+    readonly query?: string;
+    readonly limit?: number;
+  }): Promise<MailSearchResult>;
+}
+
 /**
  * The Notion board category a lifecycle state presents as, per
  * `docs/agents/notion-task-status-semantics.md`.
@@ -141,11 +168,17 @@ export function createRealMingTools(options: {
   readonly scheduledReports?: NativeCronReportClient;
   /** Present only where an authorized calendar credential is configured. */
   readonly calendar?: CalendarAgendaClient;
+  /** Present only where at least one authorized mailbox is configured. */
+  readonly mail?: MailboxClient;
   /** The calendar read when the caller names none. */
   readonly defaultCalendarId?: string;
 }): RealMingTools {
   const scheduledReports = options.scheduledReports;
   const calendar = options.calendar;
+  const mail =
+    options.mail === undefined || options.mail.mailboxes.length === 0
+      ? undefined
+      : options.mail;
   const definitions: readonly RealMingToolDefinition[] = [
     {
       name: "real_ming_list_work_items",
@@ -252,6 +285,35 @@ export function createRealMingTools(options: {
             },
           } satisfies RealMingToolDefinition,
         ]),
+    ...(mail === undefined
+      ? []
+      : [
+          {
+            name: "real_ming_search_mail",
+            description:
+              `Search one of Ming's mailboxes and read message headers. Use for what needs a reply, whether an application was answered, or which notices matter. Available mailboxes: ${mail.mailboxes.join(", ")}. Always say which mailbox you read. Returns headers and a snippet, never message bodies; if the mailbox cannot be reached this fails rather than reporting an empty inbox.`,
+            inputSchema: {
+              type: "object",
+              properties: {
+                mailbox: {
+                  type: "string",
+                  description: `The mailbox to read. One of: ${mail.mailboxes.join(", ")}.`,
+                  enum: [...mail.mailboxes],
+                },
+                query: {
+                  type: "string",
+                  description:
+                    "Optional Gmail search, e.g. `is:unread newer_than:7d`.",
+                },
+                limit: {
+                  type: "number",
+                  description: "Maximum messages to return; defaults to 25.",
+                },
+              },
+              required: ["mailbox"],
+            },
+          } satisfies RealMingToolDefinition,
+        ]),
   ];
 
   const scheduledReportRequest = (
@@ -310,6 +372,50 @@ export function createRealMingTools(options: {
       kind: "ok",
       value: { calendarId, events: result.events },
     };
+  };
+
+  const readMail = async (
+    args: Record<string, unknown>,
+  ): Promise<RealMingToolResult> => {
+    if (mail === undefined) {
+      return {
+        kind: "failed",
+        reason: "No mailbox is configured for this Real-Ming process.",
+      };
+    }
+    const mailbox = requiredString(args, "mailbox");
+    if (mailbox === undefined) {
+      return {
+        kind: "failed",
+        reason: `mailbox is required. Available: ${mail.mailboxes.join(", ")}.`,
+      };
+    }
+    if (!mail.mailboxes.includes(mailbox)) {
+      // Falling back to a default answers a question Ming did not ask, in a
+      // form that reads as though he did.
+      return {
+        kind: "failed",
+        reason: `No mailbox ${mailbox} is configured. Available: ${mail.mailboxes.join(", ")}.`,
+      };
+    }
+    const query = requiredString(args, "query");
+    const rawLimit = args["limit"];
+    const limit =
+      typeof rawLimit === "number" && Number.isSafeInteger(rawLimit) && rawLimit > 0
+        ? rawLimit
+        : undefined;
+    const result = await mail.search({
+      mailbox,
+      ...(query === undefined ? {} : { query }),
+      ...(limit === undefined ? {} : { limit }),
+    });
+    if (result.kind === "unavailable") {
+      return {
+        kind: "failed",
+        reason: `The mailbox ${mailbox} could not be read: ${result.reason}`,
+      };
+    }
+    return { kind: "ok", value: { mailbox, messages: result.messages } };
   };
 
   const tools: RealMingTools = {
@@ -401,6 +507,16 @@ export function createRealMingTools(options: {
                 reason:
                   "This scheduled report tool requires the asynchronous MCP call path.",
               };
+        case "real_ming_search_mail":
+          return mail === undefined
+            ? {
+                kind: "failed",
+                reason: "No mailbox is configured for this Real-Ming process.",
+              }
+            : {
+                kind: "failed",
+                reason: "Reading mail requires the asynchronous MCP call path.",
+              };
         case "real_ming_list_calendar_events":
           return calendar === undefined
             ? {
@@ -418,12 +534,19 @@ export function createRealMingTools(options: {
     },
   };
 
-  if (scheduledReports === undefined && calendar === undefined) return tools;
+  if (
+    scheduledReports === undefined &&
+    calendar === undefined &&
+    mail === undefined
+  ) {
+    return tools;
+  }
 
   return {
     ...tools,
     callAsync: async (name: string, args: Record<string, unknown>) => {
       if (name === "real_ming_list_calendar_events") return readCalendar(args);
+      if (name === "real_ming_search_mail") return readMail(args);
       if (name !== "real_ming_run_scheduled_report") {
         // Everything else is synchronous; route it back through the same
         // implementation rather than a second copy that can drift.
