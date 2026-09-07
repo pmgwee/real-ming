@@ -32,6 +32,10 @@ import {
   createGoogleCalendarAdapter,
   type GoogleCalendarAdapter,
 } from "../providers/google-calendar-adapter.js";
+import {
+  createGmailAdapter,
+  type GmailAdapter,
+} from "../providers/gmail-adapter.js";
 import type { CutoverWorkspace } from "../migration/master-tasks-cutover.js";
 import { legacyTaskSourceDefinitions, type LegacyTaskSource } from "../migration/task-migration-rehearsal.js";
 
@@ -1789,5 +1793,105 @@ export function createVercelDeploymentContractHarness(options: {
       now: () => now,
     }),
     requests: () => [...requests],
+  };
+}
+
+
+export interface MailContractHarness {
+  readonly adapter: GmailAdapter;
+  providerCallCount(): number;
+  listRequests(): readonly URL[];
+}
+
+/**
+ * Gmail answers a search in two steps: a list of identifiers, then one
+ * metadata read per identifier. Serving both here means the adapter's
+ * header extraction is exercised rather than bypassed.
+ */
+export function createMailContractHarness(
+  scenario: {
+    readonly failure?: ProviderFailureClass;
+    readonly emptyValue?: boolean;
+    readonly asOf?: string;
+    readonly now?: string;
+    readonly unreadableMessage?: boolean;
+    /** Fail only the per-message read, as a revoked scope does mid-page. */
+    readonly detailFailure?: ProviderFailureClass;
+  } = {},
+): MailContractHarness {
+  const now = scenario.now ?? "2026-09-07T09:00:00.000Z";
+  const asOf = scenario.asOf ?? now;
+  let providerCalls = 0;
+  const listRequests: URL[] = [];
+  const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
+    "authentication-failed": 401,
+    "invalid-input": 404,
+    "permission-denied": 403,
+    "rate-limited": 429,
+    "unsupported-capability": 400,
+    unavailable: 503,
+    "provider-error": 422,
+  };
+
+  const fetchImplementation = async (
+    input: string | URL | Request,
+  ): Promise<Response> => {
+    providerCalls += 1;
+    const url = new URL(String(input));
+    const isDetail = /\/messages\/[^/]+$/.test(url.pathname);
+
+    if (scenario.failure !== undefined) {
+      return Response.json(
+        { error: { message: rawProviderError(scenario.failure) } },
+        {
+          status: statusByClass[scenario.failure],
+          ...(scenario.failure === "rate-limited"
+            ? { headers: { "retry-after": "1" } }
+            : {}),
+        },
+      );
+    }
+    if (isDetail) {
+      if (scenario.detailFailure !== undefined) {
+        return Response.json(
+          { error: { message: rawProviderError(scenario.detailFailure) } },
+          { status: statusByClass[scenario.detailFailure] },
+        );
+      }
+      return Response.json({
+        ...(scenario.unreadableMessage === true
+          ? {}
+          : { id: "contract-message-1" }),
+        threadId: "contract-thread-1",
+        snippet: "We would like to invite you to a first interview.",
+        labelIds: ["INBOX", "UNREAD"],
+        internalDate: String(Date.parse(asOf)),
+        payload: {
+          headers: [
+            { name: "From", value: "Recruiting <talent@example.com>" },
+            { name: "Subject", value: "Your application" },
+            { name: "Date", value: asOf },
+          ],
+        },
+      });
+    }
+    listRequests.push(url);
+    return Response.json(
+      scenario.emptyValue === true
+        ? {}
+        : { messages: [{ id: "contract-message-1" }] },
+    );
+  };
+
+  return {
+    adapter: createGmailAdapter({
+      accessToken: "contract-mail-access-token",
+      workspaceId: "workspace:real-ming",
+      mailbox: "contract@example.com",
+      fetch: fetchImplementation as unknown as typeof fetch,
+      now: () => now,
+    }),
+    providerCallCount: () => providerCalls,
+    listRequests: () => [...listRequests],
   };
 }
