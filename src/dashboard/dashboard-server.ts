@@ -12,6 +12,7 @@ import {
 import { renderDashboardPage } from "./dashboard-page.js";
 import type {
   CalendarAgendaResult,
+  MailReadResult,
   MailSearchResult,
   ProviderWriteOutcome,
 } from "../integration/real-ming-tools.js";
@@ -124,6 +125,10 @@ export interface ProviderReadEndpoint {
     readonly cc?: readonly string[];
     readonly idempotencyKey: string;
   }) => Promise<ProviderWriteOutcome>;
+  readonly readMail?: (request: {
+    readonly mailbox: string;
+    readonly messageId: string;
+  }) => Promise<MailReadResult>;
 }
 
 function matchesToken(candidate: string, expected: string): boolean {
@@ -352,7 +357,8 @@ export function createDashboardServer(options: {
         (url.pathname === "/internal/provider/calendar-events" ||
           url.pathname === "/internal/provider/search-mail" ||
           url.pathname === "/internal/provider/create-calendar-event" ||
-          url.pathname === "/internal/provider/draft-mail")
+          url.pathname === "/internal/provider/draft-mail" ||
+          url.pathname === "/internal/provider/read-mail")
       ) {
         const endpoint = options.providerReads;
         if (
@@ -423,6 +429,24 @@ export function createDashboardServer(options: {
                 idempotencyKey,
               }),
             );
+            return;
+          }
+          if (url.pathname === "/internal/provider/read-mail") {
+            if (endpoint.readMail === undefined) {
+              sendJson(response, 404, { error: "mail-not-configured" });
+              return;
+            }
+            const mailbox = body["mailbox"];
+            const messageId = body["messageId"];
+            if (typeof mailbox !== "string" || typeof messageId !== "string") {
+              sendJson(response, 400, { error: "mailbox-and-message-required" });
+              return;
+            }
+            if (!(endpoint.mailboxes ?? []).includes(mailbox)) {
+              sendJson(response, 403, { error: "mailbox-not-configured" });
+              return;
+            }
+            sendJson(response, 200, await endpoint.readMail({ mailbox, messageId }));
             return;
           }
           if (url.pathname === "/internal/provider/draft-mail") {

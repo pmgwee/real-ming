@@ -70,6 +70,90 @@ export function createEphemeralDraftLedger(): DraftLedger {
   };
 }
 
+/** One message opened deliberately, body included. */
+export interface MailBody {
+  readonly id: string;
+  readonly threadId: string;
+  readonly from: string;
+  readonly to: string;
+  readonly subject: string;
+  readonly receivedAt: string;
+  readonly body: string;
+  /** True when only an HTML part existed and it was reduced to text. */
+  readonly convertedFromHtml: boolean;
+  readonly truncated: boolean;
+  readonly sourceReference: string;
+}
+
+/** A body long enough to bury the point is long enough to bury a transcript. */
+const maxBodyCharacters = 20000;
+
+function decodeBase64Url(value: string): string {
+  return Buffer.from(
+    value.replace(/-/g, "+").replace(/_/g, "/"),
+    "base64",
+  ).toString("utf8");
+}
+
+/**
+ * Reduces HTML to something readable rather than rendering it.
+ *
+ * Marketing mail is often HTML-only, and handing the agent raw markup wastes
+ * the context it was opened to save and reads as noise to Ming.
+ */
+export function htmlToText(html: string): string {
+  return html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+/**
+ * Walks Gmail's MIME tree for the part a person would actually read.
+ *
+ * `text/plain` is preferred; HTML is the fallback because an HTML-only message
+ * is common and returning nothing for it would look like an empty email.
+ */
+export function extractMessageBody(payload: unknown): {
+  readonly body: string;
+  readonly convertedFromHtml: boolean;
+} {
+  const plain: string[] = [];
+  const html: string[] = [];
+
+  const walk = (node: unknown): void => {
+    if (!isRecord(node)) return;
+    const mimeType = typeof node["mimeType"] === "string" ? node["mimeType"] : "";
+    const body = isRecord(node["body"]) ? node["body"] : undefined;
+    const data = body !== undefined && typeof body["data"] === "string" ? body["data"] : undefined;
+    if (data !== undefined) {
+      if (mimeType.startsWith("text/plain")) plain.push(decodeBase64Url(data));
+      else if (mimeType.startsWith("text/html")) html.push(decodeBase64Url(data));
+    }
+    const parts = node["parts"];
+    if (Array.isArray(parts)) for (const part of parts) walk(part);
+  };
+  walk(payload);
+
+  if (plain.length > 0) {
+    return { body: plain.join("\n").trim(), convertedFromHtml: false };
+  }
+  if (html.length > 0) {
+    return { body: htmlToText(html.join("\n")), convertedFromHtml: true };
+  }
+  return { body: "", convertedFromHtml: false };
+}
+
 export interface GmailAdapter extends ProviderAdapter<readonly MailMessage[]> {
   listMessages(query?: MailQuery): Promise<ProviderReadResult<readonly MailMessage[]>>;
   /**
@@ -81,6 +165,14 @@ export interface GmailAdapter extends ProviderAdapter<readonly MailMessage[]> {
    * behalf, and no approval relayed through the agent can prove he did.
    */
   createDraft(request: DraftRequest): Promise<ProviderWriteResult>;
+  /**
+   * Opens one message, body included.
+   *
+   * Separate from listMessages on purpose: scanning stays headers-only so a
+   * sweep of the inbox never puts other people's mail into a transcript, while
+   * a message Ming actually asked about can be read in full.
+   */
+  readMessage(messageId: string): Promise<ProviderReadResult<MailBody>>;
 }
 
 /** RFC 2822 for the Gmail drafts endpoint, base64url as the API requires. */
@@ -379,6 +471,91 @@ export function createGmailAdapter(options: GmailAdapterOptions): GmailAdapter {
     }
   };
 
+  const readMessage: GmailAdapter["readMessage"] = async (messageId) => {
+    const retrievedAt = now();
+    if (messageId.trim() === "") {
+      return {
+        kind: "failed",
+        failure: providerFailure("invalid-input", "A message id is required."),
+      };
+    }
+    try {
+      const url = new URL(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}`,
+      );
+      url.searchParams.set("format", "full");
+      const response = await request(url.toString(), { headers });
+      if (!response.ok) {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            failureClassForStatus(response.status),
+            `Gmail returned HTTP ${response.status} reading a message in ${options.mailbox}.`,
+          ),
+        };
+      }
+      const payload: unknown = await response.json();
+      if (!isRecord(payload) || typeof payload["id"] !== "string") {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            "provider-error",
+            "Gmail returned a message without an identifier.",
+          ),
+        };
+      }
+      const rawHeaders = isRecord(payload["payload"])
+        ? payload["payload"]["headers"]
+        : undefined;
+      const messageHeaders = Array.isArray(rawHeaders) ? rawHeaders : [];
+      const extracted = extractMessageBody(payload["payload"]);
+      const truncated = extracted.body.length > maxBodyCharacters;
+      const internalDate = payload["internalDate"];
+      const receivedAtMs =
+        typeof internalDate === "string" ? Number(internalDate) : Number.NaN;
+      const reference = mailSourceReference(options.mailbox, payload["id"]);
+      const asOf = Number.isFinite(receivedAtMs)
+        ? new Date(receivedAtMs).toISOString()
+        : retrievedAt;
+      return {
+        kind: "ok",
+        identity,
+        provenance: provenanceFor(reference, asOf, retrievedAt),
+        value: {
+          id: payload["id"],
+          threadId:
+            typeof payload["threadId"] === "string"
+              ? payload["threadId"]
+              : payload["id"],
+          from: headerValue(messageHeaders, "from"),
+          to: headerValue(messageHeaders, "to"),
+          subject: headerValue(messageHeaders, "subject"),
+          receivedAt: Number.isFinite(receivedAtMs)
+            ? new Date(receivedAtMs).toISOString()
+            : "",
+          // Truncation is reported rather than hidden: an answer drawn from
+          // half a message must not read as an answer drawn from all of it.
+          body: truncated
+            ? extracted.body.slice(0, maxBodyCharacters)
+            : extracted.body,
+          convertedFromHtml: extracted.convertedFromHtml,
+          truncated,
+          sourceReference: reference,
+        },
+      };
+    } catch (error) {
+      return {
+        kind: "failed",
+        failure: providerFailure(
+          "unavailable",
+          error instanceof Error
+            ? `Gmail is unreachable: ${error.message}`
+            : "Gmail is unreachable.",
+        ),
+      };
+    }
+  };
+
   return {
     identity: () => identity,
     capabilities: (): readonly ProviderCapability[] => ["read", "write"],
@@ -411,5 +588,6 @@ export function createGmailAdapter(options: GmailAdapterOptions): GmailAdapter {
     },
     listMessages,
     createDraft,
+    readMessage,
   };
 }

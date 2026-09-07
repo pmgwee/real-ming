@@ -1,4 +1,6 @@
 import type {
+  MailMessageBody,
+  MailReadResult,
   CalendarAgendaClient,
   CalendarAgendaEntry,
   CalendarAgendaResult,
@@ -37,8 +39,9 @@ function calendarEntry(value: unknown): CalendarAgendaEntry | undefined {
 
 function mailSummary(value: unknown): MailSummary | undefined {
   if (!isRecord(value)) return undefined;
-  const { from, subject, snippet, receivedAt, unread } = value;
+  const { id, from, subject, snippet, receivedAt, unread } = value;
   if (
+    typeof id !== "string" ||
     typeof from !== "string" ||
     typeof subject !== "string" ||
     typeof snippet !== "string" ||
@@ -47,7 +50,7 @@ function mailSummary(value: unknown): MailSummary | undefined {
   ) {
     return undefined;
   }
-  return { from, subject, snippet, receivedAt, unread };
+  return { id, from, subject, snippet, receivedAt, unread };
 }
 
 interface BridgeOptions {
@@ -178,10 +181,51 @@ export function createBridgedMailboxClient(
   options: BridgeOptions & {
     readonly mailboxes: readonly string[];
     readonly draftEndpoint?: string;
+    readonly readEndpoint?: string;
   },
 ): MailboxClient {
   return {
     mailboxes: options.mailboxes,
+    ...(options.readEndpoint === undefined
+      ? {}
+      : {
+          read: async (request): Promise<MailReadResult> => {
+            const result = await post(
+              { ...options, endpoint: options.readEndpoint as string },
+              { ...request },
+            );
+            if (!result.ok) {
+              return { kind: "unavailable", reason: result.reason };
+            }
+            if (!isRecord(result.body) || result.body["kind"] !== "ok") {
+              return {
+                kind: "unavailable",
+                reason:
+                  isRecord(result.body) && typeof result.body["reason"] === "string"
+                    ? result.body["reason"]
+                    : "the control plane returned an unreadable message",
+              };
+            }
+            const m = result.body["message"];
+            if (!isRecord(m) || typeof m["body"] !== "string") {
+              return {
+                kind: "unavailable",
+                reason: "the control plane returned a message with no body",
+              };
+            }
+            const message: MailMessageBody = {
+              from: typeof m["from"] === "string" ? m["from"] : "",
+              to: typeof m["to"] === "string" ? m["to"] : "",
+              subject: typeof m["subject"] === "string" ? m["subject"] : "",
+              receivedAt:
+                typeof m["receivedAt"] === "string" ? m["receivedAt"] : "",
+              body: m["body"],
+              convertedFromHtml: m["convertedFromHtml"] === true,
+              truncated: m["truncated"] === true,
+            };
+            return { kind: "ok", message };
+          },
+        }),
     ...(options.draftEndpoint === undefined
       ? {}
       : {

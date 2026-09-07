@@ -92,6 +92,8 @@ export interface CalendarAgendaClient {
 
 /** One message, reduced to what "does this need a reply" is decided from. */
 export interface MailSummary {
+  /** Addresses one message, so it can be opened in full on request. */
+  readonly id: string;
   readonly from: string;
   readonly subject: string;
   readonly snippet: string;
@@ -113,6 +115,21 @@ export type MailSearchResult =
  * than assuming a default. An agent that cannot see the list reads whichever
  * mailbox it assumes and reports the answer as though it covered them all.
  */
+/** One message opened deliberately, body included. */
+export interface MailMessageBody {
+  readonly from: string;
+  readonly to: string;
+  readonly subject: string;
+  readonly receivedAt: string;
+  readonly body: string;
+  readonly convertedFromHtml: boolean;
+  readonly truncated: boolean;
+}
+
+export type MailReadResult =
+  | { readonly kind: "ok"; readonly message: MailMessageBody }
+  | { readonly kind: "unavailable"; readonly reason: string };
+
 export interface MailboxClient {
   readonly mailboxes: readonly string[];
   search(request: {
@@ -133,6 +150,17 @@ export interface MailboxClient {
     readonly cc?: readonly string[];
     readonly idempotencyKey: string;
   }) => Promise<ProviderWriteOutcome>;
+  /**
+   * Opens one message in full.
+   *
+   * Separate from search on purpose: a sweep of the inbox must never put other
+   * people's mail into a transcript, but a message Ming asked about can be
+   * read.
+   */
+  read?: (request: {
+    readonly mailbox: string;
+    readonly messageId: string;
+  }) => Promise<MailReadResult>;
 }
 
 /**
@@ -393,6 +421,30 @@ export function createRealMingTools(options: {
             },
           } satisfies RealMingToolDefinition,
         ]),
+    ...(mail?.read === undefined
+      ? []
+      : [
+          {
+            name: "real_ming_read_email",
+            description:
+              "Open ONE of Ming's emails and read its body. Use after real_ming_search_mail when the snippet is not enough — to summarise a long message, find what someone is actually asking, or gather what a reply needs. Takes the id from a search result. Read one message at a time; do not sweep an inbox with this.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                mailbox: {
+                  type: "string",
+                  description: `The mailbox holding the message. One of: ${mail.mailboxes.join(", ")}.`,
+                  enum: [...mail.mailboxes],
+                },
+                messageId: {
+                  type: "string",
+                  description: "The id field from a real_ming_search_mail result.",
+                },
+              },
+              required: ["mailbox", "messageId"],
+            },
+          } satisfies RealMingToolDefinition,
+        ]),
     ...(calendar?.createEvent === undefined
       ? []
       : [
@@ -538,6 +590,37 @@ export function createRealMingTools(options: {
           : { retrievedAt: result.retrievedAt }),
       },
     };
+  };
+
+  const readOneEmail = async (
+    args: Record<string, unknown>,
+  ): Promise<RealMingToolResult> => {
+    const read = mail?.read;
+    if (mail === undefined || read === undefined) {
+      return { kind: "failed", reason: "Reading mail bodies is not enabled here." };
+    }
+    const mailbox = requiredString(args, "mailbox");
+    if (mailbox === undefined || !mail.mailboxes.includes(mailbox)) {
+      return {
+        kind: "failed",
+        reason: `mailbox must be one of: ${mail.mailboxes.join(", ")}.`,
+      };
+    }
+    const messageId = requiredString(args, "messageId");
+    if (messageId === undefined) {
+      return {
+        kind: "failed",
+        reason: "messageId is required; take it from a real_ming_search_mail result.",
+      };
+    }
+    const result = await read({ mailbox, messageId });
+    if (result.kind === "unavailable") {
+      return {
+        kind: "failed",
+        reason: `That message could not be read from ${mailbox}: ${result.reason}`,
+      };
+    }
+    return { kind: "ok", value: { mailbox, ...result.message } };
   };
 
   const writeDraft = async (
@@ -747,6 +830,7 @@ export function createRealMingTools(options: {
                 reason:
                   "This scheduled report tool requires the asynchronous MCP call path.",
               };
+        case "real_ming_read_email":
         case "real_ming_draft_email":
         case "real_ming_create_calendar_event":
           return {
@@ -793,6 +877,7 @@ export function createRealMingTools(options: {
     callAsync: async (name: string, args: Record<string, unknown>) => {
       if (name === "real_ming_list_calendar_events") return readCalendar(args);
       if (name === "real_ming_search_mail") return readMail(args);
+      if (name === "real_ming_read_email") return readOneEmail(args);
       if (name === "real_ming_draft_email") return writeDraft(args);
       if (name === "real_ming_create_calendar_event") {
         return writeCalendarEvent(args);

@@ -206,4 +206,66 @@ describe("Gmail provider adapter contract", () => {
     if (result.kind !== "failed") throw new Error("Expected a failure.");
     expect(result.failure.message).not.toMatch(/token|secret|bearer/i);
   });
+
+  describe("opening one message", () => {
+    it("prefers the plain-text part a person would read", async () => {
+      const { adapter } = createMailContractHarness();
+
+      const result = await adapter.readMessage("contract-message-1");
+
+      expect(result.kind).toBe("ok");
+      if (result.kind === "failed") throw new Error("Expected the message.");
+      expect(result.value.body).toContain("Thursday at 3pm");
+      expect(result.value.subject).toBe("Interview scheduling");
+      expect(result.value.to).toBe("contract@example.com");
+      expect(result.value.convertedFromHtml).toBe(false);
+    });
+
+    it("finds the text part buried in nested multiparts", async () => {
+      // Real mail nests multipart/alternative inside multipart/mixed. A walker
+      // that only checks the top level returns an empty body for it.
+      const { adapter } = createMailContractHarness({ nestedBody: true });
+
+      const result = await adapter.readMessage("contract-message-1");
+
+      if (result.kind === "failed") throw new Error("Expected the message.");
+      expect(result.value.body).toContain("Thursday at 3pm");
+      expect(result.value.convertedFromHtml).toBe(false);
+    });
+
+    it("reduces an HTML-only message to readable text", async () => {
+      // Marketing mail is routinely HTML-only. Returning nothing for it would
+      // read as an empty email; returning raw markup wastes the context the
+      // message was opened to use.
+      const { adapter } = createMailContractHarness({ htmlOnlyBody: true });
+
+      const result = await adapter.readMessage("contract-message-1");
+
+      if (result.kind === "failed") throw new Error("Expected the message.");
+      expect(result.value.convertedFromHtml).toBe(true);
+      expect(result.value.body).toContain("Thursday");
+      expect(result.value.body).not.toContain("<p>");
+      expect(result.value.body).not.toContain("style");
+    });
+
+    it("says when it truncated, so half an email cannot read as all of it", async () => {
+      const { adapter } = createMailContractHarness({ longBody: true });
+
+      const result = await adapter.readMessage("contract-message-1");
+
+      if (result.kind === "failed") throw new Error("Expected the message.");
+      expect(result.value.truncated).toBe(true);
+      expect(result.value.body.length).toBe(20000);
+    });
+
+    it("refuses an empty message id rather than fetching something arbitrary", async () => {
+      const { adapter } = createMailContractHarness();
+
+      const result = await adapter.readMessage("   ");
+
+      expect(result.kind).toBe("failed");
+      if (result.kind !== "failed") throw new Error("Expected a refusal.");
+      expect(result.failure.class).toBe("invalid-input");
+    });
+  });
 });

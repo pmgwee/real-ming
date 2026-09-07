@@ -4,7 +4,7 @@ import type {
   ProviderReadResult,
   ProviderWriteResult,
 } from "../providers/adapter-contract.js";
-import type { MailMessage } from "../providers/gmail-adapter.js";
+import type { MailBody, MailMessage } from "../providers/gmail-adapter.js";
 import {
   providerObservationFromRead,
   statusForFailure,
@@ -236,6 +236,11 @@ export async function createDailyOperationsControlPlane(options: {
     readonly query?: string;
     readonly limit?: number;
   }) => Promise<ProviderReadResult<readonly MailMessage[]>>;
+  /** Opens one message in full, on request. */
+  readonly readMail?: (request: {
+    readonly mailbox: string;
+    readonly messageId: string;
+  }) => Promise<ProviderReadResult<MailBody>>;
   /** Writes a draft. There is no send anywhere in this chain. */
   readonly draftMail?: (request: {
     readonly mailbox: string;
@@ -775,6 +780,7 @@ export async function createDailyOperationsControlPlane(options: {
                     return {
                       kind: "ok" as const,
                       messages: read.value.map((message) => ({
+                        id: message.id,
                         from: message.from,
                         subject: message.subject,
                         snippet: message.snippet,
@@ -782,6 +788,37 @@ export async function createDailyOperationsControlPlane(options: {
                         unread: message.unread,
                       })),
                       retrievedAt: read.provenance.retrievedAt,
+                    };
+                  },
+                }),
+            ...(options.readMail === undefined
+              ? {}
+              : {
+                  readMail: async (request: {
+                    readonly mailbox: string;
+                    readonly messageId: string;
+                  }) => {
+                    const read = await options.readMail?.(request);
+                    if (read === undefined || read.kind === "failed") {
+                      return {
+                        kind: "unavailable" as const,
+                        reason:
+                          read === undefined
+                            ? "That mailbox is not configured."
+                            : read.failure.message,
+                      };
+                    }
+                    return {
+                      kind: "ok" as const,
+                      message: {
+                        from: read.value.from,
+                        to: read.value.to,
+                        subject: read.value.subject,
+                        receivedAt: read.value.receivedAt,
+                        body: read.value.body,
+                        convertedFromHtml: read.value.convertedFromHtml,
+                        truncated: read.value.truncated,
+                      },
                     };
                   },
                 }),

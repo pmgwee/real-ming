@@ -391,6 +391,7 @@ export interface ControlledMailOptions {
     Record<
       string,
       readonly {
+        readonly id: string;
         readonly from: string;
         readonly subject: string;
         readonly snippet: string;
@@ -399,6 +400,8 @@ export interface ControlledMailOptions {
       }[]
     >
   >;
+  /** Full bodies, keyed by message id, for the read-one-message scenarios. */
+  readonly bodies?: Readonly<Record<string, string>>;
   readonly unavailable?: boolean;
 }
 
@@ -1287,6 +1290,41 @@ export function createRealMingSystemHarness(options: {
                     messages: options.mail?.messages?.[mailbox] ?? [],
                     retrievedAt: (options.now ?? (() => new Date().toISOString()))(),
                   },
+            read: async (request: {
+              readonly mailbox: string;
+              readonly messageId: string;
+            }) => {
+              if (options.mail?.unavailable === true) {
+                return {
+                  kind: "unavailable" as const,
+                  reason: "Controlled mailbox failure.",
+                };
+              }
+              const listed = (options.mail?.messages?.[request.mailbox] ?? []).find(
+                (entry) => entry.id === request.messageId,
+              );
+              const body = options.mail?.bodies?.[request.messageId];
+              if (listed === undefined || body === undefined) {
+                // A message that is not there is reported, never invented as
+                // an empty body the agent would summarise as "nothing said".
+                return {
+                  kind: "unavailable" as const,
+                  reason: `No message ${request.messageId}.`,
+                };
+              }
+              return {
+                kind: "ok" as const,
+                message: {
+                  from: listed.from,
+                  to: request.mailbox,
+                  subject: listed.subject,
+                  receivedAt: listed.receivedAt,
+                  body,
+                  convertedFromHtml: false,
+                  truncated: false,
+                },
+              };
+            },
             draft: async (request: {
               readonly mailbox: string;
               readonly to: readonly string[];

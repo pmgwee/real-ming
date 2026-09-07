@@ -1829,6 +1829,11 @@ export function createMailContractHarness(
     /** Fail only the per-message read, as a revoked scope does mid-page. */
     readonly detailFailure?: ProviderFailureClass;
     readonly draftFailure?: ProviderFailureClass;
+    /** Serve the body as HTML only, as most marketing mail does. */
+    readonly htmlOnlyBody?: boolean;
+    /** Bury the text part inside nested multiparts, as real mail does. */
+    readonly nestedBody?: boolean;
+    readonly longBody?: boolean;
   } = {},
 ): MailContractHarness {
   const now = scenario.now ?? "2026-09-07T09:00:00.000Z";
@@ -1876,6 +1881,53 @@ export function createMailContractHarness(
             : {}),
         },
       );
+    }
+    if (isDetail && url.searchParams.get("format") === "full") {
+      const plain = scenario.longBody === true
+        ? "x".repeat(25000)
+        : "Thanks for applying. We would like to meet on Thursday at 3pm.";
+      const b64 = (text: string): string =>
+        Buffer.from(text, "utf8")
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/, "");
+      const textPart = {
+        mimeType: "text/plain",
+        body: { data: b64(plain) },
+      };
+      const htmlPart = {
+        mimeType: "text/html",
+        body: {
+          data: b64(
+            "<html><head><style>p{}</style></head><body><p>Thanks for applying.</p>" +
+              "<p>We would like to meet on <b>Thursday</b> at 3pm.</p></body></html>",
+          ),
+        },
+      };
+      const payload = scenario.htmlOnlyBody === true
+        ? { ...htmlPart, headers: [] }
+        : scenario.nestedBody === true
+          ? {
+              mimeType: "multipart/mixed",
+              parts: [
+                { mimeType: "multipart/alternative", parts: [htmlPart, textPart] },
+              ],
+            }
+          : { mimeType: "multipart/alternative", parts: [textPart, htmlPart] };
+      return Response.json({
+        id: "contract-message-1",
+        threadId: "contract-thread-1",
+        internalDate: String(Date.parse(asOf)),
+        payload: {
+          ...payload,
+          headers: [
+            { name: "From", value: "Recruiting <talent@example.com>" },
+            { name: "To", value: "contract@example.com" },
+            { name: "Subject", value: "Interview scheduling" },
+          ],
+        },
+      });
     }
     if (isDetail) {
       if (scenario.detailFailure !== undefined) {

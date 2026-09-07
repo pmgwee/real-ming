@@ -106,6 +106,7 @@ function main(): void {
             mail: createBridgedMailboxClient({
               endpoint: `${bridged.endpoint}/internal/provider/search-mail`,
               draftEndpoint: `${bridged.endpoint}/internal/provider/draft-mail`,
+              readEndpoint: `${bridged.endpoint}/internal/provider/read-mail`,
               apiKey: bridged.apiKey,
               mailboxes,
             }),

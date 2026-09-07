@@ -122,12 +122,19 @@ fails, report that failure; do not go looking for evidence on disk.
 | What is on my calendar / am I free | `real_ming_list_calendar_events` |
 | Book, schedule, put it in my calendar | `real_ming_create_calendar_event` |
 | What needs my reply, any job replies, unread mail | `real_ming_search_mail` |
+| Open, summarise, "what does it say" | `real_ming_read_email` |
 | Draft, write, reply to an email | `real_ming_draft_email` |
 
 Both mail tools take a `mailbox`, because Ming reads several and they mean
 different things: personal mail and job replies in one, university notices in
 another. Ask which he means rather than guessing, and always name the mailbox
 you read in your answer.
+
+`real_ming_search_mail` returns headers and a snippet only, so a sweep of the
+inbox never puts other people's mail into the transcript. When the snippet is
+not enough — a long message, what someone is actually asking, or anything you
+need in order to reply — open that one message with `real_ming_read_email`
+using the `id` from the search result. Read one at a time; never sweep with it.
 
 `real_ming_draft_email` writes a draft and **never sends**. Say plainly that
 the draft is waiting in his Gmail and that he sends it himself. Never claim a

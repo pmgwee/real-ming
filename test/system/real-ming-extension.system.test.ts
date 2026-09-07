@@ -279,6 +279,7 @@ describe("RM-40 Real-Ming extension tools", () => {
     // Provider Adapter Contract Harness covers. This seam is about which
     // mailbox was read and what the agent is told.
     const jobReply = {
+      id: "message-job-1",
       from: "Recruiting <talent@example.com>",
       subject: "Your application",
       snippet: "We would like to invite you to a first interview.",
@@ -344,6 +345,7 @@ describe("RM-40 Real-Ming extension tools", () => {
       expect(value["mailbox"]).toBe("personal@example.com");
       expect(value["messages"]).toEqual([
         {
+          id: "message-job-1",
           from: "Recruiting <talent@example.com>",
           subject: "Your application",
           snippet: "We would like to invite you to a first interview.",
@@ -505,6 +507,98 @@ describe("RM-40 Real-Ming extension tools", () => {
 
       const value = (result as { readonly value: Record<string, unknown> }).value;
       expect(value["retrievedAt"]).toBe("2026-09-06T05:00:00.000Z");
+    });
+  });
+
+  /**
+   * Scanning stays headers-only so a sweep never puts other people's mail into
+   * a transcript. Opening one message Ming asked about is a separate, deliberate
+   * act — which is also what makes replying to an email possible at all.
+   */
+  describe("opening one message", () => {
+    const recruiter = {
+      id: "message-job-9",
+      from: "Recruiting <talent@example.com>",
+      subject: "Interview scheduling",
+      snippet: "Thanks for applying. We would like to",
+      receivedAt: "2026-09-06T01:00:00.000Z",
+      unread: true,
+    };
+
+    function startWithBodies(): RealMingSystemHarness {
+      const directory = mkdtempSync(join(tmpdir(), "real-ming-rm40-body-"));
+      directories.push(directory);
+      const harness = createRealMingSystemHarness({
+        statePath: join(directory, "state.sqlite"),
+        telegram: { ceoTelegramId: "100000001" },
+        now: () => "2026-09-06T05:00:00.000Z",
+        mail: {
+          mailboxes: ["personal@example.com"],
+          messages: { "personal@example.com": [recruiter] },
+          bodies: {
+            "message-job-9":
+              "Thanks for applying. We would like to meet on Thursday at 3pm.",
+          },
+        },
+      });
+      harnesses.push(harness);
+      return harness;
+    }
+
+    it("returns an id on every search result, so a message can be opened", async () => {
+      // Without the id there is nothing to pass to the read tool, and the
+      // agent can only ever see snippets.
+      const harness = startWithBodies();
+
+      const result = await harness.callRealMingToolAsync("real_ming_search_mail", {
+        mailbox: "personal@example.com",
+      });
+
+      const value = (result as { readonly value: Record<string, unknown> }).value;
+      const messages = value["messages"] as readonly { readonly id: string }[];
+      expect(messages[0]?.id).toBe("message-job-9");
+    });
+
+    it("reads the body of the message it was given", async () => {
+      const harness = startWithBodies();
+
+      const result = await harness.callRealMingToolAsync("real_ming_read_email", {
+        mailbox: "personal@example.com",
+        messageId: "message-job-9",
+      });
+
+      expect(result.kind).toBe("ok");
+      const value = (result as { readonly value: Record<string, unknown> }).value;
+      expect(value["body"]).toContain("Thursday at 3pm");
+      expect(value["subject"]).toBe("Interview scheduling");
+      expect(value["mailbox"]).toBe("personal@example.com");
+    });
+
+    it("reports a message it cannot find rather than an empty body", async () => {
+      // An empty body reads as "the email said nothing", which is a different
+      // and more damaging claim than "I could not open it".
+      const harness = startWithBodies();
+
+      const result = await harness.callRealMingToolAsync("real_ming_read_email", {
+        mailbox: "personal@example.com",
+        messageId: "message-that-is-not-there",
+      });
+
+      expect(result.kind).toBe("failed");
+      expect((result as { readonly reason: string }).reason).toContain(
+        "message-that-is-not-there",
+      );
+    });
+
+    it("refuses to open a message in a mailbox it holds no credential for", async () => {
+      const harness = startWithBodies();
+
+      const result = await harness.callRealMingToolAsync("real_ming_read_email", {
+        mailbox: "someone-else@example.com",
+        messageId: "message-job-9",
+      });
+
+      expect(result.kind).toBe("failed");
     });
   });
 });

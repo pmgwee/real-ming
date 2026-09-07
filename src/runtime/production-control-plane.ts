@@ -521,6 +521,22 @@ export async function createProductionControlPlane(options: {
                 ...(search.limit === undefined ? {} : { limit: search.limit }),
               });
             },
+            readMail: async (request: {
+              readonly mailbox: string;
+              readonly messageId: string;
+            }) => {
+              const adapter = await mailAdapterFor(request.mailbox);
+              if (adapter === undefined) {
+                return {
+                  kind: "failed" as const,
+                  failure: providerFailure(
+                    "authentication-failed",
+                    `Authorization for ${request.mailbox} is unavailable.`,
+                  ),
+                };
+              }
+              return adapter.readMessage(request.messageId);
+            },
             draftMail: async (draft: {
               readonly mailbox: string;
               readonly to: readonly string[];
