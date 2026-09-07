@@ -12,8 +12,17 @@ memory:
   user_profile_enabled: true
   memory_char_limit: 2200
   user_char_limit: 1375
-  # Telegram and background review writes are staged for CEO review.
-  write_approval: true
+  # CEO decision, 7 September 2026: leave memory writes ungated.
+  #
+  # Approval-gating every write means an interruption for each one, and an
+  # unattended cron run cannot write memory at all -- which in practice means
+  # memory quietly stops working rather than becoming safer. Ming chose the
+  # working version and will revisit if the agent ever remembers something
+  # wrong. Sensitive Secret exclusion does not depend on this setting.
+  #
+  # Do not flip this to true without a new decision; it is not a hardening
+  # default that was left unfinished.
+  write_approval: false
 
 # The bundled Obsidian skill reads this environment variable. The systemd unit
 # supplies the absolute path; it is intentionally separate from the generated

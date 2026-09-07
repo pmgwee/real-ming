@@ -18,8 +18,20 @@ nothing rather than a second copy. Full detail:
 tomorrow's 07:30 brief. Tell me if either arrives late, twice, or not at all.
 Rolling back is one variable and a restart.
 
-**Decision B — recorded, nothing changed.** Memory write approval stays off, as
-you chose. The agent keeps saving memories without interrupting you.
+**Decision B — recorded, and the repository now agrees with you.** Memory write
+approval stays off. Two places in the codebase still said `write_approval: true`
+— the configuration fragment meant to be applied with `hermes config set`, and a
+build check asserting it. Applying that fragment would have silently reversed
+your decision on the next configuration pass. Both now say `false`, and the
+build fails if they drift back.
+
+**Milestone 6 is done except one thing only you can do.** A cited note was
+written to the native vault by the agent, retrieved from two separate sessions,
+retrieved again after a Hermes restart, captured by the backup and restored
+byte-identical. What remains is opening
+`/var/lib/hermes-real-ming/obsidian-vault` from your own Obsidian client — the
+Azure-local path is now proven, which was the precondition for doing that
+safely. [Milestone 6 live acceptance](../docs/evidence/RM-40-v6-milestone-6-live-acceptance-2026-09-07.md).
 
 ## 🚦 TWO DECISIONS · 7 September 2026 (superseded by the record above)
 

@@ -93,7 +93,10 @@ describe("Ming's Hermes configuration pack", () => {
 
     expect(config).toMatch(/memory_enabled:\s*true/u);
     expect(config).toMatch(/user_profile_enabled:\s*true/u);
-    expect(config).toMatch(/write_approval:\s*true/u);
+    // The CEO chose ungated memory writes on 7 September 2026. The fragment
+    // must not drift back to true, because applying it would silently reverse
+    // that decision on the next host configuration pass.
+    expect(config).toMatch(/write_approval:\s*false/u);
     expect(config).toContain("OBSIDIAN_VAULT_PATH=/var/lib/hermes-real-ming/obsidian-vault");
     expect(config).toContain("/var/lib/real-ming/obsidian");
     expect(config).toMatch(/do not[\s\S]*replace the file/i);
