@@ -4,7 +4,24 @@
 
 > **Live deployment record:** [RM-40 V6 deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md). The East Asia VM remains deallocated and undeleted for rollback. Do not paste any credential values into this file.
 
-## 🚦 TWO DECISIONS · 7 September 2026
+## ✅ BOTH DECISIONS EXECUTED · 7 September 2026
+
+**Decision A — done.** Native cron now owns your 07:30 brief and 21:30 roll-up.
+Real-Ming still composes them. You should have received two Telegram messages
+during the cutover: one saying the brief failed (a real defect, caught and
+fixed mid-run) and one real Executive Roll-Up. The duplicate guard was proven
+live — the brief had already gone out at 07:30, so the native run correctly sent
+nothing rather than a second copy. Full detail:
+[cron cutover evidence](../docs/evidence/RM-40-v6-milestone-5-cron-cutover-2026-09-07.md).
+
+**What to watch:** the first *unattended* fire is tonight's 21:30 roll-up, then
+tomorrow's 07:30 brief. Tell me if either arrives late, twice, or not at all.
+Rolling back is one variable and a restart.
+
+**Decision B — recorded, nothing changed.** Memory write approval stays off, as
+you chose. The agent keeps saving memories without interrupting you.
+
+## 🚦 TWO DECISIONS · 7 September 2026 (superseded by the record above)
 
 Engineering is at the point where the next two steps change what you receive
 and what the agent remembers. Both need your word. Everything not gated on them
