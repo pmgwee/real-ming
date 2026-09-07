@@ -7,6 +7,10 @@ import {
 } from "../integration/execution-link.js";
 import { serveMcpOverStdio } from "../integration/mcp-stdio.js";
 import { createNativeCronReportClient } from "../integration/native-cron-client.js";
+import {
+  createBridgedCalendarClient,
+  createBridgedMailboxClient,
+} from "../integration/provider-read-client.js";
 import { createRealMingTools } from "../integration/real-ming-tools.js";
 import { OperationsState } from "../operations/operations-state.js";
 
@@ -65,6 +69,20 @@ function main(): void {
         })
       : undefined;
 
+  // Provider reads travel back over the same loopback bridge the cron tool
+  // uses, because this process holds no Google credential of its own.
+  const bridgeBase =
+    process.env["REAL_MING_CONTROL_PLANE_URL"]?.trim() || "http://127.0.0.1:8787";
+  const calendarId = process.env["REAL_MING_GOOGLE_CALENDAR_ID"]?.trim();
+  const mailboxes = (process.env["REAL_MING_MAILBOXES"] ?? "")
+    .split(",")
+    .map((mailbox) => mailbox.trim())
+    .filter((mailbox) => mailbox.length > 0);
+  const bridged =
+    bridgeKey === undefined || bridgeKey.length === 0
+      ? undefined
+      : { endpoint: bridgeBase, apiKey: bridgeKey };
+
   serveMcpOverStdio({
     tools: createRealMingTools({
       workItems: () => state.workItems(),
@@ -72,6 +90,24 @@ function main(): void {
       links,
       now: () => new Date().toISOString(),
       ...(scheduledReports === undefined ? {} : { scheduledReports }),
+      ...(bridged === undefined || calendarId === undefined
+        ? {}
+        : {
+            defaultCalendarId: calendarId,
+            calendar: createBridgedCalendarClient({
+              endpoint: `${bridged.endpoint}/internal/provider/calendar-events`,
+              apiKey: bridged.apiKey,
+            }),
+          }),
+      ...(bridged === undefined || mailboxes.length === 0
+        ? {}
+        : {
+            mail: createBridgedMailboxClient({
+              endpoint: `${bridged.endpoint}/internal/provider/search-mail`,
+              apiKey: bridged.apiKey,
+              mailboxes,
+            }),
+          }),
     }),
     input: process.stdin,
     output: process.stdout,

@@ -689,6 +689,37 @@ export async function createDailyOperationsControlPlane(options: {
             run: (request: NativeScheduledReportRequest) =>
               nativeScheduledReports.run(request),
           },
+          // The MCP process holds no Google credential, so it asks here. This
+          // process already reads the calendar for the morning brief; serving
+          // the same read to the agent adds no second credential path.
+          providerReads: {
+            apiKey: options.nativeCronApiKey,
+            calendarEvents: async (request: {
+              readonly from?: string;
+              readonly to?: string;
+            }) => {
+              const read = await options.listCalendarEvents({
+                ...(request.from === undefined ? {} : { timeMin: request.from }),
+                ...(request.to === undefined ? {} : { timeMax: request.to }),
+              });
+              if (read.kind === "failed") {
+                return {
+                  kind: "unavailable" as const,
+                  reason: read.failure.message,
+                };
+              }
+              return {
+                kind: "ok" as const,
+                events: read.value.map((event) => ({
+                  title: event.title,
+                  start: event.start,
+                  end: event.end,
+                  allDay: event.allDay,
+                  status: event.status,
+                })),
+              };
+            },
+          },
         }),
     credentials: [
       {

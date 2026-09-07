@@ -10,6 +10,10 @@ import {
   type NativeHermesDashboardStatus,
 } from "./dashboard-read-model.js";
 import { renderDashboardPage } from "./dashboard-page.js";
+import type {
+  CalendarAgendaResult,
+  MailSearchResult,
+} from "../integration/real-ming-tools.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { ProjectEvidenceBroker } from "../evidence/evidence-broker.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
@@ -76,6 +80,31 @@ export interface NativeCronEndpoint {
   readonly run: (
     request: NativeScheduledReportRequest,
   ) => Promise<NativeScheduledReportResult>;
+}
+
+/**
+ * The provider reads the Real-Ming MCP process cannot perform for itself.
+ *
+ * Hermes gives an MCP child only its own declared environment, so that process
+ * holds no Key Vault access and no Google credential. Routing the read back
+ * through this loopback endpoint keeps every Google secret in the one process
+ * that already has them, rather than copying them into Hermes configuration
+ * where they would live in a second place and drift.
+ */
+export interface ProviderReadEndpoint {
+  /** The same loopback secret the native cron endpoint uses. */
+  readonly apiKey: string;
+  readonly calendarEvents?: (request: {
+    readonly calendarId: string;
+    readonly from?: string;
+    readonly to?: string;
+  }) => Promise<CalendarAgendaResult>;
+  readonly mailboxes?: readonly string[];
+  readonly searchMail?: (request: {
+    readonly mailbox: string;
+    readonly query?: string;
+    readonly limit?: number;
+  }) => Promise<MailSearchResult>;
 }
 
 function matchesToken(candidate: string, expected: string): boolean {
@@ -214,6 +243,8 @@ export function createDashboardServer(options: {
     () => NativeHermesDashboardStatus | Promise<NativeHermesDashboardStatus>;
   /** Optional private endpoint used by native Hermes cron, never rendered. */
   readonly nativeCron?: NativeCronEndpoint;
+  /** Optional private endpoint serving provider reads to the MCP process. */
+  readonly providerReads?: ProviderReadEndpoint;
   readonly credentials: readonly DashboardCredential[];
   /**
    * The operating clock. Without it the dashboard would report scheduler
@@ -295,6 +326,86 @@ export function createDashboardServer(options: {
         }
         return;
       }
+      // The Real-Ming MCP process is the sole caller of these loopback reads.
+      // Like the cron endpoint they carry no CEO session and grant no write.
+      if (
+        request.method === "POST" &&
+        (url.pathname === "/internal/provider/calendar-events" ||
+          url.pathname === "/internal/provider/search-mail")
+      ) {
+        const endpoint = options.providerReads;
+        if (
+          endpoint === undefined ||
+          presentedBearerToken(request) === undefined ||
+          !matchesToken(presentedBearerToken(request) ?? "", endpoint.apiKey)
+        ) {
+          sendUnauthorized(response);
+          return;
+        }
+        try {
+          const body = await readJsonBody(request);
+          if (url.pathname === "/internal/provider/calendar-events") {
+            if (endpoint.calendarEvents === undefined) {
+              sendJson(response, 404, { error: "calendar-not-configured" });
+              return;
+            }
+            const calendarId = body["calendarId"];
+            if (typeof calendarId !== "string" || calendarId.trim() === "") {
+              sendJson(response, 400, { error: "calendar-id-required" });
+              return;
+            }
+            const from = body["from"];
+            const to = body["to"];
+            sendJson(
+              response,
+              200,
+              await endpoint.calendarEvents({
+                calendarId,
+                ...(typeof from === "string" ? { from } : {}),
+                ...(typeof to === "string" ? { to } : {}),
+              }),
+            );
+            return;
+          }
+          if (endpoint.searchMail === undefined) {
+            sendJson(response, 404, { error: "mail-not-configured" });
+            return;
+          }
+          const mailbox = body["mailbox"];
+          if (typeof mailbox !== "string" || mailbox.trim() === "") {
+            sendJson(response, 400, { error: "mailbox-required" });
+            return;
+          }
+          // The allowlist lives with the credentials, not with the caller. A
+          // mailbox this process holds no token for must never be attempted.
+          if (!(endpoint.mailboxes ?? []).includes(mailbox)) {
+            sendJson(response, 403, { error: "mailbox-not-configured" });
+            return;
+          }
+          const query = body["query"];
+          const limit = body["limit"];
+          sendJson(
+            response,
+            200,
+            await endpoint.searchMail({
+              mailbox,
+              ...(typeof query === "string" ? { query } : {}),
+              ...(typeof limit === "number" ? { limit } : {}),
+            }),
+          );
+        } catch (error) {
+          if (error instanceof RequestBodyError) {
+            sendJson(response, error.status, { error: error.code });
+            return;
+          }
+          sendJson(response, 422, {
+            error: "provider-read-rejected",
+            message: error instanceof Error ? error.message : "Unknown failure.",
+          });
+        }
+        return;
+      }
+
       const session = resolveSession(request, options.credentials);
 
       if (session === undefined) {
