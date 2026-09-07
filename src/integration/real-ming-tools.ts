@@ -382,7 +382,8 @@ export function createRealMingTools(options: {
                 },
                 limit: {
                   type: "number",
-                  description: "Maximum messages to return; defaults to 25.",
+                  description:
+                    "Maximum messages to return. Defaults to 10, ceiling 50. When the result carries possiblyMore, the page was filled — report the count as a page, not a total.",
                 },
               },
               required: ["mailbox"],
@@ -585,6 +586,9 @@ export function createRealMingTools(options: {
       value: {
         mailbox,
         messages: result.messages,
+        // A full page is not a total. Without this the agent reports "10
+        // unread" when there are forty, which reads as a complete count.
+        possiblyMore: result.messages.length >= (limit ?? 10),
         ...(result.retrievedAt === undefined
           ? {}
           : { retrievedAt: result.retrievedAt }),
