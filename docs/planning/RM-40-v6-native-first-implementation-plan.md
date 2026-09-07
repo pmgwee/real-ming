@@ -10,12 +10,12 @@ Prepared: 6 September 2026. Status: **implementation plan; live deployment evide
 | 1 · Prove the native runtime before bot cutover | ✅ Complete on the CLI path, 6 Sep 2026 | [Milestone 1 native-runtime evidence](../evidence/RM-40-v6-milestone-1-native-runtime-evidence.md). Real diff, independently verified test exit 0, 15 native tool calls. Two defects recorded. Native **Telegram** presentation remains untested by design |
 | 2 · Prepare a reversible one-owner Telegram migration | ✅ Complete, 6 Sep 2026 | [Milestone 2 cutover runbook](../evidence/RM-40-v6-milestone-2-cutover-runbook.md). Composition mode implemented and proven through the System Harness; cutover and reverse procedures written; extension interface verified against the installed version |
 | 3 · Activate native Telegram and accept the core experience | ✅ Transport live and core phone matrix user-observed accepted, 6 Sep 2026; staged progress, attachment handling, formatting and semantic recall (including after restart) passed | [Milestone 3 cutover evidence](../evidence/RM-40-v6-milestone-3-cutover-evidence.md) and [Telegram/memory acceptance](../evidence/RM-40-v6-telegram-memory-acceptance-2026-09-06.md). Native gateway is the single consumer, 60 commands registered and allowlist loaded; broader V6 coding, dashboard, scheduler and recovery acceptance remains |
-| 4 · Configure Ming's roles and connect sources | ✅ Notion and Calendar were live-proven; the later native capability expansion authorized GitHub, Notion, Vercel, Supabase, Deepwiki, Exa and Context7 on 7 Sep 2026. Gateway restart is still pending to expose the expanded set to Telegram | [Milestone 4 evidence](../evidence/RM-40-v6-milestone-4-configuration-and-sources.md) and [capability expansion evidence](../evidence/RM-40-native-capability-expansion-2026-09-07.md) |
-| 5 · Add the missing task, schedule and action contracts | ✅ Native cron owns both reports, 7 Sep 2026; duplicate guard and restart no-replay live-verified. A first unattended run reached the model but hit a subscription 429; a successful unattended report and the focus-first phone review remain. The held-notice sweep stays Real-Ming-owned by design, not by omission | [Extension evidence](../evidence/RM-40-v6-milestone-5-extension-evidence.md), [scheduler ownership evidence](../evidence/RM-40-v6-milestone-5-scheduler-ownership-evidence.md), [cron cutover evidence](../evidence/RM-40-v6-milestone-5-cron-cutover-2026-09-07.md) and [readability evidence](../evidence/RM-40-v6-daily-report-readability-2026-09-07.md) |
+| 4 · Configure Ming's roles and connect sources | ✅ Complete, 7 Sep 2026. Notion and Calendar live-proven; the capability expansion authorized nine MCP servers exposing 272 tools (GitHub 47, Notion 42, Vercel 37, Supabase 29, Higgsfield 101, Real-Ming 9, Deepwiki 3, Exa 2, Context7 2). The gateway restart is done and the set is live to Telegram | [Milestone 4 evidence](../evidence/RM-40-v6-milestone-4-configuration-and-sources.md) and [capability expansion evidence](../evidence/RM-40-native-capability-expansion-2026-09-07.md) |
+| 5 · Add the missing task, schedule and action contracts | ✅ Complete, 7 Sep 2026. Native cron owns both reports; duplicate guard and restart no-replay live-verified. **The first successful unattended run fired at 21:30:27 on 7 Sep with status `ok`** (session `cron_03d42efb662a_20260907_213027`), discovering its own tool through `tool_search`. The held-notice sweep stays Real-Ming-owned by design, not by omission. Ming's phone review of the focus-first wording remains | [Extension evidence](../evidence/RM-40-v6-milestone-5-extension-evidence.md), [scheduler ownership evidence](../evidence/RM-40-v6-milestone-5-scheduler-ownership-evidence.md), [cron cutover evidence](../evidence/RM-40-v6-milestone-5-cron-cutover-2026-09-07.md) and [readability evidence](../evidence/RM-40-v6-daily-report-readability-2026-09-07.md) |
 | 6 · Native memory, Obsidian, cited knowledge | ✅ Live acceptance 7 Sep 2026: cited note written, retrieved from separate sessions and after a Hermes restart, backed up and restored byte-identical. **Only opening the vault in Ming's Obsidian client remains** | [Milestone 6 evidence](../evidence/RM-40-v6-milestone-6-native-memory-evidence.md) and [live acceptance](../evidence/RM-40-v6-milestone-6-live-acceptance-2026-09-07.md) |
 | 7 · Private dashboard and CEO outcomes | ✅ Comparison and leakage checks done 7 Sep 2026; `src/dashboard/` resolved as keep. **Only Ming's usefulness review remains** | [Dashboard comparison](../evidence/RM-40-v6-milestone-7-comparison-2026-09-07.md), [milestone 7 evidence](../evidence/RM-40-v6-milestone-7-dashboard-evidence.md) and [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
-| 8 · Complete acceptance scenarios | 🔄 Notion read-back and honest failure verified live 7 Sep 2026; the public DuitSini tracer ran against a real checkout and left two Windows-specific tests failing honestly after a minimal fixture-loading fix. Resolve or accept those failures and complete user acceptance | [DuitSini/tracer evidence](../evidence/RM-40-v6-unattended-cron-and-duitsini-2026-09-07.md) and [live acceptance](../evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md) |
-| 9 · Recovery, readiness, closeout | 🔄 Restart/reconcile live-verified 7 Sep 2026 — nothing lost, nothing replayed; usage/cost/retention reviewed. **Closeout waits on the first unattended cron fire and Ming's reviews** | [Milestone 9 evidence](../evidence/RM-40-v6-milestone-9-recovery-evidence.md), [restart and reconcile](../evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md) and [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
+| 8 · Complete acceptance scenarios | 🔄 Notion read-back and honest failure verified live 7 Sep 2026. **The coding loop is now unblocked**: the host has a git identity, a verified clone of a private repository and push access proven by dry run, so "no repo checkout or git credential" no longer applies. Two Windows-specific DuitSini test failures remain to resolve or accept, and Ming's acceptance of a full coding round trip is outstanding | [DuitSini/tracer evidence](../evidence/RM-40-v6-unattended-cron-and-duitsini-2026-09-07.md) and [live acceptance](../evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md) |
+| 9 · Recovery, readiness, closeout | 🔄 Restart/reconcile live-verified 7 Sep 2026 — nothing lost, nothing replayed; usage/cost/retention reviewed. The first unattended cron fire is done. **Closeout now waits only on Ming: the Obsidian client, the dashboard usefulness review, DuitSini acceptance, and a yes on the RM-40 (#41) criteria** | [Milestone 9 evidence](../evidence/RM-40-v6-milestone-9-recovery-evidence.md), [restart and reconcile](../evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md) and [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
 
 
 ## TL;DR
@@ -243,6 +243,55 @@ For every result save: requirement/scenario, candidate revision, environment, na
 
 **Pass:** accepted native personal-agent workflows, complete recoverable state and accurate readiness records. Ticket closure follows evidence; it does not substitute for it.
 
+## 12b. Capability additions after this plan was written
+
+Work accepted on 7 September that this plan did not originally scope. Each was
+driven by a CEO decision during acceptance rather than by the milestone list,
+and each is recorded here so the plan is not read as the whole system.
+
+| Addition | Why it exists | Evidence |
+| --- | --- | --- |
+| Nine MCP servers, 272 tools, installed untrimmed | CEO directed installing the full agreed list at once, explicitly discounting token cost | [Capability expansion](../evidence/RM-40-native-capability-expansion-2026-09-07.md) |
+| Git identity and credentials on the host | Unblocks the milestone 8 coding tracer; clone verified, push verified by dry run | Same |
+| `real_ming_list_calendar_events`, `real_ming_create_calendar_event` | Native Hermes ships no Calendar connector and Google publishes no official remote MCP, while Real-Ming already held an authorized credential | Contract and System Harness scenarios |
+| `real_ming_search_mail`, `real_ming_read_email`, `real_ming_draft_email` | Three mailboxes serving different purposes; the native `google-workspace` skill resolves one token file per profile, so it could not route them | Same |
+| Per-account Google credentials | One refresh token per mailbox, minted with account verification so a credential can only reach the inbox it was minted for | `google-refresh-token-cli --mailbox` |
+| Loopback provider bridge | An MCP child inherits only its own declared environment, so it holds no Key Vault access; the reads travel to the control plane instead of copying Google secrets into Hermes configuration | `/internal/provider/*` |
+
+### The send boundary
+
+There is deliberately **no send tool and no `gmail.send` scope**. The agent
+drafts; Ming reviews the draft in his own Gmail and presses send there. That
+surface was chosen because it is the only approval the agent cannot reach: an
+approval typed in Telegram returns through the agent, and the dashboard
+alternative is loopback-only behind an SSH tunnel, which is unusable from a
+phone. A contract scenario asserts no request path ends in `/send`, and a
+system scenario asserts no tool name matches `/send/`, so the boundary is
+enforced rather than conventional.
+
+`gmail.compose` does permit sending — Google publishes no draft-only scope — so
+the guarantee lives in the code, not in the grant. That is stated plainly
+rather than implied.
+
+### Two defects this exposed, both now guarded
+
+**The extension could not write its own database under systemd.**
+`ProtectSystem=strict` made `/var/lib/real-ming` read-only inside the gateway's
+mount namespace, so the MCP server died in its constructor and the agent, seeing
+no tools, answered from source files on disk. Every verification had been run
+with `sudo -u real-ming` *outside* systemd, where no sandbox applies — the same
+binary worked in hand and failed in the service. The deployment preflight now
+requires the state path in `ReadWritePaths`, and verification runs inside the
+service namespace via `nsenter`.
+
+**A tool nobody names is a tool nobody finds.** Hermes defers every MCP tool
+behind `tool_search` by default; core tools are never deferred. The `real-ming`
+skill named only its three original tools, and the bundled `google-workspace`
+skill won the trigger on every calendar and mail question while holding no
+credential. The skill now names all nine tools and forbids answering these
+questions from disk; a test asserts it. GitHub's 47 tools and Higgsfield's 101
+have no equivalent pointer and should be expected to need one.
+
 ## 13. Verification commands and file guidance
 
 Run from the repository root. These are existing commands; this plan does not claim they have all passed for a future implementation.
@@ -310,10 +359,27 @@ Do not ask Ming to repeat setup because a component was never implemented. Do no
 
 Keep one row per milestone with **designed / implemented / controlled-tested / production-wired / live-verified / user-accepted**, plus candidate revision, evidence links, owner and remaining action. At creation of this plan, its milestones are planned; existing historical evidence applies only to its stated scope.
 
-The immediate next work is **deploying the controlled-tested focus-first daily
-report refinement after CEO approval**, then observing one successful unattended
-07:30/21:30 pair and reviewing it on Ming's phone. Restart Hermes once to expose
-the newly authorized native MCP set when the integration window is chosen, then
-finish the remaining Obsidian/dashboard/user-acceptance reviews and closeout.
+**Position as of 7 September 2026, end of day.** Milestones 0 through 7 are
+complete and live-verified. Milestone 5's first successful unattended cron run
+fired at 21:30 the same evening. Milestones 8 and 9 remain open.
+
+Nothing engineering-side blocks closeout except the two Windows-specific
+DuitSini test failures. Everything else outstanding is Ming's to do:
+
+| Remaining | Owner | Milestone |
+| --- | --- | --- |
+| Resolve or accept two Windows-specific DuitSini test failures | Engineering | 8 |
+| Accept a full coding round trip now that git credentials are live | Ming | 8 |
+| Open the vault in an Obsidian client | Ming | 6 |
+| Review whether the private dashboard earns its keep | Ming | 7 |
+| Approve the five native-experience criteria on RM-40 (#41) and close it | Ming | 9 |
+| Install the chosen third-party skills | Ming, deferred by his decision | — |
+
+Two operational issues are known and reported rather than fixed: the Exa stdio
+server drops its keepalive and reconnects (nine failures on 7 Sep), and every
+turn health-checks all nine MCP servers, which costs seconds per turn purely
+from having nine connected. Both are consequences of the untrimmed install and
+would be resolved by removing servers that go unused.
+
 Native Telegram remains the primary user experience; the private dashboard is a
 companion read model, not a replacement agent surface.

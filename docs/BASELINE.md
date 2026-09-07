@@ -12,18 +12,22 @@ build if any of them drifts.
 
 **Deployed revision: Architecture Revision 6, partially activated (7 September
 2026).** The Malaysia West host `real-ming-control-plane-my` runs image
-`real-ming:v6-23bd903` (image ID
-`sha256:388f0de13fbf4d313f78fa36b32fa62248bf3fe059ccfc05561e2b26b9f630f0`)
-with `REAL_MING_TELEGRAM_OWNERSHIP=native-hermes-gateway`, so Real-Ming no
+`real-ming:v6-9ef3fac` with
+`REAL_MING_TELEGRAM_OWNERSHIP=native-hermes-gateway`, so Real-Ming no
 longer polls Telegram. The native Hermes gateway (v0.21.0, pinned
 `561b053f794a1781868bb032029d589c67708119`) holds the bot credential and
 allowlist; it is the single Telegram consumer with 60 native commands
 registered. The supervised Hermes dashboard is loopback-only at `127.0.0.1:9119`
-and Real-Ming remains loopback-only at `127.0.0.1:8787`. Native cron now owns
+and Real-Ming remains loopback-only at `127.0.0.1:8787`. Native cron owns
 scheduling with exactly two enabled Telegram-delivering jobs (07:30 and 21:30
-`Asia/Kuala_Lumpur`), and Real-Ming states no opinion about Hermes memory: its
-configuration fragment carries no `memory:` block, and the native built-in
-provider is active. A protected post-deploy backup and isolated restore
+`Asia/Kuala_Lumpur`); the first successful unattended run fired at 21:30 on
+7 September. Nine MCP servers expose 272 tools, of which the Real-Ming
+extension contributes nine covering Work Items, scheduled reports, calendar
+read and create, and mail search, read and draft across three Google accounts.
+There is deliberately no send tool and no `gmail.send` scope: the agent drafts
+and Ming sends from his own Gmail. Real-Ming states no opinion about Hermes
+memory: its configuration fragment carries no `memory:` block, and the native
+built-in provider is active. A protected post-deploy backup and isolated restore
 passed; the remaining acceptance boundary is recorded in the
 [deployment evidence](evidence/RM-40-v6-deployment-evidence-2026-09-07.md).
 The design baseline and deployed revision are stated separately on purpose and
