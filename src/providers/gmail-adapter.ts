@@ -46,8 +46,60 @@ export interface MailQuery {
   readonly limit?: number;
 }
 
+export interface DraftRequest {
+  readonly to: readonly string[];
+  readonly subject: string;
+  readonly body: string;
+  readonly cc?: readonly string[];
+  /** Stable key so a retried call does not leave two drafts behind. */
+  readonly idempotencyKey: string;
+}
+
+export interface DraftLedger {
+  reference(idempotencyKey: string): string | undefined;
+  record(idempotencyKey: string, reference: string): void;
+}
+
+export function createEphemeralDraftLedger(): DraftLedger {
+  const references = new Map<string, string>();
+  return {
+    reference: (key) => references.get(key),
+    record: (key, reference) => {
+      references.set(key, reference);
+    },
+  };
+}
+
 export interface GmailAdapter extends ProviderAdapter<readonly MailMessage[]> {
   listMessages(query?: MailQuery): Promise<ProviderReadResult<readonly MailMessage[]>>;
+  /**
+   * Writes a draft into the mailbox and stops there.
+   *
+   * Sending is deliberately absent, not merely unused: the review surface is
+   * Ming's own Gmail client, where he reads the message and presses send
+   * himself. An agent that could send would be trusted to have reviewed on his
+   * behalf, and no approval relayed through the agent can prove he did.
+   */
+  createDraft(request: DraftRequest): Promise<ProviderWriteResult>;
+}
+
+/** RFC 2822 for the Gmail drafts endpoint, base64url as the API requires. */
+export function encodeDraftMessage(request: DraftRequest): string {
+  const headers = [
+    `To: ${request.to.join(", ")}`,
+    ...(request.cc === undefined || request.cc.length === 0
+      ? []
+      : [`Cc: ${request.cc.join(", ")}`]),
+    `Subject: ${request.subject}`,
+    "Content-Type: text/plain; charset=UTF-8",
+  ];
+  const crlf = "\r\n";
+  const raw = `${headers.join(crlf)}${crlf}${crlf}${request.body}`;
+  return Buffer.from(raw, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 /** Gmail caps a page at 500; a briefing never needs more than a screenful. */
@@ -123,6 +175,7 @@ export interface GmailAdapterOptions {
   readonly workspaceId: string;
   /** The mailbox this credential reads, e.g. `perminggwee@gmail.com`. */
   readonly mailbox: string;
+  readonly draftLedger?: DraftLedger;
   readonly fetch?: typeof fetch;
   readonly now?: () => string;
 }
@@ -130,6 +183,7 @@ export interface GmailAdapterOptions {
 export function createGmailAdapter(options: GmailAdapterOptions): GmailAdapter {
   const request = options.fetch ?? fetch;
   const now = options.now ?? (() => new Date().toISOString());
+  const ledger = options.draftLedger ?? createEphemeralDraftLedger();
   const identity: ProviderIdentity = {
     provider: gmailProvider,
     workspaceId: options.workspaceId,
@@ -250,23 +304,112 @@ export function createGmailAdapter(options: GmailAdapterOptions): GmailAdapter {
     }
   };
 
+  const createDraft: GmailAdapter["createDraft"] = async (draft) => {
+    if (draft.idempotencyKey.trim() === "" || draft.to.length === 0) {
+      return {
+        kind: "failed",
+        failure: providerFailure(
+          "invalid-input",
+          "A draft requires at least one recipient and an idempotency key.",
+        ),
+      };
+    }
+    const replayed = ledger.reference(draft.idempotencyKey);
+    if (replayed !== undefined) {
+      // A retried call returns the draft it already made rather than leaving a
+      // second copy in the mailbox for Ming to notice and delete.
+      const at = now();
+      return {
+        kind: "ok",
+        identity,
+        provenance: provenanceFor(replayed, at, at),
+        effectReference: replayed,
+        deduplicated: true,
+      };
+    }
+    try {
+      const response = await request(
+        "https://gmail.googleapis.com/gmail/v1/users/me/drafts",
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ message: { raw: encodeDraftMessage(draft) } }),
+        },
+      );
+      if (!response.ok) {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            failureClassForStatus(response.status),
+            `Gmail returned HTTP ${response.status} drafting in ${options.mailbox}.`,
+          ),
+        };
+      }
+      const body: unknown = await response.json();
+      const id = isRecord(body) && typeof body["id"] === "string" ? body["id"] : "";
+      if (id === "") {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            "provider-error",
+            "Gmail accepted the draft but returned no identifier.",
+          ),
+        };
+      }
+      const reference = `${gmailProvider}:${options.mailbox}:draft:${id}`;
+      ledger.record(draft.idempotencyKey, reference);
+      const at = now();
+      return {
+        kind: "ok",
+        identity,
+        provenance: provenanceFor(reference, at, at),
+        effectReference: reference,
+        deduplicated: false,
+      };
+    } catch (error) {
+      return {
+        kind: "failed",
+        failure: providerFailure(
+          "unavailable",
+          error instanceof Error
+            ? `Gmail is unreachable: ${error.message}`
+            : "Gmail is unreachable.",
+        ),
+      };
+    }
+  };
+
   return {
     identity: () => identity,
-    capabilities: (): readonly ProviderCapability[] => ["read"],
+    capabilities: (): readonly ProviderCapability[] => ["read", "write"],
     read: async (
       readRequest: ProviderReadRequest,
     ): Promise<ProviderReadResult<readonly MailMessage[]>> =>
       listMessages({ query: readRequest.reference }),
-    write: async (_: ProviderWriteRequest): Promise<ProviderWriteResult> => ({
-      kind: "failed",
-      failure: providerFailure(
-        "permission-denied",
-        // The credential is minted with gmail.readonly on purpose. Refusing
-        // here means a write attempt fails as a stated boundary rather than as
-        // an opaque 403 from Google.
-        "Real-Ming reads mail and never writes it.",
-      ),
-    }),
+    write: async (
+      writeRequest: ProviderWriteRequest,
+    ): Promise<ProviderWriteResult> => {
+      const { to, subject, body, cc } = writeRequest.payload;
+      if (!Array.isArray(to) || typeof subject !== "string" || typeof body !== "string") {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            "invalid-input",
+            "A mail write is a draft and needs to, subject and body.",
+          ),
+        };
+      }
+      return createDraft({
+        to: to.filter((entry): entry is string => typeof entry === "string"),
+        subject,
+        body,
+        ...(Array.isArray(cc)
+          ? { cc: cc.filter((entry): entry is string => typeof entry === "string") }
+          : {}),
+        idempotencyKey: writeRequest.idempotencyKey,
+      });
+    },
     listMessages,
+    createDraft,
   };
 }

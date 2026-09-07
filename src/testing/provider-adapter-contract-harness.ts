@@ -1801,6 +1801,9 @@ export interface MailContractHarness {
   readonly adapter: GmailAdapter;
   providerCallCount(): number;
   listRequests(): readonly URL[];
+  /** Every path the adapter touched, so "it never sends" is provable. */
+  touchedPaths(): readonly string[];
+  draftBodies(): readonly string[];
 }
 
 /**
@@ -1817,12 +1820,15 @@ export function createMailContractHarness(
     readonly unreadableMessage?: boolean;
     /** Fail only the per-message read, as a revoked scope does mid-page. */
     readonly detailFailure?: ProviderFailureClass;
+    readonly draftFailure?: ProviderFailureClass;
   } = {},
 ): MailContractHarness {
   const now = scenario.now ?? "2026-09-07T09:00:00.000Z";
   const asOf = scenario.asOf ?? now;
   let providerCalls = 0;
   const listRequests: URL[] = [];
+  const touched: string[] = [];
+  const draftBodies: string[] = [];
   const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
     "authentication-failed": 401,
     "invalid-input": 404,
@@ -1835,10 +1841,22 @@ export function createMailContractHarness(
 
   const fetchImplementation = async (
     input: string | URL | Request,
+    init?: RequestInit,
   ): Promise<Response> => {
     providerCalls += 1;
     const url = new URL(String(input));
+    touched.push(url.pathname);
     const isDetail = /\/messages\/[^/]+$/.test(url.pathname);
+
+    if (url.pathname.endsWith("/drafts")) {
+      if (typeof init?.body === "string") draftBodies.push(init.body);
+      return scenario.draftFailure === undefined
+        ? Response.json({ id: "contract-draft-1" })
+        : Response.json(
+            { error: { message: rawProviderError(scenario.draftFailure) } },
+            { status: statusByClass[scenario.draftFailure] },
+          );
+    }
 
     if (scenario.failure !== undefined) {
       return Response.json(
@@ -1893,5 +1911,7 @@ export function createMailContractHarness(
     }),
     providerCallCount: () => providerCalls,
     listRequests: () => [...listRequests],
+    touchedPaths: () => [...touched],
+    draftBodies: () => [...draftBodies],
   };
 }
