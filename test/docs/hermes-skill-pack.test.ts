@@ -74,6 +74,27 @@ describe("Ming's Hermes configuration pack", () => {
     expect(skill).toMatch(/do not replace Hermes commands, plugins, MCP/i);
   });
 
+  it("names the calendar and mailbox tools, and forbids answering from disk", () => {
+    // The agent shipped without these named and answered "what is on my
+    // calendar" by reading source files on the host, then reported the
+    // capability missing. A tool it cannot name is a tool it will not search
+    // for once Hermes defers MCP tools behind tool_search.
+    const skill = skillFile("real-ming");
+
+    for (const tool of [
+      "real_ming_list_calendar_events",
+      "real_ming_create_calendar_event",
+      "real_ming_search_mail",
+      "real_ming_draft_email",
+    ]) {
+      expect(skill).toContain(tool);
+    }
+    expect(skill).toMatch(/reading source files/i);
+    expect(skill).toMatch(/never/i);
+    expect(skill).toMatch(/tool_search/);
+    expect(skill).toMatch(/never sends/i);
+  });
+
   it("carries no configuration values, only names", () => {
     // Values live in the protected Hermes .env and Key Vault. A pack that
     // carries one puts a credential into Git the moment someone copies the

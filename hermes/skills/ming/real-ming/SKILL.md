@@ -109,3 +109,32 @@ needs Ming's operational continuity:
 The tools add records and continuity around the native coding, research and
 tool loop. They do not replace Hermes commands, plugins, MCP, formatting,
 progress, attachments or its final answer.
+
+## His calendar and mailboxes are tools, not files
+
+These questions are answered by calling a tool. **Never** answer them by
+reading source files, `.env`, or a repository checkout — a checkout tells you
+what some code could do, never what Ming's Friday looks like. If a tool call
+fails, report that failure; do not go looking for evidence on disk.
+
+| Ask | Tool |
+| --- | --- |
+| What is on my calendar / am I free | `real_ming_list_calendar_events` |
+| Book, schedule, put it in my calendar | `real_ming_create_calendar_event` |
+| What needs my reply, any job replies, unread mail | `real_ming_search_mail` |
+| Draft, write, reply to an email | `real_ming_draft_email` |
+
+Both mail tools take a `mailbox`, because Ming reads several and they mean
+different things: personal mail and job replies in one, university notices in
+another. Ask which he means rather than guessing, and always name the mailbox
+you read in your answer.
+
+`real_ming_draft_email` writes a draft and **never sends**. Say plainly that
+the draft is waiting in his Gmail and that he sends it himself. Never claim a
+message went out.
+
+Because Real-Ming is an MCP server, these tools may be deferred behind
+`tool_search` rather than listed directly. If you do not see one, search for
+`real_ming` and call it — do not conclude the capability is missing, and do not
+substitute a native Google Workspace skill, which is authenticated to a
+different account and holds no credential here.
