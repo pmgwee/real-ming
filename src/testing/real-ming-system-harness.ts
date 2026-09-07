@@ -611,6 +611,17 @@ export interface RealMingSystemHarness {
     request: ChangeCalendarCommitmentRequest,
   ): Promise<CalendarChange>;
   calendarWriteCount(): number;
+  /** Drafts the agent wrote. Nothing here was ever sent. */
+  draftedEmails(): readonly {
+    readonly mailbox: string;
+    readonly to: readonly string[];
+    readonly subject: string;
+    readonly body: string;
+  }[];
+  createdCalendarEvents(): readonly {
+    readonly calendarId: string;
+    readonly title: string;
+  }[];
   buildCutoverPlanFromEvidence(evidence: {
     readonly digest: string;
     readonly sources: readonly CutoverEvidenceSource[];
@@ -1233,6 +1244,29 @@ export function createRealMingSystemHarness(options: {
                   allDay: event.allDay,
                   status: event.status,
                 })),
+                retrievedAt: (options.now ?? (() => new Date().toISOString()))(),
+              };
+            },
+            createEvent: async (request: {
+              readonly calendarId: string;
+              readonly title: string;
+              readonly idempotencyKey: string;
+            }) => {
+              const already = createdCalendarEvents.some(
+                (entry) =>
+                  entry.calendarId === request.calendarId &&
+                  entry.title === request.title,
+              );
+              if (!already) {
+                createdCalendarEvents.push({
+                  calendarId: request.calendarId,
+                  title: request.title,
+                });
+              }
+              return {
+                kind: "ok" as const,
+                reference: `google-calendar:${request.calendarId}:${request.idempotencyKey}`,
+                deduplicated: already,
               };
             },
           },
@@ -1251,7 +1285,41 @@ export function createRealMingSystemHarness(options: {
                 : {
                     kind: "ok" as const,
                     messages: options.mail?.messages?.[mailbox] ?? [],
+                    retrievedAt: (options.now ?? (() => new Date().toISOString()))(),
                   },
+            draft: async (request: {
+              readonly mailbox: string;
+              readonly to: readonly string[];
+              readonly subject: string;
+              readonly body: string;
+              readonly idempotencyKey: string;
+            }) => {
+              if (options.mail?.unavailable === true) {
+                return {
+                  kind: "unavailable" as const,
+                  reason: "Controlled mailbox failure.",
+                };
+              }
+              const already = draftedEmails.some(
+                (entry) =>
+                  entry.mailbox === request.mailbox &&
+                  entry.subject === request.subject &&
+                  entry.body === request.body,
+              );
+              if (!already) {
+                draftedEmails.push({
+                  mailbox: request.mailbox,
+                  to: request.to,
+                  subject: request.subject,
+                  body: request.body,
+                });
+              }
+              return {
+                kind: "ok" as const,
+                reference: `gmail:${request.mailbox}:draft:${request.idempotencyKey}`,
+                deduplicated: already,
+              };
+            },
           },
         }),
   });
@@ -1564,6 +1632,16 @@ export function createRealMingSystemHarness(options: {
     return cutover;
   };
 
+  const draftedEmails: {
+    readonly mailbox: string;
+    readonly to: readonly string[];
+    readonly subject: string;
+    readonly body: string;
+  }[] = [];
+  const createdCalendarEvents: {
+    readonly calendarId: string;
+    readonly title: string;
+  }[] = [];
   let calendarWrites = 0;
   const calendarAdapter = createGoogleCalendarAdapter({
     accessToken: "controlled-calendar-access-token",
@@ -2250,6 +2328,8 @@ export function createRealMingSystemHarness(options: {
       calendarReconciler.reconcile(request),
     changeCalendarEvent: (request) => calendarReconciler.change(request),
     calendarWriteCount: () => calendarWrites,
+    draftedEmails: () => [...draftedEmails],
+    createdCalendarEvents: () => [...createdCalendarEvents],
     editMasterTaskThroughView: async (request) =>
       masterTasks.editThroughView(request, gateway),
     masterTasksView: (name) => masterTasks.view(name),

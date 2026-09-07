@@ -384,4 +384,127 @@ describe("RM-40 Real-Ming extension tools", () => {
       );
     });
   });
+
+  /**
+   * Ming asked for a gate on sending, like Claude Code's permission prompt.
+   * The gate is his own Gmail: the agent writes a draft, he reads it there and
+   * presses send. There is deliberately no send tool, because an approval
+   * relayed back through the agent is one the agent could fabricate.
+   */
+  describe("drafting and booking", () => {
+    function startWritable(): RealMingSystemHarness {
+      const directory = mkdtempSync(join(tmpdir(), "real-ming-rm40-write-"));
+      directories.push(directory);
+      const harness = createRealMingSystemHarness({
+        statePath: join(directory, "state.sqlite"),
+        telegram: { ceoTelegramId: "100000001" },
+        now: () => "2026-09-06T05:00:00.000Z",
+        mail: { mailboxes: ["personal@example.com"] },
+        calendar: { events: [] },
+      });
+      harnesses.push(harness);
+      return harness;
+    }
+
+    it("offers drafting but never offers sending", () => {
+      const names = startWritable()
+        .realMingTools()
+        .map((tool) => tool.name);
+
+      expect(names).toContain("real_ming_draft_email");
+      expect(names).toContain("real_ming_create_calendar_event");
+      for (const name of names) expect(name).not.toMatch(/send/i);
+    });
+
+    it("writes the draft and says plainly that it was not sent", async () => {
+      const harness = startWritable();
+
+      const result = await harness.callRealMingToolAsync("real_ming_draft_email", {
+        mailbox: "personal@example.com",
+        to: ["support@example.com"],
+        subject: "Refund request for order 4182",
+        body: "Please refund order 4182.",
+        idempotencyKey: "refund-4182",
+      });
+
+      expect(result.kind).toBe("ok");
+      const value = (result as { readonly value: Record<string, unknown> }).value;
+      expect(value["sent"]).toBe(false);
+      expect(String(value["note"])).toMatch(/Ming sends it himself/);
+      expect(harness.draftedEmails()).toEqual([
+        {
+          mailbox: "personal@example.com",
+          to: ["support@example.com"],
+          subject: "Refund request for order 4182",
+          body: "Please refund order 4182.",
+        },
+      ]);
+    });
+
+    it("refuses to draft from a mailbox it holds no credential for", async () => {
+      const harness = startWritable();
+
+      const result = await harness.callRealMingToolAsync("real_ming_draft_email", {
+        mailbox: "someone-else@example.com",
+        to: ["support@example.com"],
+        subject: "Nope",
+        body: "Nope",
+        idempotencyKey: "wrong-mailbox",
+      });
+
+      expect(result.kind).toBe("failed");
+      expect(harness.draftedEmails()).toEqual([]);
+    });
+
+    it("refuses a draft with no recipient rather than writing a blank", async () => {
+      const harness = startWritable();
+
+      const result = await harness.callRealMingToolAsync("real_ming_draft_email", {
+        mailbox: "personal@example.com",
+        to: [],
+        subject: "Nowhere",
+        body: "No one.",
+        idempotencyKey: "no-recipient",
+      });
+
+      expect(result.kind).toBe("failed");
+      expect(harness.draftedEmails()).toEqual([]);
+    });
+
+    it("books the event and does not double-book on a replay", async () => {
+      const harness = startWritable();
+      const event = {
+        title: "Coffee with the DuitSini team",
+        start: "2026-09-11T10:00:00+08:00",
+        end: "2026-09-11T11:00:00+08:00",
+        calendarId: "ceo@real-ming",
+        idempotencyKey: "duitsini-coffee",
+      };
+
+      const first = await harness.callRealMingToolAsync(
+        "real_ming_create_calendar_event",
+        event,
+      );
+      const replay = await harness.callRealMingToolAsync(
+        "real_ming_create_calendar_event",
+        event,
+      );
+
+      expect(first).toMatchObject({ kind: "ok", value: { deduplicated: false } });
+      expect(replay).toMatchObject({ kind: "ok", value: { deduplicated: true } });
+      expect(harness.createdCalendarEvents()).toHaveLength(1);
+    });
+
+    it("says when it last looked, so an empty answer can be trusted", async () => {
+      // "No job replies" is worthless without when it checked.
+      const harness = startWritable();
+
+      const result = await harness.callRealMingToolAsync("real_ming_search_mail", {
+        mailbox: "personal@example.com",
+      });
+
+      const value = (result as { readonly value: Record<string, unknown> }).value;
+      expect(value["retrievedAt"]).toBe("2026-09-06T05:00:00.000Z");
+    });
+  });
 });

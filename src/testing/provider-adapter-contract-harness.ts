@@ -835,6 +835,7 @@ export interface CalendarContractHarness {
   providerCallCount(): number;
   externalEffectCount(): number;
   listRequests(): readonly URL[];
+  createdEvents(): readonly string[];
 }
 
 export function createCalendarContractHarness(
@@ -855,6 +856,7 @@ export function createCalendarContractHarness(
   let providerCalls = 0;
   let externalEffects = 0;
   const listRequests: URL[] = [];
+  const createdEvents: string[] = [];
   const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
     "authentication-failed": 401,
     "invalid-input": 404,
@@ -880,6 +882,11 @@ export function createCalendarContractHarness(
             : {}),
         },
       );
+    }
+    if ((init?.method ?? "GET") === "POST") {
+      externalEffects += 1;
+      if (typeof init?.body === "string") createdEvents.push(init.body);
+      return Response.json({ id: "contract-created-event", updated: now });
     }
     if ((init?.method ?? "GET") === "PATCH") {
       externalEffects += 1;
@@ -941,6 +948,7 @@ export function createCalendarContractHarness(
     providerCallCount: () => providerCalls,
     externalEffectCount: () => externalEffects,
     listRequests: () => listRequests,
+    createdEvents: () => [...createdEvents],
   };
 }
 

@@ -43,7 +43,26 @@ export interface CalendarAgendaEntry {
 }
 
 export type CalendarAgendaResult =
-  | { readonly kind: "ok"; readonly events: readonly CalendarAgendaEntry[] }
+  | {
+      readonly kind: "ok";
+      readonly events: readonly CalendarAgendaEntry[];
+      /** When the provider was actually read. */
+      readonly retrievedAt?: string;
+    }
+  | { readonly kind: "unavailable"; readonly reason: string };
+
+/**
+ * The outcome of a provider write the agent asked for.
+ *
+ * `deduplicated` is surfaced rather than hidden so a retried call can say "that
+ * was already booked" instead of implying a second booking happened.
+ */
+export type ProviderWriteOutcome =
+  | {
+      readonly kind: "ok";
+      readonly reference: string;
+      readonly deduplicated: boolean;
+    }
   | { readonly kind: "unavailable"; readonly reason: string };
 
 /**
@@ -59,6 +78,16 @@ export interface CalendarAgendaClient {
     readonly from?: string;
     readonly to?: string;
   }): Promise<CalendarAgendaResult>;
+  /** Present only where the credential may write to the calendar. */
+  createEvent?: (request: {
+    readonly calendarId: string;
+    readonly title: string;
+    readonly start: string;
+    readonly end: string;
+    readonly description?: string;
+    readonly location?: string;
+    readonly idempotencyKey: string;
+  }) => Promise<ProviderWriteOutcome>;
 }
 
 /** One message, reduced to what "does this need a reply" is decided from. */
@@ -71,7 +100,12 @@ export interface MailSummary {
 }
 
 export type MailSearchResult =
-  | { readonly kind: "ok"; readonly messages: readonly MailSummary[] }
+  | {
+      readonly kind: "ok";
+      readonly messages: readonly MailSummary[];
+      /** When the mailbox was actually read. */
+      readonly retrievedAt?: string;
+    }
   | { readonly kind: "unavailable"; readonly reason: string };
 
 /**
@@ -86,6 +120,19 @@ export interface MailboxClient {
     readonly query?: string;
     readonly limit?: number;
   }): Promise<MailSearchResult>;
+  /**
+   * Writes a draft. There is deliberately no send: Ming reviews the message in
+   * his own Gmail and presses send there, which is the only approval surface
+   * the agent cannot reach.
+   */
+  draft?: (request: {
+    readonly mailbox: string;
+    readonly to: readonly string[];
+    readonly subject: string;
+    readonly body: string;
+    readonly cc?: readonly string[];
+    readonly idempotencyKey: string;
+  }) => Promise<ProviderWriteOutcome>;
 }
 
 /**
@@ -314,6 +361,66 @@ export function createRealMingTools(options: {
             },
           } satisfies RealMingToolDefinition,
         ]),
+    ...(mail?.draft === undefined
+      ? []
+      : [
+          {
+            name: "real_ming_draft_email",
+            description:
+              `Write a draft into one of Ming's mailboxes for him to review and send himself. Available mailboxes: ${mail.mailboxes.join(", ")}. This NEVER sends: say plainly that the draft is waiting in his Gmail and that he sends it. Reuse the same idempotencyKey on a retry so a second draft is not left behind.`,
+            inputSchema: {
+              type: "object",
+              properties: {
+                mailbox: {
+                  type: "string",
+                  description: `The mailbox to draft from. One of: ${mail.mailboxes.join(", ")}.`,
+                  enum: [...mail.mailboxes],
+                },
+                to: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Recipient addresses.",
+                },
+                cc: { type: "array", items: { type: "string" } },
+                subject: { type: "string" },
+                body: { type: "string", description: "Plain-text message body." },
+                idempotencyKey: {
+                  type: "string",
+                  description: "Stable key for this draft; reuse it on retry.",
+                },
+              },
+              required: ["mailbox", "to", "subject", "body", "idempotencyKey"],
+            },
+          } satisfies RealMingToolDefinition,
+        ]),
+    ...(calendar?.createEvent === undefined
+      ? []
+      : [
+          {
+            name: "real_ming_create_calendar_event",
+            description:
+              "Create an event on Ming's calendar. Times are ISO-8601 with an offset. Reuse the same idempotencyKey on a retry so the day is not double-booked; a replay reports deduplicated rather than a second booking.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                calendarId: {
+                  type: "string",
+                  description: "Defaults to Ming's configured calendar.",
+                },
+                title: { type: "string" },
+                start: { type: "string", description: "ISO-8601 start." },
+                end: { type: "string", description: "ISO-8601 end." },
+                description: { type: "string" },
+                location: { type: "string" },
+                idempotencyKey: {
+                  type: "string",
+                  description: "Stable key for this event; reuse it on retry.",
+                },
+              },
+              required: ["title", "start", "end", "idempotencyKey"],
+            },
+          } satisfies RealMingToolDefinition,
+        ]),
   ];
 
   const scheduledReportRequest = (
@@ -370,7 +477,13 @@ export function createRealMingTools(options: {
     }
     return {
       kind: "ok",
-      value: { calendarId, events: result.events },
+      value: {
+        calendarId,
+        events: result.events,
+        ...(result.retrievedAt === undefined
+          ? {}
+          : { retrievedAt: result.retrievedAt }),
+      },
     };
   };
 
@@ -415,7 +528,134 @@ export function createRealMingTools(options: {
         reason: `The mailbox ${mailbox} could not be read: ${result.reason}`,
       };
     }
-    return { kind: "ok", value: { mailbox, messages: result.messages } };
+    return {
+      kind: "ok",
+      value: {
+        mailbox,
+        messages: result.messages,
+        ...(result.retrievedAt === undefined
+          ? {}
+          : { retrievedAt: result.retrievedAt }),
+      },
+    };
+  };
+
+  const writeDraft = async (
+    args: Record<string, unknown>,
+  ): Promise<RealMingToolResult> => {
+    const draft = mail?.draft;
+    if (mail === undefined || draft === undefined) {
+      return { kind: "failed", reason: "Drafting mail is not enabled here." };
+    }
+    const mailbox = requiredString(args, "mailbox");
+    if (mailbox === undefined || !mail.mailboxes.includes(mailbox)) {
+      return {
+        kind: "failed",
+        reason: `mailbox must be one of: ${mail.mailboxes.join(", ")}.`,
+      };
+    }
+    const subject = requiredString(args, "subject");
+    const body = requiredString(args, "body");
+    const idempotencyKey = requiredString(args, "idempotencyKey");
+    const rawTo = args["to"];
+    const to = (Array.isArray(rawTo) ? rawTo : []).filter(
+      (entry): entry is string => typeof entry === "string" && entry.trim() !== "",
+    );
+    if (
+      subject === undefined ||
+      body === undefined ||
+      idempotencyKey === undefined ||
+      to.length === 0
+    ) {
+      return {
+        kind: "failed",
+        reason: "to, subject, body and idempotencyKey are all required.",
+      };
+    }
+    const rawCc = args["cc"];
+    const cc = (Array.isArray(rawCc) ? rawCc : []).filter(
+      (entry): entry is string => typeof entry === "string" && entry.trim() !== "",
+    );
+    const result = await draft({
+      mailbox,
+      to,
+      subject,
+      body,
+      ...(cc.length === 0 ? {} : { cc }),
+      idempotencyKey,
+    });
+    if (result.kind === "unavailable") {
+      return {
+        kind: "failed",
+        reason: `The draft could not be written to ${mailbox}: ${result.reason}`,
+      };
+    }
+    return {
+      kind: "ok",
+      value: {
+        mailbox,
+        draftReference: result.reference,
+        deduplicated: result.deduplicated,
+        sent: false,
+        note: `The draft is waiting in ${mailbox}. Ming sends it himself.`,
+      },
+    };
+  };
+
+  const writeCalendarEvent = async (
+    args: Record<string, unknown>,
+  ): Promise<RealMingToolResult> => {
+    const createEvent = calendar?.createEvent;
+    if (createEvent === undefined) {
+      return {
+        kind: "failed",
+        reason: "Creating calendar events is not enabled here.",
+      };
+    }
+    const calendarId =
+      requiredString(args, "calendarId") ?? options.defaultCalendarId;
+    const title = requiredString(args, "title");
+    const start = requiredString(args, "start");
+    const end = requiredString(args, "end");
+    const idempotencyKey = requiredString(args, "idempotencyKey");
+    if (
+      calendarId === undefined ||
+      title === undefined ||
+      start === undefined ||
+      end === undefined ||
+      idempotencyKey === undefined
+    ) {
+      return {
+        kind: "failed",
+        reason:
+          "title, start, end and idempotencyKey are required, and no default calendar is configured.",
+      };
+    }
+    const description = requiredString(args, "description");
+    const location = requiredString(args, "location");
+    const result = await createEvent({
+      calendarId,
+      title,
+      start,
+      end,
+      ...(description === undefined ? {} : { description }),
+      ...(location === undefined ? {} : { location }),
+      idempotencyKey,
+    });
+    if (result.kind === "unavailable") {
+      return {
+        kind: "failed",
+        reason: `The event could not be created on ${calendarId}: ${result.reason}`,
+      };
+    }
+    return {
+      kind: "ok",
+      value: {
+        calendarId,
+        eventReference: result.reference,
+        deduplicated: result.deduplicated,
+      },
+    };
   };
 
   const tools: RealMingTools = {
@@ -507,6 +747,12 @@ export function createRealMingTools(options: {
                 reason:
                   "This scheduled report tool requires the asynchronous MCP call path.",
               };
+        case "real_ming_draft_email":
+        case "real_ming_create_calendar_event":
+          return {
+            kind: "failed",
+            reason: "This tool requires the asynchronous MCP call path.",
+          };
         case "real_ming_search_mail":
           return mail === undefined
             ? {
@@ -547,6 +793,10 @@ export function createRealMingTools(options: {
     callAsync: async (name: string, args: Record<string, unknown>) => {
       if (name === "real_ming_list_calendar_events") return readCalendar(args);
       if (name === "real_ming_search_mail") return readMail(args);
+      if (name === "real_ming_draft_email") return writeDraft(args);
+      if (name === "real_ming_create_calendar_event") {
+        return writeCalendarEvent(args);
+      }
       if (name !== "real_ming_run_scheduled_report") {
         // Everything else is synchronous; route it back through the same
         // implementation rather than a second copy that can drift.
