@@ -162,12 +162,14 @@ export async function createProductionControlPlane(options: {
   const vaultName =
     optional(options.vaultName) ??
     optional(options.environment["REAL_MING_AZURE_KEY_VAULT_NAME"]);
+  const vault =
+    vaultName === undefined
+      ? undefined
+      : createAzureKeyVaultReader({ vaultName, fetch: request });
   const resolved = await resolveControlPlaneCredentials({
     environment: options.environment,
     credentials: credentialInventory,
-    ...(vaultName === undefined
-      ? {}
-      : { vault: createAzureKeyVaultReader({ vaultName, fetch: request }) }),
+    ...(vault === undefined ? {} : { vault }),
   });
   if (!resolved.ready) {
     throw new Error(`Control plane cannot start.\n${resolved.report}`);
@@ -311,11 +313,21 @@ export async function createProductionControlPlane(options: {
    * inbox it was minted for. A malformed map is refused rather than silently
    * leaving the agent with no mailboxes and no explanation.
    */
-  const mailRefreshTokens = ((): Readonly<Record<string, string>> => {
+  const mailRefreshTokens = await (async (): Promise<
+    Readonly<Record<string, string>>
+  > => {
     const raw = optional(options.environment["REAL_MING_MAIL_REFRESH_TOKENS"]);
-    if (raw === undefined || raw.trim() === "") return {};
+    // Mailbox tokens are a secret, so the environment is only the override;
+    // the vault is where they actually live.
+    const fromVault =
+      raw !== undefined || vault === undefined
+        ? undefined
+        : await vault.read("real-ming-mail-refresh-tokens");
+    const source =
+      raw ?? (fromVault?.kind === "found" ? fromVault.value : undefined);
+    if (source === undefined || source.trim() === "") return {};
     try {
-      const parsed: unknown = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(source);
       if (typeof parsed !== "object" || parsed === null) {
         throw new Error("not an object");
       }
