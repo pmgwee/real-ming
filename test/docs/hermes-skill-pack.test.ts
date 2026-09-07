@@ -88,15 +88,18 @@ describe("Ming's Hermes configuration pack", () => {
     }
   });
 
-  it("ships a native-first memory policy without collapsing the Obsidian writers", () => {
+  it("leaves Hermes memory alone and keeps the Obsidian writers apart", () => {
     const config = readFileSync(`${packRoot}config.native-first.example.yaml`, "utf8");
+    // Assert on settings, not prose: the fragment explains why the memory block
+    // was removed, and that explanation necessarily names the keys it removed.
+    const settings = config.replace(/^\s*#.*$/gm, "");
 
-    expect(config).toMatch(/memory_enabled:\s*true/u);
-    expect(config).toMatch(/user_profile_enabled:\s*true/u);
-    // The CEO chose ungated memory writes on 7 September 2026. The fragment
-    // must not drift back to true, because applying it would silently reverse
-    // that decision on the next host configuration pass.
-    expect(config).toMatch(/write_approval:\s*false/u);
+    // Memory is a native Hermes feature and Real-Ming states no opinion about
+    // it. A memory block here would be applied to the host and could gate the
+    // agent's own working memory, which costs quality and buys no safety.
+    expect(settings).not.toMatch(/^\s*memory:/mu);
+    expect(settings).not.toMatch(/write_approval/u);
+    expect(settings).not.toMatch(/memory_char_limit/u);
     expect(config).toContain("OBSIDIAN_VAULT_PATH=/var/lib/hermes-real-ming/obsidian-vault");
     expect(config).toContain("/var/lib/real-ming/obsidian");
     expect(config).toMatch(/do not[\s\S]*replace the file/i);

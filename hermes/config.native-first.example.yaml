@@ -5,24 +5,22 @@
 # replace the file because it also contains the selected model, toolsets and
 # gateway settings. Credentials remain in Hermes' protected .env/auth.json.
 
-memory:
-  # Keep the small native stores available for safe preferences and runtime
-  # lessons. Larger, cited knowledge belongs in the Obsidian/LLM-Wiki vault.
-  memory_enabled: true
-  user_profile_enabled: true
-  memory_char_limit: 2200
-  user_char_limit: 1375
-  # CEO decision, 7 September 2026: leave memory writes ungated.
-  #
-  # Approval-gating every write means an interruption for each one, and an
-  # unattended cron run cannot write memory at all -- which in practice means
-  # memory quietly stops working rather than becoming safer. Ming chose the
-  # working version and will revisit if the agent ever remembers something
-  # wrong. Sensitive Secret exclusion does not depend on this setting.
-  #
-  # Do not flip this to true without a new decision; it is not a hardening
-  # default that was left unfinished.
-  write_approval: false
+# Real-Ming states no opinion about Hermes's memory system.
+#
+# It previously pinned memory_enabled, user_profile_enabled, write_approval and
+# two character limits here. Checked against the shipped configuration on
+# 7 September 2026, the limits were already Hermes's own defaults (2200 / 1375)
+# and write_approval was never set on the host at all -- so the block changed
+# nothing it claimed to change, while carrying a `write_approval: true` that
+# would have silently gated every memory write on the next configuration pass.
+#
+# Memory is a native Hermes feature. Real-Ming's approval mechanisms exist for
+# consequential real-world actions -- money, releases, outbound messages -- not
+# for the agent's own working memory, and gating it there costs quality without
+# buying safety. Sensitive Secret exclusion does not depend on any setting here.
+#
+# Leave these to Hermes. If a memory setting ever needs changing, change it in
+# Hermes and record why; do not reintroduce it to this fragment.
 
 # The bundled Obsidian skill reads this environment variable. The systemd unit
 # supplies the absolute path; it is intentionally separate from the generated

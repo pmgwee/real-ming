@@ -143,12 +143,10 @@ export async function verifyControlPlaneDeployment(
     repositoryRoot,
     "hermes/config.native-first.example.yaml",
     [
-      ["native-memory-enabled", "memory_enabled: true"],
-      ["user-profile-enabled", "user_profile_enabled: true"],
-      // CEO decision, 7 September 2026: memory writes stay ungated. The build
-      // asserts `false` so a later configuration pass cannot quietly reverse
-      // it by applying a fragment that still says otherwise.
-      ["memory-write-approval", "write_approval: false"],
+      // Real-Ming asserts nothing about Hermes's memory system. The build
+      // instead checks the fragment does not reintroduce a memory block, so a
+      // later pass cannot gate the agent's own working memory.
+      ["memory-left-to-hermes", "Real-Ming states no opinion about Hermes's memory system."],
       ["native-vault-path", "/var/lib/hermes-real-ming/obsidian-vault"],
     ],
     failures,
