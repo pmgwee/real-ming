@@ -194,9 +194,19 @@ export function encodeDraftMessage(request: DraftRequest): string {
     .replace(/=+$/, "");
 }
 
-/** Gmail caps a page at 500; a briefing never needs more than a screenful. */
-const defaultMessageLimit = 25;
-const maxMessageLimit = 100;
+/**
+ * Gmail caps a page at 500. These are much lower on purpose.
+ *
+ * The list endpoint returns identifiers only, so every message costs one more
+ * round trip: a page of 25 took 12-25 seconds live and returned 33,000
+ * characters, which then rode along in every later API call of the same turn
+ * and slowed each one. Ten messages with a trimmed snippet answers "what needs
+ * my reply" and leaves the turn responsive.
+ */
+const defaultMessageLimit = 10;
+const maxMessageLimit = 50;
+/** Enough to recognise a message; not enough to bury the answer. */
+const maxSnippetCharacters = 180;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -253,7 +263,10 @@ export function normalizeMailMessage(
     threadId: typeof payload["threadId"] === "string" ? payload["threadId"] : id,
     from: headerValue(headers, "from"),
     subject: headerValue(headers, "subject"),
-    snippet: typeof payload["snippet"] === "string" ? payload["snippet"] : "",
+    snippet:
+      typeof payload["snippet"] === "string"
+        ? payload["snippet"].slice(0, maxSnippetCharacters)
+        : "",
     receivedAt: Number.isFinite(receivedAtMs)
       ? new Date(receivedAtMs).toISOString()
       : "",
