@@ -277,9 +277,11 @@ async function main(): Promise<number> {
           "",
           "Real-Ming Google refresh token helper",
           "",
-          `Scopes requested: ${googleCalendarScopes.join(", ")}`,
+          `Scopes requested: ${scopes.join(", ")}`,
           "",
-          "1. Open this URL in the browser signed in as the calendar owner:",
+          mailbox === undefined
+            ? "1. Open this URL in the browser signed in as the calendar owner:"
+            : `1. Open this URL and consent AS ${mailbox}. Any other account is refused.`,
           "",
           buildAuthorizationUrl({
             clientId,
@@ -290,7 +292,9 @@ async function main(): Promise<number> {
           }),
           "",
           '2. Expect an "unverified app" warning. Choose Advanced, then continue.',
-          "3. Approve both Calendar permissions.",
+          mailbox === undefined
+            ? "3. Approve the Calendar permissions."
+            : "3. Approve the Gmail permissions. Real-Ming reads mail and writes drafts; it never sends.",
           "",
           "Waiting for the callback...",
           "",
