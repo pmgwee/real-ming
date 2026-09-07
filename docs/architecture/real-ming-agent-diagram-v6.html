@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="real-ming-architecture" content="Real-Ming Agent Architecture V6 — Native Hermes + Thin Companion">
   <meta name="real-ming-baseline" content="Real-Ming v1.1 · Architecture Revision 6">
-  <meta name="real-ming-design-target" content="Architecture V6 · native-first target · production migration pending">
-  <meta name="description" content="Native Hermes Telegram, agent, memory and dashboard experience. A thin Real-Ming extension adds only Ming-specific cross-source records and evidence. Includes memory choices, hosting and migration acceptance.">
-  <title>Real-Ming Agent Architecture · V6 · Native-first CEO review</title>
+  <meta name="real-ming-design-target" content="Architecture Revision 6 · native-first · partially activated in production">
+  <meta name="description" content="Deployed native Hermes architecture with nine deferred MCP servers, a thin Real-Ming extension, loopback provider bridge, scoped Google credentials, draft-only mail, private dashboards and native coding workspaces.">
+  <title>Real-Ming Agent Architecture · Architecture Revision 6 · Deployed topology</title>
   <style>
     :root {
       --bg: #050a15;
@@ -698,6 +698,350 @@
       font-family: var(--mono);
       font-size: .7rem;
       text-align: center;
+    }
+
+    .tool-plane {
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+    }
+
+    .tool-runtime {
+      display: grid;
+      grid-template-columns: minmax(220px, .72fr) minmax(0, 2fr);
+      gap: 1px;
+      background: rgba(244, 196, 83, .24);
+      border-bottom: 1px solid rgba(244, 196, 83, .36);
+    }
+
+    .tool-runtime > div {
+      padding: 18px 20px;
+      background: #161f2a;
+    }
+
+    .tool-runtime strong,
+    .tool-lane-label,
+    .mcp-node strong,
+    .extension-group strong,
+    .bridge-node strong,
+    .account-node strong,
+    .send-step strong,
+    .coding-step-live strong {
+      display: block;
+      margin-bottom: 5px;
+      font-family: var(--mono);
+    }
+
+    .tool-runtime strong { color: var(--hermes-soft); }
+
+    .tool-runtime p,
+    .tool-runtime span,
+    .mcp-node span,
+    .extension-group span,
+    .bridge-node p,
+    .account-node span,
+    .send-step span,
+    .coding-step-live span {
+      color: var(--muted);
+      font-size: .72rem;
+      line-height: 1.46;
+    }
+
+    .tool-lanes {
+      display: grid;
+      grid-template-columns: minmax(220px, .72fr) minmax(0, 2fr);
+      gap: 1px;
+      background: var(--line);
+    }
+
+    .eager-lane,
+    .deferred-lane {
+      min-width: 0;
+      padding: 20px;
+      background: var(--panel-2);
+    }
+
+    .tool-lane-label {
+      color: var(--evidence);
+      font-size: .74rem;
+    }
+
+    .eager-tools {
+      display: grid;
+      gap: 8px;
+      margin-top: 13px;
+    }
+
+    .eager-tool {
+      padding: 10px 12px;
+      background: var(--bg-deep);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: .7rem;
+    }
+
+    .search-bridge {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      gap: 15px;
+      align-items: center;
+      margin: 12px 0 14px;
+      padding: 12px 14px;
+      background: rgba(79, 215, 232, .07);
+      border-top: 1px solid var(--evidence);
+    }
+
+    .search-bridge code {
+      color: var(--evidence);
+      font-size: .82rem;
+      font-weight: 700;
+    }
+
+    .search-bridge span {
+      color: var(--muted);
+      font-size: .7rem;
+    }
+
+    .mcp-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .mcp-node {
+      min-width: 0;
+      padding: 11px 12px;
+      background: var(--bg-deep);
+      border-top: 1px solid var(--context);
+    }
+
+    .mcp-node.real-ming-mcp {
+      background: rgba(66, 214, 163, .08);
+      border-top-color: var(--realming);
+    }
+
+    .mcp-node strong {
+      margin: 0;
+      color: var(--ink);
+      font-size: .71rem;
+    }
+
+    .mcp-node span {
+      color: var(--faint);
+      font-size: .64rem;
+    }
+
+    .mcp-total {
+      grid-column: 5;
+      display: grid;
+      place-items: center;
+      min-height: 58px;
+      padding: 8px;
+      background: rgba(170, 136, 255, .1);
+      color: #d3c5ff;
+      font-family: var(--mono);
+      font-size: .68rem;
+      text-align: center;
+    }
+
+    .extension-detail {
+      padding: 22px;
+      background: linear-gradient(110deg, rgba(66, 214, 163, .07), transparent 60%), var(--panel);
+      border-top: 1px solid rgba(66, 214, 163, .45);
+    }
+
+    .extension-detail-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 22px;
+      align-items: end;
+      margin-bottom: 14px;
+    }
+
+    .extension-detail-head h3 { color: var(--realming); }
+
+    .extension-detail-head p {
+      max-width: 72ch;
+      color: var(--muted);
+      font-size: .74rem;
+      text-align: right;
+    }
+
+    .extension-groups {
+      display: grid;
+      grid-template-columns: 1fr .75fr 1.45fr;
+      gap: 1px;
+      background: rgba(66, 214, 163, .2);
+    }
+
+    .extension-group {
+      min-width: 0;
+      padding: 14px;
+      background: var(--panel-2);
+    }
+
+    .extension-group strong {
+      color: var(--realming);
+      font-size: .72rem;
+    }
+
+    .extension-group code {
+      color: #d7e4ef;
+      font-size: .66rem;
+      overflow-wrap: anywhere;
+    }
+
+    .provider-bridge {
+      display: grid;
+      grid-template-columns: minmax(190px, .72fr) 118px minmax(240px, 1fr) 84px minmax(300px, 1.35fr);
+      gap: 10px;
+      align-items: stretch;
+      margin-top: 16px;
+    }
+
+    .bridge-node {
+      min-width: 0;
+      padding: 16px;
+      background: var(--panel-2);
+      border-top: 1px solid var(--line-strong);
+    }
+
+    .bridge-node.child { border-top-color: var(--context); }
+    .bridge-node.control { border-top-color: var(--realming); }
+    .bridge-node.vault { border-top-color: var(--human); }
+
+    .bridge-node strong { color: var(--ink); font-size: .74rem; }
+    .bridge-node.child strong { color: #d3c5ff; }
+    .bridge-node.control strong { color: var(--realming); }
+    .bridge-node.vault strong { color: #ffc0a6; }
+
+    .bridge-arrow {
+      display: grid;
+      place-items: center;
+      color: var(--evidence);
+      font-family: var(--mono);
+      font-size: .63rem;
+      line-height: 1.4;
+      text-align: center;
+    }
+
+    .bridge-arrow span,
+    .bridge-arrow code {
+      display: block;
+      overflow-wrap: anywhere;
+    }
+
+    .bridge-arrow code {
+      margin: 4px 0;
+      color: var(--evidence);
+      font-size: .58rem;
+    }
+
+    .account-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 7px;
+      margin-top: 10px;
+    }
+
+    .account-node {
+      min-width: 0;
+      padding: 9px 10px;
+      background: var(--bg-deep);
+    }
+
+    .account-node strong {
+      margin-bottom: 2px;
+      color: var(--ink);
+      font-size: .62rem;
+      overflow-wrap: anywhere;
+    }
+
+    .account-node span { color: var(--faint); font-size: .61rem; }
+
+    .boundary-stack {
+      display: grid;
+      grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .send-boundary,
+    .coding-live {
+      padding: 18px;
+      background: var(--panel-2);
+      border-top: 1px solid var(--human);
+    }
+
+    .coding-live { border-top-color: var(--evidence); }
+
+    .send-path,
+    .coding-path-live {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      margin-top: 12px;
+      background: var(--line);
+    }
+
+    .send-step,
+    .coding-step-live {
+      min-width: 0;
+      padding: 12px;
+      background: var(--bg-deep);
+    }
+
+    .send-step strong,
+    .coding-step-live strong { color: var(--ink); font-size: .67rem; }
+
+    .send-step.human-review {
+      background: rgba(255, 149, 109, .08);
+      border: 1px dashed rgba(255, 149, 109, .65);
+    }
+
+    .send-step.human-review strong { color: #ffc0a6; }
+
+    .hard-stop {
+      margin-top: 11px;
+      padding: 9px 11px;
+      background: rgba(255, 125, 120, .08);
+      color: #ffc2bf;
+      font-family: var(--mono);
+      font-size: .67rem;
+      text-align: center;
+    }
+
+    .boundary-caveat {
+      margin: 7px 0 0;
+      padding: 9px 11px;
+      background: rgba(255, 255, 255, .035);
+      border-left: 2px solid rgba(255, 194, 191, .45);
+      color: var(--muted, #9aa6b2);
+      font-size: .69rem;
+      line-height: 1.55;
+    }
+
+    .boundary-caveat strong { color: #ffc2bf; }
+
+    @media (max-width: 1100px) {
+      .tool-runtime,
+      .tool-lanes,
+      .provider-bridge,
+      .boundary-stack { grid-template-columns: 1fr; }
+      .mcp-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .mcp-total { grid-column: auto; }
+      .bridge-arrow { min-height: 36px; }
+      .extension-detail-head { display: block; }
+      .extension-detail-head p { margin-top: 8px; text-align: left; }
+    }
+
+    @media (max-width: 680px) {
+      .mcp-grid,
+      .extension-groups,
+      .account-grid,
+      .send-path,
+      .coding-path-live { grid-template-columns: 1fr; }
     }
 
     .protocol {
@@ -2313,14 +2657,14 @@
   </style>
 </head>
 <body>
-  <!-- V6 design target. Preserves the V5 blueprint language, not its custom Telegram/agent wrapper.
-       Native Hermes remains the runtime. The diagram does not authorize or claim a production cutover. -->
+  <!-- Architecture Revision 6. Design baseline and deployed state are distinct;
+       this rendering reflects the partially activated deployment recorded on 7 Sep 2026. -->
   <a class="skip-link" href="#architecture">Skip to architecture</a>
   <main id="architecture">
     <header class="hero">
       <div>
         <h1>Native Hermes.<br>A personal system around it.</h1>
-        <div class="version">Real-Ming agent · V6 · CEO review · 05 Sep 2026</div>
+        <div class="version">Real-Ming agent · Architecture Revision 6 · deployed view · 07 Sep 2026</div>
         <p class="hero-copy">Talk directly to the Hermes agent experience on Telegram. Keep its gateway, reasoning, tools, skills, plugins, MCP, memory and working loop. Real-Ming supplies Ming-specific context, cross-app coordination and useful operational views—only where native Hermes needs an extension.</p>
       </div>
       <aside class="thesis" aria-label="Architecture thesis">
@@ -2329,8 +2673,8 @@
       </aside>
     </header>
     <div class="review-status" aria-label="Production evidence and design status">
-      <div><strong>LIVE SNAPSHOT · V5 bridge, not native Telegram</strong>Malaysia currently runs real Hermes through Real-Ming’s Telegram/API wrapper. OAuth works. CEO smoke found missing native UX and routing/tool gaps. See the <a href="../../CEO-Office/RM-40-phase4-telegram-smoke-findings.md">05 Sep diagnosis</a>.</div>
-      <div><strong>V6 TARGET · native-first, migration pending</strong>This diagram supersedes V5 as the design direction. It does not claim that native Telegram, every integration or the new dashboard composition is already live. The Revision 5 spec/tests still require explicit reconciliation.</div>
+      <div><strong>LIVE · ARCHITECTURE REVISION 6</strong>Malaysia West runs <code>real-ming:v6-9ef3fac</code>. The native Hermes gateway is the single Telegram consumer, with 60 native commands and Codex OAuth-backed reasoning.</div>
+      <div><strong>PARTIALLY ACTIVATED · 07 SEP 2026</strong>Nine MCP servers, native daily schedules, persistent memory, cited Obsidian knowledge, private dashboards and protected recovery are live. The remaining boundary is CEO acceptance of the final coding, dashboard and Obsidian-client experience.</div>
     </div>
     <nav class="jump-links" aria-label="Architecture chapters"><a href="#map-title">I · Hermes experience</a><a href="#reuse-title">Native vs custom</a><a href="#part-two-title">II · Real-Ming contribution</a><a href="#memory-title">Memory choices</a><a href="#part-three-title">III · Production hosting</a><a href="#acceptance-title">Prove the experience</a></nav>
     <div class="decision-strip" aria-label="V6 architecture direction">
@@ -2355,7 +2699,7 @@
         <button class="mode-button" type="button" data-mode="operations" aria-pressed="false">Live operations</button>
       </div>
       <div class="system-map" data-active-mode="all">
-        <div class="map-topline"><span>TARGET TOPOLOGY · ONE NATIVE HERMES CONVERSATION</span><span>Not a live-status monitor</span></div>
+        <div class="map-topline"><span>DEPLOYED TOPOLOGY · ONE NATIVE HERMES CONVERSATION</span><span>Malaysia West · 07 Sep 2026</span></div>
         <div class="native-route">
           <article class="terminal" data-path="conversation coding context operations"><h3>Ming on Telegram</h3><p>Questions, commands, files, clarifications, decisions and outcomes.</p><div class="message-sample">“Develop this DuitSini feature, test it, and keep me updated.”</div></article>
           <div class="flow-arrow" aria-hidden="true"></div>
@@ -2370,7 +2714,7 @@
                 </div>
               </div>
             </article>
-            <div class="native-features" data-path="coding context operations">Native tools · skills · plugins · MCP · memory · cron · Kanban/workspaces · web dashboard<br>Feature availability depends on version, toolset, credentials and configuration.</div>
+            <div class="native-features" data-path="coding context operations"><strong>EAGER CORE</strong> · terminal · files · code execution · native runtime tools &nbsp; | &nbsp; <strong>DEFERRED MCP</strong> · 272 tools discovered through <code>tool_search</code><br>Skills · native memory · cron · Kanban/workspaces · web dashboard</div>
           </section>
           <div class="flow-arrow" aria-hidden="true"></div>
           <article class="delivery" data-path="conversation coding context operations"><h3>Native Hermes reply</h3><p>Hermes composes the answer. Its Telegram adapter renders and delivers it. No mandatory JSON envelope and no Real-Ming rewrite of the final voice.</p></article>
@@ -2378,7 +2722,7 @@
         <div class="companion-link" data-path="coding context operations">↕ Explicit native tool / MCP calls + verified plugin hooks + dashboard extensions</div>
         <section class="companion-v6" data-path="coding context operations" aria-label="Optional Real-Ming integration extension">
           <h3>Real-Ming · thin personalization and integration extension</h3>
-          <p>Start as Hermes-native configuration, skills and a plugin. Reuse selected existing Real-Ming services for data that truly needs a shared owner. This is not a second agent, a compulsory workflow engine, or another Telegram poller.</p>
+          <p>Deployed as Hermes-native configuration and skills plus a nine-tool MCP extension backed by the loopback Real-Ming service. This is not a second agent, a compulsory workflow engine, or another Telegram poller.</p>
           <div class="operating-row">
             <div class="operating-node"><strong>Ming’s operating model</strong><span>preferences · five role playbooks · project conventions · task semantics</span></div>
             <div class="operating-node"><strong>Cross-source coordination</strong><span>Master Tasks links · Calendar reconciliation · source provenance · provider health</span></div>
@@ -2389,6 +2733,103 @@
         <div class="diagram-note"><strong>Failure boundary:</strong> ordinary native chat must remain usable if an optional Real-Ming service is down. Managed writes must fail safely or queue explicitly; do not report them complete. Native tool events need reconciliation before the dashboard can claim a complete audit.</div>
       </div>
       <p id="path-explanation" role="status" aria-live="polite">Whole system: Hermes owns Telegram and the agent loop; the companion adds selected integrations.</p>
+    </section>
+
+    <section class="section" aria-labelledby="tool-plane-title">
+      <div class="section-head">
+        <div>
+          <h2 id="tool-plane-title">Core tools stay ready. MCP tools arrive on demand.</h2>
+          <span class="section-code">Deployed capability and credential topology · 07 Sep 2026</span>
+        </div>
+        <p>The native gateway can reach 272 operations without injecting 272 schemas into every turn. Hermes keeps its own core tools eager and discovers deferred MCP tools through <code>tool_search</code>. Real-Ming is one tool server among nine—not a gate in front of the agent.</p>
+      </div>
+
+      <div class="tool-plane">
+        <div class="tool-runtime">
+          <div><strong>Native Hermes gateway</strong><p>Single Telegram owner · conversation · reasoning · tool selection · execution · final answer.</p></div>
+          <div><strong>One agent loop, two tool-loading modes</strong><span>Core operations remain immediately available. MCP schemas are deferred until the task needs them, then returned through the native search bridge.</span></div>
+        </div>
+
+        <div class="tool-lanes">
+          <section class="eager-lane" aria-label="Eager Hermes core tools">
+            <span class="tool-lane-label">EAGER · HERMES CORE</span>
+            <div class="eager-tools">
+              <div class="eager-tool">Terminal + process execution</div>
+              <div class="eager-tool">File operations + code editing</div>
+              <div class="eager-tool">Native runtime tools + task continuity</div>
+            </div>
+            <p class="plain-note">The coding loop does not depend on GitHub MCP. Hermes edits and tests through native tools.</p>
+          </section>
+
+          <section class="deferred-lane" aria-label="Deferred MCP tool servers">
+            <span class="tool-lane-label">DEFERRED · NINE MCP SERVERS</span>
+            <div class="search-bridge"><code>tool_search</code><span>Finds the relevant server and loads matching tool schemas only when the task calls for them.</span></div>
+            <div class="mcp-grid">
+              <div class="mcp-node"><strong>GitHub</strong><span>47 tools</span></div>
+              <div class="mcp-node"><strong>Notion</strong><span>42 tools</span></div>
+              <div class="mcp-node"><strong>Vercel</strong><span>37 tools</span></div>
+              <div class="mcp-node"><strong>Supabase</strong><span>29 tools</span></div>
+              <div class="mcp-node"><strong>Higgsfield</strong><span>101 tools</span></div>
+              <div class="mcp-node real-ming-mcp"><strong>Real-Ming</strong><span>9 tools · local stdio</span></div>
+              <div class="mcp-node"><strong>Deepwiki</strong><span>3 tools</span></div>
+              <div class="mcp-node"><strong>Exa</strong><span>2 tools</span></div>
+              <div class="mcp-node"><strong>Context7</strong><span>2 tools</span></div>
+              <div class="mcp-total"><strong>272 TOOLS</strong><span>live to Telegram</span></div>
+            </div>
+          </section>
+        </div>
+
+        <section class="extension-detail" aria-labelledby="extension-tools-title">
+          <div class="extension-detail-head">
+            <div><span class="data-label">One of nine MCP servers</span><h3 id="extension-tools-title">Real-Ming extension · 9 tools</h3></div>
+            <p>The extension adds Ming-specific records, reports and provider access. It does not own transport, conversation, reasoning or the coding loop.</p>
+          </div>
+          <div class="extension-groups">
+            <div class="extension-group"><strong>Work Items + execution links · 3</strong><span><code>real_ming_list_work_items</code><br><code>real_ming_get_work_item</code><br><code>real_ming_link_execution_task</code></span></div>
+            <div class="extension-group"><strong>Scheduled reports · 1</strong><span><code>real_ming_run_scheduled_report</code><br>Native cron composes through the tool; Hermes owns Telegram delivery.</span></div>
+            <div class="extension-group"><strong>Provider access · 5</strong><span><code>real_ming_list_calendar_events</code> · <code>real_ming_create_calendar_event</code><br><code>real_ming_search_mail</code> · <code>real_ming_read_email</code> · <code>real_ming_draft_email</code></span></div>
+          </div>
+
+          <div class="provider-bridge" aria-label="Loopback provider bridge and Google credential topology">
+            <article class="bridge-node child"><strong>Real-Ming MCP child</strong><p>Spawned by Hermes over local stdio. It inherits only its declared environment: bridge key and runtime path. It has no Azure Key Vault access and no Google credential.</p></article>
+            <div class="bridge-arrow" aria-hidden="true"><span>LOOPBACK API</span><code>/internal/provider/*</code><span>127.0.0.1:8787 →</span></div>
+            <article class="bridge-node control"><strong>Real-Ming control plane</strong><p>Loopback-only provider endpoint. It authenticates the MCP child, applies the account/resource allowlist beside the credentials, and performs the provider call.</p></article>
+            <div class="bridge-arrow" aria-hidden="true"><span>MANAGED<br>IDENTITY →</span></div>
+            <article class="bridge-node vault">
+              <strong>Azure Key Vault · one refresh token per account</strong>
+              <p>A credential can reach only the account that minted it. No Google secret is copied into Hermes configuration.</p>
+              <div class="account-grid">
+                <div class="account-node"><strong>leeahming199@gmail.com</strong><span>Google Calendar</span></div>
+                <div class="account-node"><strong>perminggwee@gmail.com</strong><span>Personal / opportunity mail</span></div>
+                <div class="account-node"><strong>I26042693@student.newinti.edu.my</strong><span>Academic mail</span></div>
+              </div>
+            </article>
+          </div>
+
+          <div class="boundary-stack">
+            <section class="send-boundary" aria-labelledby="send-boundary-title">
+              <h3 id="send-boundary-title">Draft is automated. Send stays human.</h3>
+              <div class="send-path">
+                <div class="send-step"><strong>Hermes + Real-Ming tool</strong><span>Search, read and prepare an email draft.</span></div>
+                <div class="send-step"><strong>Gmail Drafts</strong><span>The provider writes the draft into the selected mailbox.</span></div>
+                <div class="send-step human-review"><strong>Ming’s Gmail client</strong><span>Outside agent reach. Ming reviews, edits and presses Send.</span></div>
+              </div>
+              <div class="hard-stop">ENFORCED BOUNDARY · no send tool · no <code>gmail.send</code> scope · no agent path to Send</div>
+              <p class="boundary-caveat"><strong>Stated honestly:</strong> the granted <code>gmail.compose</code> scope does permit sending — Google publishes no draft-only scope. The credential could send; the code has no path that does. A contract scenario asserts no request URL ends in <code>/send</code> and a system scenario asserts no tool name matches <code>/send/</code>, so this boundary lives in tested code rather than in the grant.</p>
+            </section>
+
+            <section class="coding-live" aria-labelledby="coding-live-title">
+              <h3 id="coding-live-title">Native coding and Git path · unblocked</h3>
+              <div class="coding-path-live">
+                <div class="coding-step-live"><strong>Hermes core tools</strong><span>Terminal · files · code execution · tests</span></div>
+                <div class="coding-step-live"><strong>Host checkout</strong><span><code>/var/lib/hermes-real-ming/repos/</code></span></div>
+                <div class="coding-step-live"><strong>Git identity + credential</strong><span>Clone · commit · push. Agent authorship remains visible.</span></div>
+              </div>
+              <p class="plain-note">GitHub MCP handles collaboration operations; native tools edit the repository. The host credential is what enables remote Git.</p>
+            </section>
+          </div>
+        </section>
+      </div>
     </section>
 
     <section class="section" aria-labelledby="turn-title">
@@ -2554,11 +2995,11 @@
           <h2 id="memory-title">Evidence becomes cited, rebuildable knowledge</h2>
           <span class="section-code">1.2 · Final memory migration pipeline</span>
         </div>
-        <p>Keep the useful memory design, but separate native features from extra guarantees. Basic Obsidian use needs no custom control plane. Retain this advanced pipeline for cited, versioned, scoped publication only when those guarantees are wanted.</p>
+        <p>Native memory and cited Obsidian knowledge are live and recoverable. Keep the advanced Real-Ming pipeline separate: it remains optional for paths that need versioned publication, contradiction quarantine or scoped projections.</p>
       </div>
 
       <div class="native-memory">
-        <article><h3>Native memory and Obsidian first</h3><p>Hermes already provides persistent sessions and long-term memory. Its bundled Obsidian skill reads and edits linked Markdown; its bundled LLM Wiki skill adds source capture, cited synthesis, querying and linting. Configure the vault path and tools on Azure; no Real-Ming service is required.</p><span class="status-label">upstream capability · vault integration not activated</span></article>
+        <article><h3>Native memory and Obsidian first</h3><p>Hermes provides persistent sessions and long-term memory. Its bundled Obsidian and LLM Wiki skills now maintain cited linked Markdown on Azure; retrieval survived separate sessions and a Hermes restart, and the vault restored byte-identical from backup.</p><span class="status-label">live accepted · opening in Ming’s Obsidian client remains</span></article>
         <article><h3>Optional curated knowledge service</h3><p>Retain the custom compiler, projections and publication code for provenance validation, quarantine, immutable generations and reviewed cross-domain exports. Reuse the native LLM Wiki workflow too. Skill instructions and a transactional, access-controlled publication service offer different guarantees.</p><span class="status-label">implemented components · live wiring incomplete</span></article>
       </div>
       <div class="memory-pipeline" aria-label="Optional governed knowledge compilation pipeline">
@@ -2603,8 +3044,8 @@
 
         <div class="memory-interfaces">
           <article class="memory-interface"><strong>Projection Broker → Hermes</strong><p>Expose governed knowledge as a retrieval tool returning a bounded cited brief. Direct native connectors remain available for authorized sources outside that contract.</p><span class="status-label">components tested · native tool exposure pending</span></article>
-          <article class="memory-interface"><strong>materializeForCeo → Obsidian</strong><p>Exports reviewed generations to a host-local directory. Keep this generated mirror read-only to note-editing workflows; native personal notes use a separate owned path. Obsidian is not access control.</p><span class="status-label">destination configured · production pipeline not enabled</span></article>
-          <article class="memory-interface"><strong>Hermes native memory</strong><p>Preserve Hermes’s native memory features. Use preferences and useful context without copying every source corpus. An optional curated vault must not silently disable native memory.</p><span class="status-label">native feature · V5 memory policy needs reconciliation</span></article>
+          <article class="memory-interface"><strong>Native Obsidian + LLM Wiki</strong><p>Hermes owns the live note path and retrieves cited knowledge across sessions and restarts. The Azure vault is backed up; Ming still needs to open the approved mirror in his Obsidian client.</p><span class="status-label">live · recovered byte-identical</span></article>
+          <article class="memory-interface"><strong>Hermes native memory</strong><p>Stores stable preferences, routing conventions, project pointers and conversational continuity—not authoritative tasks, finance, academic commitments, raw inboxes or Sensitive Secrets.</p><span class="status-label">active built-in provider · Real-Ming does not override it</span></article>
         </div>
 
         <div class="retention-line">RAW INGESTION STAGING IS PURGEABLE · CITATIONS, HASHES, TOMBSTONES AND PURGE EVIDENCE REMAIN · COMPILED KNOWLEDGE NEVER SILENTLY REWRITES A SOURCE OF RECORD.</div>
@@ -2682,26 +3123,26 @@
     <section class="chapter-divider chapter-three" aria-labelledby="part-three-title">
       <div class="chapter-number" aria-hidden="true">III</div>
       <div class="chapter-copy"><h2 id="part-three-title">Always-on production topology</h2><p>Azure Malaysia West is the primary agent home. Lenovo is an optional extension, not a dependency for Telegram, cloud tools, schedules or coding.</p></div>
-      <div class="chapter-index"><span>Native gateway cutover</span><span>Private dashboard</span><span>State + backups</span><span>Lenovo + Obsidian</span></div>
+      <div class="chapter-index"><span>Native gateway live</span><span>Private dashboards</span><span>State + backups</span><span>Lenovo + Obsidian</span></div>
     </section>
     <section class="section" aria-labelledby="deploy-title">
       <div class="section-head"><div><h2 id="deploy-title">Azure is the primary agent home; Lenovo is an optional extension</h2><span class="section-code">Production hosting topology</span></div><p>Reuse the approved Malaysia VM and existing state. Native-first does not require another VM, public SSH, a public dashboard, or copying the laptop’s credentials.</p></div>
       <div class="topology">
-        <section class="cloud" aria-label="Target Azure Malaysia West topology">
+        <section class="cloud" aria-label="Deployed Azure Malaysia West topology">
           <div class="topology-head"><div><h3>Azure Malaysia West</h3><span class="data-label">real-ming-control-plane-my · Standard_D2as_v5</span></div><p>One always-on host. Native Hermes and any retained companion can be separate processes on that host. Job isolation is for clean execution and recovery, not proof of a hardened multi-tenant boundary.</p></div>
           <div class="cloud-layout">
             <div class="stack">
-              <div class="deploy-node surface"><strong>Telegram Bot API</strong><p>Target: Hermes native gateway is the only polling/webhook owner. The Real-Ming poller must stop before the same bot token is activated here.</p></div>
+              <div class="deploy-node surface"><strong>Telegram Bot API</strong><p>Hermes native gateway is the only consumer. The Real-Ming service runs with <code>REAL_MING_TELEGRAM_OWNERSHIP=native-hermes-gateway</code> and does not poll.</p></div>
               <div class="deploy-node surface"><strong>Private CEO access</strong><p>Tailscale plus application authentication. Native Hermes dashboard and selected Real-Ming views remain loopback/private; no public SSH or dashboard port.</p></div>
             </div>
             <div class="vertical-arrow" aria-hidden="true">↔</div>
             <div class="stack">
-              <div class="deploy-node hermes"><strong>Native Hermes installation / services</strong><p>Gateway and agent harness · Codex OAuth · native tools, skills and MCP · memory and cron · separate Kanban workers and dashboard web server.</p></div>
-              <div class="deploy-node gateway"><strong>Real-Ming extension</strong><p>Plugin/tools and dashboard tabs first. Retain a private data companion for proven reconciliation, evidence and source contracts. No second chat coordinator.</p></div>
+              <div class="deploy-node hermes"><strong>Native Hermes installation / services</strong><p>Gateway and agent harness · Codex OAuth · eager core tools · <code>tool_search</code> over nine MCP servers · native memory and cron · Kanban/workspaces · dashboard at <code>127.0.0.1:9119</code>.</p></div>
+              <div class="deploy-node gateway"><strong>Real-Ming extension + control plane</strong><p>Nine MCP tools over local stdio, loopback provider bridge, records, reconciliation and CEO views. The control plane stays private at <code>127.0.0.1:8787</code>. No second chat coordinator.</p></div>
             </div>
             <div class="vertical-arrow" aria-hidden="true">↔</div>
             <div class="stack">
-              <div class="deploy-node workspace"><strong>Native execution workspaces</strong><p>Per-job worktrees or supported runtime workspace modes. Hermes edits and tests. Limit tool credentials and production access separately from repository sensitivity.</p></div>
+              <div class="deploy-node workspace"><strong>Native execution workspaces + Git</strong><p>Host checkout under <code>/var/lib/hermes-real-ming/repos/</code>. Git identity and credential now permit clone, commit and push; Hermes edits and tests with native core tools.</p></div>
               <div class="deploy-node state"><strong>State with explicit owners</strong><p>Hermes sessions/memory/task state; Notion Master Tasks; retained Real-Ming records; chosen Obsidian paths. Link IDs and reconcile—do not blindly merge databases.</p></div>
             </div>
           </div>
@@ -2715,23 +3156,23 @@
       </div>
       <div class="credential-rail">
         <div><strong>Codex OAuth</strong>Already authorized for the Malaysia Hermes service account. Hermes owns refresh and model access. Do not copy tokens into Real-Ming, prompts or the dashboard.</div>
-        <div><strong>Provider integration credentials</strong>Existing Real-Ming authorization is not automatic Hermes MCP authorization. Reuse safely only where supported; verify consent, scopes and each real connector.</div>
+        <div><strong>Provider credential boundary</strong>The Real-Ming MCP child has no Key Vault or Google credential. It calls the loopback control plane, where managed identity, per-account refresh tokens and allowlists are enforced.</div>
         <div><strong>Model health and limits</strong>Keep the current approved provider/model setting unless separately changed. Track available health and quota signals; do not invent full subscription usage or treat it as metered API billing.</div>
       </div>
       <div class="production-state">
-        <div><strong>Singapore backup destination retained</strong>Azure Blob backup Storage remains in Southeast Asia with narrow managed-identity access. A restore rehearsal is recorded; V6 must add/verify the complete native state set and rehearse again after migration.</div>
+        <div><strong>Singapore backup destination active</strong>Azure Blob Storage in Southeast Asia holds the protected post-deploy backup under narrow managed-identity access. An isolated restore passed, including the native vault byte-for-byte.</div>
         <div><strong>East Asia rollback retained</strong>The old East Asia services are stopped; the VM is retained, not deleted. Final deallocation is a later verified cutover step. Never start two Telegram consumers during rollback.</div>
       </div>
     </section>
 
     <section class="section" aria-labelledby="status-title">
-      <div class="section-head"><div><h2 id="status-title">Connected, available, and proven are different states</h2><span class="section-code">Evidence snapshot · 05 September 2026</span></div><p>No production migration is performed by creating this diagram. Current deployment evidence comes from the activation record and CEO smoke diagnosis; source capability review is not a live acceptance test.</p></div>
+      <div class="section-head"><div><h2 id="status-title">Connected, proven, and accepted are different states</h2><span class="section-code">Evidence snapshot · 07 September 2026</span></div><p>This diagram records the deployed Revision 6 topology; it does not turn engineering proof into CEO acceptance. The remaining actions are experience reviews, not missing transport or provider architecture.</p></div>
       <div class="status-grid">
-        <article><h3>Already connected</h3><p>Malaysia Hermes + Real-Ming services, Codex OAuth, Tailscale access, existing private dashboard and off-host backup destination. Actual Hermes responses were verified behind the current API wrapper.</p></article>
-        <article><h3>Available in pinned Hermes</h3><p>Native Telegram, memory, Obsidian + LLM Wiki skills, cron, Kanban/workspaces, web dashboard, plugin hooks and MCP support. Availability does not establish configured provider access.</p></article>
-        <article class="pending"><h3>Still needs implementation / proof</h3><p>Native bot ownership, Ming’s extension pack, task/source mapping, connector live tests, native dashboard integration, chosen vault path/content/sync and complete recovery evidence.</p></article>
+        <article><h3>Live in production</h3><p>Native Telegram ownership, Codex OAuth, Ming role skills, nine MCP servers / 272 tools, Notion and Google provider paths, two native cron jobs, persistent memory, cited vault, private dashboards and protected backup.</p></article>
+        <article><h3>Engineering-proven</h3><p>One-consumer cutover, 60 commands, Calendar and mail contracts, draft-only send boundary, schedule restart/no-replay, cross-session recall, isolated restore, Notion read-back, dashboard leakage checks and Git clone/push reach.</p></article>
+        <article class="pending"><h3>Still needs Ming’s acceptance</h3><p>Run and accept the full coding round trip, open the vault in Obsidian, judge whether the private dashboard is useful, accept the DuitSini outcome, and confirm the final RM-40 native-experience criteria.</p></article>
       </div>
-      <p class="reading-note"><strong>Known legacy gap:</strong> the configured Real-Ming Obsidian folder is empty and the production CLI does not enable Knowledge Operations. For V6, first test the native Obsidian/Wiki route; wire the custom pipeline only if its stronger contract is retained. Financial Snapshot storage is now SQLite-backed in source; this alone does not prove a live finance workflow is bound.</p>
+      <p class="reading-note"><strong>Operational notes:</strong> Exa’s stdio process has shown keepalive reconnects, and nine-server health checks add seconds to each turn. These are known consequences of the CEO-approved untrimmed MCP set—not evidence that the native agent or Real-Ming extension owns a second conversation loop.</p>
     </section>
 
     <section class="section" aria-labelledby="hooks-title">
@@ -2744,24 +3185,24 @@
     </section>
 
     <section class="section" aria-labelledby="acceptance-title">
-      <div class="section-head"><div><h2 id="acceptance-title">Prove the experience before declaring the platform complete</h2><span class="section-code">CEO acceptance · implementation sequence</span></div><p>The first milestone is a real native Telegram vertical slice. Local controlled tests remain valuable, but they must not stand in for the installed harness, authorized integrations and Ming’s actual phone experience.</p></div>
+      <div class="section-head"><div><h2 id="acceptance-title">Finish the experience before declaring the platform complete</h2><span class="section-code">CEO acceptance · remaining boundary</span></div><p>The native Telegram, provider, schedule, memory, dashboard and recovery paths are deployed and tested. Completion now depends on the remaining real-use reviews; controlled evidence cannot substitute for Ming’s experience.</p></div>
       <ol class="acceptance-list">
-        <li><div><strong>Reconcile design and requirements.</strong> V6 is the new design target; update the specification, ADR, acceptance scenarios and new implementation work before another long build. Keep the historical 44-ticket graph as history, not proof of native readiness.</div></li>
-        <li><div><strong>Establish native Hermes parity.</strong> Verify the pinned gateway, allowlist, native commands, formatting, typing, selected progress mode, media and session behavior. Stage safely; one deliberate, reversible bot-owner cutover—not two pollers.</div></li>
-        <li><div><strong>Prove an actual coding outcome.</strong> Hermes reads a designated test repository, edits files, runs tests and reports real evidence. A task acknowledgment or denied tool proposal does not pass.</div></li>
-        <li><div><strong>Add Ming’s skills and providers.</strong> Configure role/context playbooks and authorized source tools. Test real permitted reads, provenance and freshness; separately approve external writes. Simple chat remains task-free.</div></li>
-        <li><div><strong>Add only the needed companion behavior.</strong> Map native task IDs to Master Tasks, validate existing status meanings, keep one writer/scheduler, and test backend failure, replay and exact-action approval paths.</div></li>
-        <li><div><strong>Inspect a real run in the private dashboard.</strong> Evaluate native views first. Add the Real-Ming CEO view for missing cross-app needs. Verify event gaps, failures and recovered state; show results and evidence, never hidden reasoning or secrets.</div></li>
-        <li><div><strong>Prove memory and recovery.</strong> Read/write a designated native Obsidian note and cited wiki entry, verify publication ownership and chosen device access. Back up and restore sessions, tasks and knowledge; verify laptop-off operation before final rollback-VM deallocation.</div></li>
+        <li><div><strong>Baseline reconciled.</strong> Architecture Revision 6, ADR-0020, the specification and deployment evidence now distinguish the design baseline from the partially activated live revision.</div></li>
+        <li><div><strong>Native Hermes live.</strong> One native Telegram consumer owns commands, formatting, progress, attachments, sessions and final replies. The retired Real-Ming poller cannot compete for updates.</div></li>
+        <li><div><strong>Coding path ready; CEO round trip remains.</strong> Hermes can use native tools against a host checkout, and Git clone/push reach is proven. Ming still needs to accept one complete edit, test, commit and report experience.</div></li>
+        <li><div><strong>Skills and providers live.</strong> Ming’s role skills plus nine MCP servers are loaded. Notion, Calendar and the scoped three-account mail path have controlled and live evidence.</div></li>
+        <li><div><strong>Companion contracts live.</strong> The Real-Ming MCP adds Work Item links, scheduled report composition and provider access while native Hermes keeps conversation and execution ownership.</div></li>
+        <li><div><strong>Private dashboards proven; usefulness remains.</strong> Hermes and Real-Ming views are loopback-only behind Tailscale/SSH, and leakage checks passed. Ming decides whether the companion view earns its place.</div></li>
+        <li><div><strong>Memory and recovery proven; desktop opening remains.</strong> A cited note survived session and service restart, then restored byte-identical. Ming still needs to open the approved vault in his Obsidian client.</div></li>
       </ol>
       <p class="reading-note">Product promise: <strong>“I use Hermes normally. Real-Ming makes it understand my world and keeps the important cross-app outcomes connected.”</strong> Do not remove existing stores or migrate live records simply because a native feature has a similar name.</p>
     </section>
     <section class="section" aria-labelledby="sources-review-title">
       <div class="section-head"><div><h2 id="sources-review-title">Architecture grounded in code, not a label</h2><span class="section-code">Evidence and review notes</span></div><p>Primary-source review checked the installed Hermes commit 561b053f and current upstream. That proves today’s feature overlap; it does not establish which features existed at the original Phase 1 kickoff.</p></div>
       <div class="source-links">
-        <a href="../../CEO-Office/RM-40-v6-architecture-review.md">Why the earlier build drifted · recommendation</a>
-        <a href="../../CEO-Office/RM-40-hermes-native-capability-review.md">Pinned Hermes capability evidence</a>
-        <a href="../../CEO-Office/RM-40-phase4-telegram-smoke-findings.md">Current live Telegram diagnosis</a>
+        <a href="../planning/RM-40-v6-native-first-implementation-plan.md">V6 implementation plan and deployment status</a>
+        <a href="../evidence/RM-40-native-capability-expansion-2026-09-07.md">MCP and Git capability expansion evidence</a>
+        <a href="../adr/0020-run-ming-on-the-native-hermes-runtime.md">ADR-0020 · native Hermes runtime</a>
         <a href="https://hermes-agent.nousresearch.com/docs/user-guide/messaging/telegram">Official Telegram guide</a>
         <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/extending-the-dashboard">Dashboard extension SDK</a>
         <a href="https://github.com/NousResearch/hermes-agent/blob/561b053f794a1781868bb032029d589c67708119/skills/note-taking/obsidian/SKILL.md">Bundled Obsidian skill</a>
@@ -2769,8 +3210,8 @@
       </div>
     </section>
     <footer>
-      <p class="footer-line">REAL-MING AGENT ARCHITECTURE · V6 · NATIVE-FIRST DESIGN TARGET<br>I · Hermes experience &nbsp; II · Minimal Real-Ming contribution &nbsp; III · Always-on Malaysia topology</p>
-      <span class="final-mark">V5 retained as historical implementation baseline · no live changes in this review</span>
+      <p class="footer-line">REAL-MING AGENT ARCHITECTURE · V6 · DEPLOYED NATIVE-FIRST TOPOLOGY<br>I · Hermes experience &nbsp; II · Minimal Real-Ming contribution &nbsp; III · Always-on Malaysia topology</p>
+      <span class="final-mark">Architecture Revision 6 · deployed state recorded separately from the design baseline</span>
     </footer>
   </main>
   <script>
