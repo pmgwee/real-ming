@@ -58,6 +58,24 @@ export interface SchedulerJobDefinition {
 export const schedulerJobInventory: readonly SchedulerJobDefinition[] = [
   // The held-notice sweep runs as do-not-disturb ends, before the brief, so a
   // notice deferred overnight arrives before the morning's own account.
+  //
+  // This one deliberately stays on Real-Ming's scheduler while the brief and
+  // roll-up moved to native Hermes cron (7 September 2026). It is not an
+  // unfinished migration.
+  //
+  // The reports compose one text and Hermes delivers it, so a native cron
+  // prompt is a good fit. This sweep instead delivers N notices individually,
+  // each replayed under its original idempotency key so a crash between the
+  // send and the mark is deduplicated by the delivery ledger rather than
+  // delivered twice, with a failed one marked pending so it stays retryable
+  // and one unreachable notice never stranding the rest. Concatenating them
+  // into a single text for Hermes to deliver would discard all of that.
+  //
+  // A native cron trigger is also an LLM turn, and a model that does not call
+  // the tool leaves the run marked succeeded with nothing delivered -- which
+  // happened during the 7 September cutover. That is an acceptable risk for a
+  // brief whose absence Ming would notice; it is not acceptable for a critical
+  // alert sweep. Deterministic housekeeping keeps a deterministic trigger.
   {
     job: releaseHeldJobName,
     hour: doNotDisturbEndHour,

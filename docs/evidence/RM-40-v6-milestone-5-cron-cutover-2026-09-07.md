@@ -100,6 +100,47 @@ shows only three tools, because that shell has no `API_SERVER_KEY`. The tool
 count differs between the CLI and the gateway, and the gateway is the one that
 matters.
 
+## The third job stays on Real-Ming, deliberately
+
+Real-Ming's scheduler had three jobs, not two. The third,
+`release-held-exception-notices`, runs at 07:00 as do-not-disturb ends and
+flushes notices deferred overnight, so a 2 a.m. material blocker reaches Ming
+before the morning brief does. It is marked **critical**.
+
+I proposed moving it too, then read the implementation and reversed that. It is
+not the same pattern as the reports, and moving it would cost real guarantees:
+
+| The reports | The held-notice sweep |
+| --- | --- |
+| Compose **one** text; Hermes delivers one message | Delivers **N** notices individually |
+| No per-item delivery ledger needed | Each notice replays under its **original idempotency key**, so a crash between the send and the mark is deduplicated rather than delivered twice |
+| A failure is visible — Ming notices no brief | A failed notice is marked `pending` so it stays retryable, and one unreachable notice never strands the rest of the sweep |
+
+Concatenating the sweep into a single text for Hermes to deliver would discard
+all of that.
+
+There is a second reason, and today supplied the evidence for it. A native cron
+trigger is an LLM turn. When the model does not call the tool, the run is marked
+**succeeded with nothing delivered** — exactly what happened on the first
+deliberate run of the morning brief. That is an acceptable risk for a report
+whose absence Ming would notice the same morning. It is not acceptable for a
+critical alert sweep, whose whole purpose is to surface something nobody is
+watching for.
+
+So the ownership split is by nature of the work, not by migration progress:
+Hermes cron owns the two reports it composes and delivers; Real-Ming's
+deterministic scheduler keeps the deterministic housekeeping. Each job still has
+exactly one owner, which is the invariant that matters. The reasoning is also
+recorded beside the job definition in `daily-operations-scheduler.ts` so a later
+agent does not "finish the migration" by moving it.
+
+**What remains genuinely open** is unrelated to cron: exception notices are
+mostly event-driven — a material blocker, a provider failure, a deployment
+promotion — and those still leave through Real-Ming's own `sendMessage` rather
+than Hermes. Consolidating them would use `hermes send`, which is explicitly
+"no LLM, no agent loop" and reuses the gateway's platform credentials. That is
+its own slice of work and is not done.
+
 ## What this does not prove
 
 - Neither job has yet fired **on its own schedule**. The first unattended proof
