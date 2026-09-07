@@ -176,4 +176,95 @@ describe("RM-40 Real-Ming extension tools", () => {
       reason: "workItemId, nativeTaskId and idempotencyKey are all required.",
     });
   });
+
+  /**
+   * Native Hermes ships no Google Calendar connector, and Google publishes no
+   * official remote MCP, so the agent cannot answer "what is on Friday?" for
+   * itself. Real-Ming already holds an authorized Calendar credential, so it
+   * surfaces the agenda as a tool rather than standing up a second integration.
+   */
+  describe("calendar agenda", () => {
+    const agendaEvent = {
+      id: "event-friday-review",
+      calendarId: "ceo@real-ming",
+      title: "Quarterly review with the board",
+      start: "2026-09-11T02:00:00.000Z",
+      end: "2026-09-11T03:00:00.000Z",
+      allDay: false,
+      status: "confirmed" as const,
+      updatedAt: "2026-09-06T04:00:00.000Z",
+      sourceReference: "google-calendar:ceo@real-ming:event-friday-review",
+    };
+
+    function startWithCalendar(
+      calendar: NonNullable<
+        Parameters<typeof createRealMingSystemHarness>[0]["calendar"]
+      >,
+    ): RealMingSystemHarness {
+      const directory = mkdtempSync(join(tmpdir(), "real-ming-rm40-calendar-"));
+      directories.push(directory);
+      const harness = createRealMingSystemHarness({
+        statePath: join(directory, "state.sqlite"),
+        telegram: { ceoTelegramId: "100000001" },
+        now: () => "2026-09-06T05:00:00.000Z",
+        calendar,
+      });
+      harnesses.push(harness);
+      return harness;
+    }
+
+    it("offers the agenda only where a calendar is actually configured", () => {
+      // A tool that is always present but never able to answer teaches the
+      // agent to invent an empty day.
+      expect(
+        startHarness()
+          .realMingTools()
+          .map((tool) => tool.name),
+      ).not.toContain("real_ming_list_calendar_events");
+
+      expect(
+        startWithCalendar({ events: [agendaEvent] })
+          .realMingTools()
+          .map((tool) => tool.name),
+      ).toContain("real_ming_list_calendar_events");
+    });
+
+    it("returns the events the calendar actually holds", async () => {
+      const harness = startWithCalendar({ events: [agendaEvent] });
+
+      const result = await harness.callRealMingToolAsync(
+        "real_ming_list_calendar_events",
+        { calendarId: "ceo@real-ming" },
+      );
+
+      expect(result.kind).toBe("ok");
+      const value = (result as { readonly value: Record<string, unknown> }).value;
+      expect(value["events"]).toEqual([
+        {
+          title: "Quarterly review with the board",
+          start: "2026-09-11T02:00:00.000Z",
+          end: "2026-09-11T03:00:00.000Z",
+          allDay: false,
+          status: "confirmed",
+        },
+      ]);
+    });
+
+    it("reports an unreachable calendar instead of an empty day", async () => {
+      // An empty agenda and an unreachable calendar look identical to a
+      // reader. Reported as "no events", the agent tells Ming his Friday is
+      // clear when it never managed to look.
+      const harness = startWithCalendar({ events: [], failure: "unavailable" });
+
+      const result = await harness.callRealMingToolAsync(
+        "real_ming_list_calendar_events",
+        { calendarId: "ceo@real-ming" },
+      );
+
+      expect(result.kind).toBe("failed");
+      expect((result as { readonly reason: string }).reason).toMatch(
+        /calendar/i,
+      );
+    });
+  });
 });

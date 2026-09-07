@@ -573,6 +573,11 @@ export interface RealMingSystemHarness {
     name: string,
     args: Record<string, unknown>,
   ): RealMingToolResult;
+  /** The provider-backed tools (calendar, scheduled reports) answer here. */
+  callRealMingToolAsync(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<RealMingToolResult>;
   listCalendarEvents(request: {
     readonly calendarId: string;
   }): Promise<ProviderReadResult<readonly CalendarEvent[]>>;
@@ -1176,6 +1181,37 @@ export function createRealMingSystemHarness(options: {
       close: () => links().close(),
     },
     now: () => (options.now ?? (() => new Date().toISOString()))(),
+    // Registered only where a calendar is actually configured, so an agent
+    // never holds a tool that can answer nothing.
+    ...(options.calendar === undefined
+      ? {}
+      : {
+          calendar: {
+            listEvents: async ({
+              calendarId,
+            }: {
+              readonly calendarId: string;
+            }) => {
+              const result = await calendarAdapter.listEvents(calendarId);
+              if (result.kind === "failed") {
+                return {
+                  kind: "unavailable" as const,
+                  reason: result.failure.message,
+                };
+              }
+              return {
+                kind: "ok" as const,
+                events: result.value.map((event) => ({
+                  title: event.title,
+                  start: event.start,
+                  end: event.end,
+                  allDay: event.allDay,
+                  status: event.status,
+                })),
+              };
+            },
+          },
+        }),
   });
   const deploymentCandidateStore = new SqliteDeploymentCandidateStore(
     deploymentCandidateStatePath(options.statePath),
@@ -2162,6 +2198,10 @@ export function createRealMingSystemHarness(options: {
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
     realMingTools: () => realMingTools.list(),
     callRealMingTool: (name, args) => realMingTools.call(name, args),
+    callRealMingToolAsync: async (name, args) =>
+      realMingTools.callAsync === undefined
+        ? realMingTools.call(name, args)
+        : realMingTools.callAsync(name, args),
     listCalendarEvents: ({ calendarId }) =>
       calendarAdapter.listEvents(calendarId),
     reconcileCalendarCommitment: (request) =>

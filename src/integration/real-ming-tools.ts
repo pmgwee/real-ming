@@ -26,11 +26,39 @@ export type RealMingToolResult =
 export interface RealMingTools {
   list(): readonly RealMingToolDefinition[];
   call(name: string, args: Record<string, unknown>): RealMingToolResult;
-  /** Optional asynchronous boundary used by the native cron composition tool. */
+  /** Optional asynchronous boundary used by the provider-backed tools. */
   callAsync?: (
     name: string,
     args: Record<string, unknown>,
   ) => Promise<RealMingToolResult>;
+}
+
+/** One calendar entry, reduced to what a briefing actually reads out. */
+export interface CalendarAgendaEntry {
+  readonly title: string;
+  readonly start: string;
+  readonly end: string;
+  readonly allDay: boolean;
+  readonly status: string;
+}
+
+export type CalendarAgendaResult =
+  | { readonly kind: "ok"; readonly events: readonly CalendarAgendaEntry[] }
+  | { readonly kind: "unavailable"; readonly reason: string };
+
+/**
+ * The narrow slice of calendar reading the extension needs.
+ *
+ * Deliberately not the provider adapter type: the extension states what it
+ * asks for and the composition root decides what satisfies it, so a controlled
+ * calendar and the real Google adapter are the same shape here.
+ */
+export interface CalendarAgendaClient {
+  listEvents(request: {
+    readonly calendarId: string;
+    readonly from?: string;
+    readonly to?: string;
+  }): Promise<CalendarAgendaResult>;
 }
 
 /**
@@ -111,8 +139,13 @@ export function createRealMingTools(options: {
   readonly now: () => string;
   /** Present only when native Hermes cron has been staged for this process. */
   readonly scheduledReports?: NativeCronReportClient;
+  /** Present only where an authorized calendar credential is configured. */
+  readonly calendar?: CalendarAgendaClient;
+  /** The calendar read when the caller names none. */
+  readonly defaultCalendarId?: string;
 }): RealMingTools {
   const scheduledReports = options.scheduledReports;
+  const calendar = options.calendar;
   const definitions: readonly RealMingToolDefinition[] = [
     {
       name: "real_ming_list_work_items",
@@ -191,6 +224,34 @@ export function createRealMingTools(options: {
             },
           } satisfies RealMingToolDefinition,
         ]),
+    ...(calendar === undefined
+      ? []
+      : [
+          {
+            name: "real_ming_list_calendar_events",
+            description:
+              "Read Ming's calendar for a time window. Use for questions about his schedule, availability or what is coming up. Returns only events the calendar actually holds; if the calendar cannot be reached this fails rather than reporting a clear day.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                calendarId: {
+                  type: "string",
+                  description:
+                    "Optional calendar to read. Defaults to Ming's configured calendar.",
+                },
+                from: {
+                  type: "string",
+                  description:
+                    "Optional ISO-8601 start of the window, inclusive.",
+                },
+                to: {
+                  type: "string",
+                  description: "Optional ISO-8601 end of the window, exclusive.",
+                },
+              },
+            },
+          } satisfies RealMingToolDefinition,
+        ]),
   ];
 
   const scheduledReportRequest = (
@@ -211,7 +272,47 @@ export function createRealMingTools(options: {
     };
   };
 
-  return {
+  const readCalendar = async (
+    args: Record<string, unknown>,
+  ): Promise<RealMingToolResult> => {
+    if (calendar === undefined) {
+      return {
+        kind: "failed",
+        reason: "No calendar is configured for this Real-Ming process.",
+      };
+    }
+    const calendarId =
+      requiredString(args, "calendarId") ?? options.defaultCalendarId;
+    if (calendarId === undefined) {
+      return {
+        kind: "failed",
+        reason:
+          "calendarId is required because no default calendar is configured.",
+      };
+    }
+    const from = requiredString(args, "from");
+    const to = requiredString(args, "to");
+    const result = await calendar.listEvents({
+      calendarId,
+      ...(from === undefined ? {} : { from }),
+      ...(to === undefined ? {} : { to }),
+    });
+    if (result.kind === "unavailable") {
+      // An empty agenda and an unreachable calendar are indistinguishable once
+      // reported as "no events", and the second one tells Ming his day is
+      // clear when nothing ever looked at it.
+      return {
+        kind: "failed",
+        reason: `The calendar could not be read: ${result.reason}`,
+      };
+    }
+    return {
+      kind: "ok",
+      value: { calendarId, events: result.events },
+    };
+  };
+
+  const tools: RealMingTools = {
     list: () => definitions,
     call(name, args) {
       switch (name) {
@@ -300,32 +401,49 @@ export function createRealMingTools(options: {
                 reason:
                   "This scheduled report tool requires the asynchronous MCP call path.",
               };
+        case "real_ming_list_calendar_events":
+          return calendar === undefined
+            ? {
+                kind: "failed",
+                reason: "No calendar is configured for this Real-Ming process.",
+              }
+            : {
+                kind: "failed",
+                reason:
+                  "Reading the calendar requires the asynchronous MCP call path.",
+              };
         default:
           return { kind: "failed", reason: `Unknown tool ${name}.` };
       }
     },
-    ...(scheduledReports === undefined
-      ? {}
-      : {
-          callAsync: async (name: string, args: Record<string, unknown>) => {
-            if (name !== "real_ming_run_scheduled_report") {
-              return createRealMingTools({
-                  workItems: options.workItems,
-                  workItem: options.workItem,
-                  links: options.links,
-                  now: options.now,
-                }).call(name, args);
-            }
-            const request = scheduledReportRequest(args);
-            if (request === undefined) {
-              return {
-                kind: "failed" as const,
-                reason:
-                  "job is required and must be morning-brief or executive-roll-up.",
-              };
-            }
-            return scheduledReports.run(request);
-          },
-        }),
+  };
+
+  if (scheduledReports === undefined && calendar === undefined) return tools;
+
+  return {
+    ...tools,
+    callAsync: async (name: string, args: Record<string, unknown>) => {
+      if (name === "real_ming_list_calendar_events") return readCalendar(args);
+      if (name !== "real_ming_run_scheduled_report") {
+        // Everything else is synchronous; route it back through the same
+        // implementation rather than a second copy that can drift.
+        return tools.call(name, args);
+      }
+      if (scheduledReports === undefined) {
+        return {
+          kind: "failed" as const,
+          reason: "Native Hermes cron report composition is not enabled.",
+        };
+      }
+      const request = scheduledReportRequest(args);
+      if (request === undefined) {
+        return {
+          kind: "failed" as const,
+          reason:
+            "job is required and must be morning-brief or executive-roll-up.",
+        };
+      }
+      return scheduledReports.run(request);
+    },
   };
 }
