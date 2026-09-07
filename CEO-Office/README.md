@@ -39,6 +39,10 @@ other. See the [deployment evidence](../docs/evidence/RM-40-v6-deployment-eviden
 
 **Milestone 8 — acceptance remains pending.** The matrix keeps phone/provider/CEO actions explicit. **Milestone 9 — backup and isolated restore are live-verified; restart/reconcile and closeout remain.** See [milestone 8 evidence](../docs/evidence/RM-40-v6-milestone-8-acceptance-evidence.md), [milestone 9 evidence](../docs/evidence/RM-40-v6-milestone-9-recovery-evidence.md) and the [deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md).
 
+**7 September — milestones 5, 6 and 7 done; 8 and 9 nearly.** Native cron owns your daily reports, the Obsidian vault works end to end, and the two dashboards were compared with no secret or reasoning crossing into Real-Ming. A full restart lost nothing and replayed nothing. Notion reads back exactly, with `Ready for CEO Review` preserved rather than collapsed into Done.
+
+**Five things stand between here and closing RM-40**, and four of them are yours: tonight's 21:30 roll-up landing on its own; the DuitSini coding tracer (blocked — no repo checkout or git credential on the host); your dashboard usefulness review; opening the vault in your Obsidian client; and a yes on the RM-40 issue criteria. Details in [Phase 4 CEO actions](phase-4-ceo-action.md) and [the live evidence](../docs/evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md).
+
 For future projects, use [the build-alignment lessons and reusable prompts](../docs/agents/LESSONS-LEARNED-build-alignment.md) with the installed `$build-alignment` skill.
 
 | | |
