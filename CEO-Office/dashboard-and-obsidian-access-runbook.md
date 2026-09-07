@@ -21,10 +21,19 @@ to keep. Part 2 also installs desktop software, which is yours to install.
 | Host reachable | `ping 100.110.253.35` | Confirm the VM is Running, not deallocated |
 | SSH key present | `ls ~/.ssh/real_ming_southeastasia_ed25519` | It is the key used for every deployment this milestone |
 
-One command proves all three:
+## 🐚 Which shell
 
-```bash
-ssh -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35 true && echo reachable
+**PowerShell** for everything except the Obsidian pull. That one needs **Git
+Bash** (or WSL), because it pipes binary between two `tar` processes and
+PowerShell 5.1 pipes objects rather than bytes — the archive arrives corrupted.
+
+PowerShell 5.1 also has no `&&`, so `a && b` is a parser error, not a silent
+failure. Where a command below needs two steps, they are written as two steps.
+
+One command proves all three prerequisites:
+
+```powershell
+ssh -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35 true; if ($?) { "reachable" }
 ```
 
 Expected output: `reachable`
@@ -38,7 +47,7 @@ Expected output: `reachable`
 Run this and **leave the window open**. It is the tunnel; closing it closes the
 dashboard.
 
-```bash
+```powershell
 ssh -N -L 9119:127.0.0.1:9119 -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35
 ```
 
@@ -147,16 +156,28 @@ is required for local vaults.
 
 ## Step 2 · Pull the vault to your laptop
 
-Run this in **Git Bash** or WSL (it pipes between two `tar` processes):
+**Git Bash, not PowerShell.** This pipes binary between two `tar` processes;
+PowerShell 5.1 pipes objects, so the archive arrives corrupted rather than
+failing outright — which is the worse outcome, because it looks like it worked.
 
 ```bash
-mkdir -p ~/Obsidian/real-ming && ssh -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35 'sudo tar cz -C /var/lib/hermes-real-ming/obsidian-vault .' | tar xz -C ~/Obsidian/real-ming
+mkdir -p ~/Obsidian/real-ming
 ```
 
-Verify:
+```bash
+ssh -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35 'sudo tar cz -C /var/lib/hermes-real-ming/obsidian-vault .' | tar xz -C ~/Obsidian/real-ming
+```
+
+Verify, still in Git Bash:
 
 ```bash
 ls -la ~/Obsidian/real-ming
+```
+
+Or in PowerShell, where `ls -la` is a parameter error:
+
+```powershell
+Get-ChildItem $HOME\Obsidian\real-ming
 ```
 
 Expected: `Native cron ownership.md`
@@ -204,7 +225,8 @@ decision, not a step — see the Decisions table in `README.md`.
 | Dashboard loads but panels stay empty | Page opened before the tunnel settled | Reload once |
 | Any hostname other than `localhost` / `127.0.0.1` fails | Deliberate: the app rejects other `Host` headers to block DNS-rebinding attacks | Use `127.0.0.1` |
 | `sudo: a terminal is required` on the vault pull | `sudo` wants a password prompt | The deployment key is configured for passwordless sudo; confirm you passed `-i` with the right key |
-| `tar: command not found` in PowerShell | Wrong shell | Use Git Bash or WSL |
+| `tar: command not found`, or a corrupted archive | Wrong shell for the vault pull | Use Git Bash or WSL; PowerShell cannot pipe binary between processes |
+| `The token '&&' is not a valid statement separator` | PowerShell 5.1 has no `&&` | Run the two commands separately, or use `; if ($?) { ... }` |
 | Kanban shows no board | Plugin disabled | Plugins → Kanban → Enable |
 
 # 📎 What this runbook does not cover
@@ -217,6 +239,6 @@ workaround for missing access control — it *is* the access control.
 Real-Ming's own dashboard is separate and equally loopback-only; the same
 pattern reaches it:
 
-```bash
+```powershell
 ssh -N -L 8787:127.0.0.1:8787 -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35
 ```
