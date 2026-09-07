@@ -18,12 +18,18 @@ nothing rather than a second copy. Full detail:
 tomorrow's 07:30 brief. Tell me if either arrives late, twice, or not at all.
 Rolling back is one variable and a restart.
 
-**Decision B — recorded, and the repository now agrees with you.** Memory write
-approval stays off. Two places in the codebase still said `write_approval: true`
-— the configuration fragment meant to be applied with `hermes config set`, and a
-build check asserting it. Applying that fragment would have silently reversed
-your decision on the next configuration pass. Both now say `false`, and the
-build fails if they drift back.
+**Decision B — withdrawn entirely, on your instruction.** Real-Ming no longer
+states any opinion about Hermes memory. Two places in the codebase had said
+`write_approval: true` — the configuration fragment meant to be applied with
+`hermes config set`, and a build check asserting it. Applying that fragment
+would have silently reversed your decision on the next configuration pass.
+
+I first corrected both to `false`, then removed the whole `memory:` block after
+finding it was worse than useless: the flag was **never set on the host at all**,
+and the two limits it carried (`memory_char_limit: 2200`, `user_char_limit:
+1375`) are Hermes's own shipped defaults. It restated defaults while adding a
+gate that could only cost quality. The build now fails if any memory opinion
+reappears in the Real-Ming fragment.
 
 **Milestone 6 is done except one thing only you can do.** A cited note was
 written to the native vault by the agent, retrieved from two separate sessions,
@@ -66,20 +72,17 @@ mid-afternoon, every day, with nothing visibly broken. Hermes reads its own
 `timezone` config key, not the host clock, and neither was set. Fixed and
 verified at `+08:00` before any job exists.
 
-### Decision B · Supervised Hermes memory writes
+### ~~Decision B · Supervised Hermes memory writes~~ — withdrawn
 
-`memory.write_approval` is currently `false`, so the agent writes to its memory
-without asking. Milestone 6 needs your policy, and I will not change it silently.
+**No longer a decision.** You instructed that no Real-Ming approval mechanism
+should touch Hermes memory, so the whole `memory:` block was removed from
+Real-Ming's configuration fragment rather than set either way.
 
-| Option | What it means |
-| --- | --- |
-| Leave `false` | Memory just works. Nothing interrupts you. The agent decides what is worth remembering |
-| Set `true` | Every memory write waits for your approval. Nothing is remembered you did not see — and an unattended cron run cannot write memory at all |
-
-**My recommendation: leave it `false`,** and revisit if you ever see it remember
-something wrong. Approval-gating memory tends to mean memory silently stops
-working, which is worse than an occasional bad note you can correct. Your
-Sensitive Secret exclusions do not depend on this setting.
+Memory is now purely a native Hermes concern: the dashboard reports Memory
+Provider `(built-in / default)`, active, using Hermes's own `MEMORY.md` and
+`USER.md`. If you ever want approval-gated memory, set it directly in Hermes —
+Real-Ming will not fight you for it, and no longer has an opinion to drift back
+to. Your Sensitive Secret exclusions never depended on this setting.
 
 ## ✅ CLEARED — and now one test only you can run · 6 September 2026
 
@@ -219,22 +222,14 @@ enabled until the cutover procedure reaches its explicit switch step.
 Engineering has prepared the native configuration and recovery wiring. Review
 the secret-free [configuration fragment](../hermes/config.native-first.example.yaml)
 and [milestone 6 evidence](../docs/evidence/RM-40-v6-milestone-6-native-memory-evidence.md).
-The live preflight confirms native memory and the user profile are enabled;
-`memory.write_approval` is still `false`, so no persistent memory write should
-be treated as accepted until you deliberately apply the setting below.
-The commands below change only Hermes' non-secret settings; run them as the
-`real-ming` service account on Malaysia after the current gateway is healthy:
+**No memory commands remain to run.** Native memory and the user profile are
+already enabled on the host with Hermes's own defaults, and Real-Ming states no
+opinion about any of it — see the withdrawn Decision B above. The limits that
+once appeared here (`memory_char_limit`, `user_char_limit`) are Hermes shipped
+defaults and were removed rather than restated.
 
-```bash
-hermes config set memory.memory_enabled true
-hermes config set memory.user_profile_enabled true
-hermes config set memory.memory_char_limit 2200
-hermes config set memory.user_char_limit 1375
-hermes config set memory.write_approval true
-hermes config check
-```
-
-Then confirm the native `obsidian` and `llm-wiki` skills, create one small
+What is left is observation, not configuration: confirm the native `obsidian`
+and `llm-wiki` skills, create one small
 source-cited note, retrieve it in a follow-up Telegram turn, restart Hermes and
 retrieve it again. The editable native vault is
 `/var/lib/hermes-real-ming/obsidian-vault`; the generated Real-Ming CEO
