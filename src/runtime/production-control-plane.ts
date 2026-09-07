@@ -1,5 +1,6 @@
 import type { RetentionBackupPurgeResult } from "../operations/retention-policy.js";
 import { createAzureKeyVaultReader } from "../providers/azure-key-vault-reader.js";
+import { createGmailAdapter } from "../providers/gmail-adapter.js";
 import {
   createEphemeralCalendarWriteLedger,
   createGoogleCalendarAdapter,
@@ -304,6 +305,53 @@ export async function createProductionControlPlane(options: {
   });
   const calendarId =
     optional(options.environment["REAL_MING_GOOGLE_CALENDAR_ID"]) ?? "primary";
+
+  /**
+   * One refresh token per mailbox, so a credential can only ever read the
+   * inbox it was minted for. A malformed map is refused rather than silently
+   * leaving the agent with no mailboxes and no explanation.
+   */
+  const mailRefreshTokens = ((): Readonly<Record<string, string>> => {
+    const raw = optional(options.environment["REAL_MING_MAIL_REFRESH_TOKENS"]);
+    if (raw === undefined || raw.trim() === "") return {};
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (typeof parsed !== "object" || parsed === null) {
+        throw new Error("not an object");
+      }
+      return parsed as Readonly<Record<string, string>>;
+    } catch {
+      throw new Error(
+        "REAL_MING_MAIL_REFRESH_TOKENS is not a JSON object of mailbox to refresh token.",
+      );
+    }
+  })();
+  const mailboxes = Object.keys(mailRefreshTokens);
+  const mailTokens = new Map(
+    mailboxes.map((mailbox) => [
+      mailbox,
+      createGoogleAccessTokens({
+        clientId: required("REAL_MING_GOOGLE_CLIENT_ID"),
+        clientSecret: required("REAL_MING_GOOGLE_CLIENT_SECRET"),
+        refreshToken: mailRefreshTokens[mailbox] ?? "",
+        fetch: request,
+        now: () => Date.parse(now()),
+      }),
+    ]),
+  );
+  const mailAdapterFor = async (mailbox: string) => {
+    const tokens = mailTokens.get(mailbox);
+    if (tokens === undefined) return undefined;
+    const token = await tokens.current();
+    if (token.kind === "failed") return undefined;
+    return createGmailAdapter({
+      accessToken: token.accessToken,
+      workspaceId: "workspace:real-ming",
+      mailbox,
+      fetch: request,
+      now,
+    });
+  };
   const deploymentCandidateStore = new SqliteDeploymentCandidateStore(
     deploymentCandidateStatePath(options.statePath),
   );
@@ -415,6 +463,79 @@ export async function createProductionControlPlane(options: {
           now,
         }).listEvents(calendarId, window);
       },
+      createCalendarEvent: async (event) => {
+        const token = await googleTokens.current();
+        if (token.kind === "failed") {
+          return {
+            kind: "failed",
+            failure: providerFailure(
+              token.reason === "refused"
+                ? "authentication-failed"
+                : "unavailable",
+              "Google Calendar authorization is unavailable.",
+            ),
+          };
+        }
+        return createGoogleCalendarAdapter({
+          accessToken: token.accessToken,
+          workspaceId: "workspace:real-ming",
+          accountReference: "google-calendar:real-ming",
+          writeLedger: createEphemeralCalendarWriteLedger(),
+          fetch: request,
+          now,
+        }).createEvent(event);
+      },
+      ...(mailboxes.length === 0
+        ? {}
+        : {
+            mailboxes,
+            searchMail: async (search: {
+              readonly mailbox: string;
+              readonly query?: string;
+              readonly limit?: number;
+            }) => {
+              const adapter = await mailAdapterFor(search.mailbox);
+              if (adapter === undefined) {
+                return {
+                  kind: "failed" as const,
+                  failure: providerFailure(
+                    "authentication-failed",
+                    `Authorization for ${search.mailbox} is unavailable.`,
+                  ),
+                };
+              }
+              return adapter.listMessages({
+                ...(search.query === undefined ? {} : { query: search.query }),
+                ...(search.limit === undefined ? {} : { limit: search.limit }),
+              });
+            },
+            draftMail: async (draft: {
+              readonly mailbox: string;
+              readonly to: readonly string[];
+              readonly subject: string;
+              readonly body: string;
+              readonly cc?: readonly string[];
+              readonly idempotencyKey: string;
+            }) => {
+              const adapter = await mailAdapterFor(draft.mailbox);
+              if (adapter === undefined) {
+                return {
+                  kind: "failed" as const,
+                  failure: providerFailure(
+                    "authentication-failed",
+                    `Authorization for ${draft.mailbox} is unavailable.`,
+                  ),
+                };
+              }
+              return adapter.createDraft({
+                to: draft.to,
+                subject: draft.subject,
+                body: draft.body,
+                ...(draft.cc === undefined ? {} : { cc: draft.cc }),
+                idempotencyKey: draft.idempotencyKey,
+              });
+            },
+          }),
       now,
       ...(productionKnowledgeOperations === undefined
         ? {}

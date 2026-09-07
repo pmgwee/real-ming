@@ -96,6 +96,7 @@ function main(): void {
             defaultCalendarId: calendarId,
             calendar: createBridgedCalendarClient({
               endpoint: `${bridged.endpoint}/internal/provider/calendar-events`,
+              createEndpoint: `${bridged.endpoint}/internal/provider/create-calendar-event`,
               apiKey: bridged.apiKey,
             }),
           }),
@@ -104,6 +105,7 @@ function main(): void {
         : {
             mail: createBridgedMailboxClient({
               endpoint: `${bridged.endpoint}/internal/provider/search-mail`,
+              draftEndpoint: `${bridged.endpoint}/internal/provider/draft-mail`,
               apiKey: bridged.apiKey,
               mailboxes,
             }),

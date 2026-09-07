@@ -1,6 +1,10 @@
 import type { RetentionBackupPurgeResult } from "../operations/retention-policy.js";
 import type { CalendarEvent, CalendarWindow } from "../providers/google-calendar-adapter.js";
-import type { ProviderReadResult } from "../providers/adapter-contract.js";
+import type {
+  ProviderReadResult,
+  ProviderWriteResult,
+} from "../providers/adapter-contract.js";
+import type { MailMessage } from "../providers/gmail-adapter.js";
 import {
   providerObservationFromRead,
   statusForFailure,
@@ -215,6 +219,32 @@ export async function createDailyOperationsControlPlane(options: {
   readonly listCalendarEvents: (
     window: CalendarWindow,
   ) => Promise<ProviderReadResult<readonly CalendarEvent[]>>;
+  /** Present only where the calendar credential may write. */
+  readonly createCalendarEvent?: (request: {
+    readonly calendarId: string;
+    readonly title: string;
+    readonly start: string;
+    readonly end: string;
+    readonly description?: string;
+    readonly location?: string;
+    readonly idempotencyKey: string;
+  }) => Promise<ProviderWriteResult>;
+  /** The mailboxes this process holds a credential for. */
+  readonly mailboxes?: readonly string[];
+  readonly searchMail?: (request: {
+    readonly mailbox: string;
+    readonly query?: string;
+    readonly limit?: number;
+  }) => Promise<ProviderReadResult<readonly MailMessage[]>>;
+  /** Writes a draft. There is no send anywhere in this chain. */
+  readonly draftMail?: (request: {
+    readonly mailbox: string;
+    readonly to: readonly string[];
+    readonly subject: string;
+    readonly body: string;
+    readonly cc?: readonly string[];
+    readonly idempotencyKey: string;
+  }) => Promise<ProviderWriteResult>;
   readonly now?: () => string;
   readonly wait?: () => Promise<void>;
   /** Optional scheduled Knowledge Compiler runtime backed by an encrypted vault. */
@@ -694,6 +724,95 @@ export async function createDailyOperationsControlPlane(options: {
           // the same read to the agent adds no second credential path.
           providerReads: {
             apiKey: options.nativeCronApiKey,
+            ...(options.createCalendarEvent === undefined
+              ? {}
+              : {
+                  createCalendarEvent: async (request: {
+                    readonly calendarId: string;
+                    readonly title: string;
+                    readonly start: string;
+                    readonly end: string;
+                    readonly description?: string;
+                    readonly location?: string;
+                    readonly idempotencyKey: string;
+                  }) => {
+                    const written = await options.createCalendarEvent?.(request);
+                    if (written === undefined || written.kind === "failed") {
+                      return {
+                        kind: "unavailable" as const,
+                        reason:
+                          written === undefined
+                            ? "Creating calendar events is not configured."
+                            : written.failure.message,
+                      };
+                    }
+                    return {
+                      kind: "ok" as const,
+                      reference: written.effectReference,
+                      deduplicated: written.deduplicated,
+                    };
+                  },
+                }),
+            ...(options.mailboxes === undefined ? {} : { mailboxes: options.mailboxes }),
+            ...(options.searchMail === undefined
+              ? {}
+              : {
+                  searchMail: async (request: {
+                    readonly mailbox: string;
+                    readonly query?: string;
+                    readonly limit?: number;
+                  }) => {
+                    const read = await options.searchMail?.(request);
+                    if (read === undefined || read.kind === "failed") {
+                      return {
+                        kind: "unavailable" as const,
+                        reason:
+                          read === undefined
+                            ? "That mailbox is not configured."
+                            : read.failure.message,
+                      };
+                    }
+                    return {
+                      kind: "ok" as const,
+                      messages: read.value.map((message) => ({
+                        from: message.from,
+                        subject: message.subject,
+                        snippet: message.snippet,
+                        receivedAt: message.receivedAt,
+                        unread: message.unread,
+                      })),
+                      retrievedAt: read.provenance.retrievedAt,
+                    };
+                  },
+                }),
+            ...(options.draftMail === undefined
+              ? {}
+              : {
+                  draftMail: async (request: {
+                    readonly mailbox: string;
+                    readonly to: readonly string[];
+                    readonly subject: string;
+                    readonly body: string;
+                    readonly cc?: readonly string[];
+                    readonly idempotencyKey: string;
+                  }) => {
+                    const written = await options.draftMail?.(request);
+                    if (written === undefined || written.kind === "failed") {
+                      return {
+                        kind: "unavailable" as const,
+                        reason:
+                          written === undefined
+                            ? "Drafting is not configured for that mailbox."
+                            : written.failure.message,
+                      };
+                    }
+                    return {
+                      kind: "ok" as const,
+                      reference: written.effectReference,
+                      deduplicated: written.deduplicated,
+                    };
+                  },
+                }),
             calendarEvents: async (request: {
               readonly from?: string;
               readonly to?: string;

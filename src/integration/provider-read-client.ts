@@ -5,6 +5,7 @@ import type {
   MailSearchResult,
   MailSummary,
   MailboxClient,
+  ProviderWriteOutcome,
 } from "./real-ming-tools.js";
 
 /**
@@ -93,10 +94,51 @@ async function post(
   }
 }
 
-export function createBridgedCalendarClient(
+/** Reads a write result the control plane returned, or says why it cannot. */
+async function postWrite(
   options: BridgeOptions,
+  body: Record<string, unknown>,
+): Promise<ProviderWriteOutcome> {
+  const result = await post(options, body);
+  if (!result.ok) return { kind: "unavailable", reason: result.reason };
+  if (!isRecord(result.body) || result.body["kind"] !== "ok") {
+    return {
+      kind: "unavailable",
+      reason:
+        isRecord(result.body) && typeof result.body["reason"] === "string"
+          ? result.body["reason"]
+          : "the control plane returned an unreadable result",
+    };
+  }
+  const reference = result.body["reference"];
+  if (typeof reference !== "string") {
+    // Without a reference there is nothing to point at later, and reporting
+    // success would claim an effect nobody can find.
+    return {
+      kind: "unavailable",
+      reason: "the control plane reported success without a reference",
+    };
+  }
+  return {
+    kind: "ok",
+    reference,
+    deduplicated: result.body["deduplicated"] === true,
+  };
+}
+
+export function createBridgedCalendarClient(
+  options: BridgeOptions & { readonly createEndpoint?: string },
 ): CalendarAgendaClient {
   return {
+    ...(options.createEndpoint === undefined
+      ? {}
+      : {
+          createEvent: (request) =>
+            postWrite(
+              { ...options, endpoint: options.createEndpoint as string },
+              { ...request },
+            ),
+        }),
     async listEvents(request): Promise<CalendarAgendaResult> {
       const result = await post(options, { ...request });
       if (!result.ok) return { kind: "unavailable", reason: result.reason };
@@ -118,21 +160,37 @@ export function createBridgedCalendarClient(
       }
       // A malformed entry is dropped rather than passed through half-empty,
       // which would render as an event with no title at a time of "".
+      const retrievedAt = isRecord(result.body)
+        ? result.body["retrievedAt"]
+        : undefined;
       return {
         kind: "ok",
         events: raw
           .map(calendarEntry)
           .filter((entry): entry is CalendarAgendaEntry => entry !== undefined),
+        ...(typeof retrievedAt === "string" ? { retrievedAt } : {}),
       };
     },
   };
 }
 
 export function createBridgedMailboxClient(
-  options: BridgeOptions & { readonly mailboxes: readonly string[] },
+  options: BridgeOptions & {
+    readonly mailboxes: readonly string[];
+    readonly draftEndpoint?: string;
+  },
 ): MailboxClient {
   return {
     mailboxes: options.mailboxes,
+    ...(options.draftEndpoint === undefined
+      ? {}
+      : {
+          draft: (request) =>
+            postWrite(
+              { ...options, endpoint: options.draftEndpoint as string },
+              { ...request },
+            ),
+        }),
     async search(request): Promise<MailSearchResult> {
       const result = await post(options, { ...request });
       if (!result.ok) return { kind: "unavailable", reason: result.reason };
@@ -152,11 +210,15 @@ export function createBridgedMailboxClient(
           reason: "the control plane returned an unreadable mailbox",
         };
       }
+      const retrievedAt = isRecord(result.body)
+        ? result.body["retrievedAt"]
+        : undefined;
       return {
         kind: "ok",
         messages: raw
           .map(mailSummary)
           .filter((entry): entry is MailSummary => entry !== undefined),
+        ...(typeof retrievedAt === "string" ? { retrievedAt } : {}),
       };
     },
   };
