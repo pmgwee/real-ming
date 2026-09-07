@@ -47,7 +47,13 @@ InaccessiblePaths=/home /root
 # enough: the path has to be admitted too, or `systemd-run --user --scope`
 # still cannot reach the user bus and every unattended cron run fails to
 # dispatch. The `-` prefix keeps startup working if lingering is ever off.
-ReadWritePaths=/var/lib/hermes-real-ming
+# The MCP extension opens the Real-Ming state database, which lives outside
+# this unit's StateDirectory. ProtectSystem=strict makes every other path
+# read-only inside the namespace, so without naming it here the extension dies
+# on startup with "attempt to write a readonly database" and the gateway
+# registers none of its tools -- while the same binary run outside systemd
+# works, which is exactly how this was missed.
+ReadWritePaths=/var/lib/hermes-real-ming /var/lib/real-ming
 # ProtectHome=true masks /home, /root AND /run/user -- which is exactly where
 # the user D-Bus that `systemd-run --user --scope` needs lives. ReadWritePaths
 # alone does not undo that masking, so the directory stays invisible inside the

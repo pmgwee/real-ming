@@ -113,6 +113,13 @@ export async function verifyControlPlaneDeployment(
       // Without this the native cron ticker fires on schedule and every
       // unattended run fails to dispatch, while manual runs keep working.
       ["cron-user-runtime-dir", "Environment=XDG_RUNTIME_DIR=/run/user/999"],
+      // The MCP extension opens the Real-Ming state database, which lives
+      // outside this unit's StateDirectory. ProtectSystem=strict makes every
+      // unnamed path read-only, so omitting it kills the extension on startup
+      // with "attempt to write a readonly database" and the gateway registers
+      // none of its tools -- while the same binary run outside systemd works,
+      // which is how a whole deployment was verified against the wrong process.
+      ["extension-state-writable", "ReadWritePaths=/var/lib/hermes-real-ming /var/lib/real-ming"],
       // Setting the variable is not enough: ProtectSystem=strict gives the unit
       // its own mount namespace where /run/user/999 does not exist.
       // ProtectHome=true masks /run/user, so an explicit bind is what actually
