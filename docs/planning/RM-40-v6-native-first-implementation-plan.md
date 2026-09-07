@@ -14,8 +14,8 @@ Prepared: 6 September 2026. Status: **implementation plan; live deployment evide
 | 5 · Add the missing task, schedule and action contracts | ✅ Complete, 7 Sep 2026. Native cron owns both reports; duplicate guard and restart no-replay live-verified. **The first successful unattended run fired at 21:30:27 on 7 Sep with status `ok`** (session `cron_03d42efb662a_20260907_213027`), discovering its own tool through `tool_search`. The held-notice sweep stays Real-Ming-owned by design, not by omission. Ming's phone review of the focus-first wording remains | [Extension evidence](../evidence/RM-40-v6-milestone-5-extension-evidence.md), [scheduler ownership evidence](../evidence/RM-40-v6-milestone-5-scheduler-ownership-evidence.md), [cron cutover evidence](../evidence/RM-40-v6-milestone-5-cron-cutover-2026-09-07.md) and [readability evidence](../evidence/RM-40-v6-daily-report-readability-2026-09-07.md) |
 | 6 · Native memory, Obsidian, cited knowledge | ✅ Live acceptance 7 Sep 2026: cited note written, retrieved from separate sessions and after a Hermes restart, backed up and restored byte-identical. **Only opening the vault in Ming's Obsidian client remains** | [Milestone 6 evidence](../evidence/RM-40-v6-milestone-6-native-memory-evidence.md) and [live acceptance](../evidence/RM-40-v6-milestone-6-live-acceptance-2026-09-07.md) |
 | 7 · Private dashboard and CEO outcomes | ✅ Comparison and leakage checks done 7 Sep 2026; `src/dashboard/` resolved as keep. **Only Ming's usefulness review remains** | [Dashboard comparison](../evidence/RM-40-v6-milestone-7-comparison-2026-09-07.md), [milestone 7 evidence](../evidence/RM-40-v6-milestone-7-dashboard-evidence.md) and [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
-| 8 · Complete acceptance scenarios | 🔄 Notion read-back and honest failure verified live 7 Sep 2026. **The coding loop is now unblocked**: the host has a git identity, a verified clone of a private repository and push access proven by dry run, so "no repo checkout or git credential" no longer applies. Two Windows-specific DuitSini test failures remain to resolve or accept, and Ming's acceptance of a full coding round trip is outstanding | [DuitSini/tracer evidence](../evidence/RM-40-v6-unattended-cron-and-duitsini-2026-09-07.md) and [live acceptance](../evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md) |
-| 9 · Recovery, readiness, closeout | 🔄 Restart/reconcile live-verified 7 Sep 2026 — nothing lost, nothing replayed; usage/cost/retention reviewed. The first unattended cron fire is done. **Closeout now waits only on Ming: the Obsidian client, the dashboard usefulness review, DuitSini acceptance, and a yes on the RM-40 (#41) criteria** | [Milestone 9 evidence](../evidence/RM-40-v6-milestone-9-recovery-evidence.md), [restart and reconcile](../evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md) and [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
+| 8 · Complete acceptance scenarios | ✅ Complete, 8 Sep 2026. Notion read-back and honest failure verified live 7 Sep. **The full coding round trip ran from one Telegram message** — clone, reproduce, failing test first, implement, green, typecheck, build, independent review, commit, push, pull request — producing [DuitSini#17](https://github.com/pmgwee/DuitSini/pull/17), verified against the GitHub API as 5 files, +68/−16, mergeable. The two Windows-specific failures were resolved by injecting the platform rather than weakening either assertion | [DuitSini/tracer evidence](../evidence/RM-40-v6-unattended-cron-and-duitsini-2026-09-07.md) and [live acceptance](../evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md) |
+| 9 · Recovery, readiness, closeout | 🔄 Restart/reconcile live-verified 7 Sep 2026 — nothing lost, nothing replayed; usage/cost/retention reviewed. The first unattended cron fire and the coding round trip are both done. **Closeout now waits only on Ming: the Obsidian client, the dashboard usefulness review, and a yes on the RM-40 (#41) criteria** | [Milestone 9 evidence](../evidence/RM-40-v6-milestone-9-recovery-evidence.md), [restart and reconcile](../evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md) and [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
 
 
 ## TL;DR
@@ -359,21 +359,24 @@ Do not ask Ming to repeat setup because a component was never implemented. Do no
 
 Keep one row per milestone with **designed / implemented / controlled-tested / production-wired / live-verified / user-accepted**, plus candidate revision, evidence links, owner and remaining action. At creation of this plan, its milestones are planned; existing historical evidence applies only to its stated scope.
 
-**Position as of 7 September 2026, end of day.** Milestones 0 through 7 are
-complete and live-verified. Milestone 5's first successful unattended cron run
-fired at 21:30 the same evening. Milestones 8 and 9 remain open.
-
-Nothing engineering-side blocks closeout except the two Windows-specific
-DuitSini test failures. Everything else outstanding is Ming's to do:
+**Position as of 8 September 2026.** Milestones 0 through 8 are complete and
+live-verified. Milestone 5's first successful unattended cron run fired at
+21:30 on 7 September; milestone 8's coding round trip ran from Telegram just
+after midnight on 8 September. Only milestone 9 remains open, and only on
+reviews:
 
 | Remaining | Owner | Milestone |
 | --- | --- | --- |
-| Resolve or accept two Windows-specific DuitSini test failures | Engineering | 8 |
-| Accept a full coding round trip now that git credentials are live | Ming | 8 |
 | Open the vault in an Obsidian client | Ming | 6 |
 | Review whether the private dashboard earns its keep | Ming | 7 |
 | Approve the five native-experience criteria on RM-40 (#41) and close it | Ming | 9 |
+| Merge or reject [DuitSini#17](https://github.com/pmgwee/DuitSini/pull/17) | Ming, not a milestone gate | 8 |
 | Install the chosen third-party skills | Ming, deferred by his decision | — |
+
+**Nothing remains on engineering.** Milestone 8 closed on 8 September when the
+coding round trip ran end to end from Telegram; the last engineering item, the
+two Windows-specific DuitSini failures, was resolved inside that same run. See
+[the coding round trip evidence](../evidence/RM-40-v6-milestone-8-coding-round-trip-2026-09-08.md).
 
 Two operational issues are known and reported rather than fixed: the Exa stdio
 server drops its keepalive and reconnects (nine failures on 7 Sep), and every
