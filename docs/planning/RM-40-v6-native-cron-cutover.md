@@ -10,9 +10,11 @@ the first live `hermes cron run` or any change to the protected service files.
   in `Asia/Kuala_Lumpur`.
 - Real-Ming retains the Morning Brief and Executive Roll-Up builders and their
   source semantics. It exposes one MCP operation,
-  `real_ming_run_scheduled_report`, which returns the exact text.
-- The native Telegram gateway delivers the final response. Real-Ming never
-  calls `sendMessage` for these reports.
+  `real_ming_run_scheduled_report`, which returns a bounded, replayable
+  evidence artifact.
+- Hermes uses that artifact to compose the final Telegram response in its own
+  voice. The native Telegram gateway delivers it; Real-Ming never calls
+  `sendMessage` for these reports.
 - The old in-process scheduler remains enabled until both native jobs exist and
   pass a deliberate run/restart check. This is the rollback guard.
 
@@ -107,9 +109,10 @@ hermes cron edit '<JOB_ID>' --schedule '30 7 * * *' \
 1. Keep `REAL_MING_SCHEDULER_OWNERSHIP=real-ming` and
    `REAL_MING_NATIVE_CRON_ENABLED=false` while staging.
 2. Trigger one job with `hermes cron run '<JOB_ID>'`. Verify the agent calls
-   the MCP operation once, the Telegram message contains the builder's
-   headings/spacing, and the Real-Ming scheduler row records the old owner (the
-   old scheduler is still the production owner at this point).
+   the MCP operation once, presents a concise focus-first Telegram message
+   (source warnings, decisions/blockers, bounded next steps and no backlog
+   dump), and the Real-Ming scheduler row records the old owner (the old
+   scheduler is still the production owner at this point).
 3. Stop and restart `hermes.service` once. Run `hermes cron runs '<JOB_ID>'`
    and `hermes cron doctor`; an already-completed attempt must not be rerun by
    the restart. Do not manually run the second job until the first check is

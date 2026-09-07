@@ -4,6 +4,11 @@ Executed 6 September 2026 in the repository. This is controlled engineering
 evidence; it is not evidence that Ming has completed the private-device review
 or that the native Hermes dashboard has been enabled on the Malaysia host.
 
+> **Historical boundary:** the native dashboard was subsequently enabled and
+> the two dashboards were compared privately on 7 September. Native cron also
+> has a later live ownership record. Use the [comparison evidence](RM-40-v6-milestone-7-comparison-2026-09-07.md)
+> for the current dashboard boundary and review status.
+
 ## What changed
 
 - The Real-Ming read model now exposes an optional, payload-free

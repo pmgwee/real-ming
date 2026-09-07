@@ -19,6 +19,10 @@ own [controlled evidence](RM-40-v6-milestone-5-scheduler-ownership-evidence.md).
 The Malaysia host still keeps the old owner until the CEO performs the live
 native-cron cutover; no production job was created by that change.
 
+> **Historical boundary:** the native cron cutover was performed on 7 September
+> after this extension evidence was captured. Current ownership and live
+> results are in [the cutover evidence](RM-40-v6-milestone-5-cron-cutover-2026-09-07.md).
+
 ## 1. What was built
 
 Three files, no new runtime dependency — the repository still has zero.

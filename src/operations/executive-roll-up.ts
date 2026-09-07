@@ -1,4 +1,10 @@
 import { createHash } from "node:crypto";
+import {
+  dailyReadyOptions,
+  digestBlocker,
+  digestSection,
+  readyOptionLabel,
+} from "./daily-digest.js";
 
 import type {
   Approval,
@@ -66,7 +72,13 @@ export interface ExecutiveRollUp {
   readonly outstandingRisks: readonly RollUpEntry[];
   readonly changesRequested: readonly RollUpEntry[];
   readonly pendingApprovals: readonly RollUpEntry[];
+  /** Backwards-compatible structured next-priority projection for dashboards. */
   readonly nextPriorities: readonly RollUpEntry[];
+  /** Bounded, ready-to-start subset used by the Telegram presentation. */
+  readonly readyOptions: readonly RollUpEntry[];
+  readonly readyForReview: readonly RollUpEntry[];
+  readonly backlogCount: number;
+  readonly unroutedCount: number;
   readonly schedulerExceptions: readonly SchedulerRollUpEntry[];
   readonly text: string;
 }
@@ -123,7 +135,22 @@ export function buildExecutiveRollUp(input: {
   const outstandingRisks: RollUpEntry[] = [];
   const changesRequested: RollUpEntry[] = [];
   const pendingApprovals: RollUpEntry[] = [];
-  const nextPriorities: RollUpEntry[] = [];
+  const readyOptions = dailyReadyOptions(input.workItems).map((item) =>
+    entry(item, readyOptionLabel(item), item.id),
+  );
+  // Keep the complete structured projection in source order for dashboard and
+  // API consumers. The presentation-only `readyOptions` list has its own
+  // bounded, date/priority ordering.
+  const nextPriorities = input.workItems
+    .filter((item) => openStates.includes(item.state))
+    .map((item) =>
+      entry(
+        item,
+        `${item.workstream ?? "unrouted"} — ${item.intent} (${item.state})`,
+        item.id,
+      ),
+    );
+  const readyForReview: RollUpEntry[] = [];
   const schedulerExceptions: SchedulerRollUpEntry[] = (input.scheduler ?? [])
     .filter(
       (job) =>
@@ -146,6 +173,16 @@ export function buildExecutiveRollUp(input: {
     const trail = input.auditTrail(workItem.id);
     const outcome = input.outcomeReport(workItem.id);
     const workstream = workItem.workstream ?? "unrouted";
+
+    if (workItem.state === "Ready for CEO Review") {
+      readyForReview.push(
+        entry(
+          workItem,
+          `${workItem.intent} — review the evidence; not completed until you accept`,
+          outcome?.id ?? workItem.id,
+        ),
+      );
+    }
 
     // Tonight's account, not every outcome the system has ever produced.
     if (
@@ -170,7 +207,11 @@ export function buildExecutiveRollUp(input: {
 
     for (const blocker of blockersFor(workItem, approvals, trail)) {
       outstandingRisks.push(
-        entry(workItem, `${workstream} — ${projectReason(blocker)}`, workItem.id),
+        entry(
+          workItem,
+          `${workstream} · ${workItem.intent} — ${projectReason(digestBlocker(blocker))}`,
+          workItem.id,
+        ),
       );
     }
 
@@ -184,15 +225,6 @@ export function buildExecutiveRollUp(input: {
       );
     }
 
-    if (openStates.includes(workItem.state)) {
-      nextPriorities.push(
-        entry(
-          workItem,
-          `${workstream} — ${workItem.intent} (${workItem.state})`,
-          workItem.id,
-        ),
-      );
-    }
   }
 
   const weekend = isWeekend(occurrence.occurrenceDate);
@@ -206,18 +238,31 @@ export function buildExecutiveRollUp(input: {
     changesRequested,
     pendingApprovals,
     nextPriorities,
+    readyOptions,
+    readyForReview,
+    backlogCount: input.workItems.filter(
+      (item) => item.state === "Captured" || item.state === "Triaged",
+    ).length,
+    unroutedCount: input.workItems.filter(
+      (item) =>
+        item.workstream === null &&
+        item.state !== "Completed" &&
+        item.state !== "Cancelled",
+    ).length,
     schedulerExceptions,
   };
   return { ...rollUp, text: renderExecutiveRollUp(rollUp) };
 }
 
-function section(title: string, entries: readonly RollUpEntry[]): string {
-  return entries.length === 0
-    ? `${title}: none.`
-    : [`${title}:`, ...entries.map((item) => `  - ${item.label}`)].join("\n");
-}
-
 function renderExecutiveRollUp(rollUp: Omit<ExecutiveRollUp, "text">): string {
+  const focus =
+    rollUp.pendingApprovals.length > 0
+      ? `Review ${rollUp.pendingApprovals.length} pending approval(s) before the affected work can proceed.`
+      : rollUp.readyForReview.length > 0
+        ? `${rollUp.readyForReview.length} item(s) need your outcome review.`
+        : rollUp.outstandingRisks.length > 0
+          ? `${rollUp.outstandingRisks.length} blocker(s) need clarification before the affected work can proceed.`
+          : "No approval or blocker is recorded; choose a ready option only if it fits your plans.";
   return [
     `Executive Roll-Up — ${rollUp.occurrenceDate} (${String(
       executiveRollUpHour,
@@ -225,24 +270,27 @@ function renderExecutiveRollUp(rollUp: Omit<ExecutiveRollUp, "text">): string {
       2,
       "0",
     )} ${operatingTimeZone})`,
-    `Consolidated by the ${rollUp.consolidatedBy}${
-      rollUp.weekend ? " · weekend rhythm" : ""
-    }`,
-    "",
-    section("Verified outcomes", rollUp.verifiedOutcomes),
-    section("Outstanding risks", rollUp.outstandingRisks),
-    section("Changes requested", rollUp.changesRequested),
-    section("Pending Approvals", rollUp.pendingApprovals),
-    section("Next priorities", rollUp.nextPriorities),
-    section(
-      "Scheduler exceptions",
+    `**Focus for tonight**\n${focus}${rollUp.weekend ? " Keep the weekend light." : ""}`,
+    rollUp.verifiedOutcomes.length === 0
+      ? "No verified outcomes recorded today. This does not mean you did no work."
+      : digestSection("Today's verified outcomes", rollUp.verifiedOutcomes),
+    digestSection("Decisions needed", rollUp.pendingApprovals),
+    digestSection("Ready for your review", rollUp.readyForReview),
+    digestSection("Blocked — clarify the next action", rollUp.outstandingRisks),
+    digestSection("Changes requested", rollUp.changesRequested),
+    rollUp.readyOptions.length === 0 ? "No ready, routed next steps are recorded."
+      : `${digestSection("Possible next steps", rollUp.readyOptions)}\nOptions, not new commitments. Ordered by confirmed date, recorded priority, then work in progress; ties are not a preference.`,
+    digestSection(
+      "Automation needs attention",
       rollUp.schedulerExceptions.map((entry) => ({
         workItemId: entry.job,
         label: entry.label,
         evidence: entry.evidence,
       })),
     ),
-  ].join("\n");
+    `${rollUp.backlogCount} backlog items held for later; ${rollUp.unroutedCount} open items need routing. Ask for details when useful.`,
+    "Based on recorded Work Items and outcomes; other activity may be missing.",
+  ].filter(Boolean).join("\n\n");
 }
 
 export interface ExecutiveRollUpResult {

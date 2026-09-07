@@ -203,7 +203,7 @@ export function createRealMingTools(options: {
           {
             name: "real_ming_run_scheduled_report",
             description:
-              "Compose one Real-Ming morning brief or executive roll-up for native Hermes cron. Return the exact text field as your final response so Hermes can deliver it through its native Telegram gateway. If delivery is skipped, return [SILENT]. Do not call Telegram tools or add a preamble.",
+              "Compose evidence for one Real-Ming morning brief or executive roll-up for native Hermes cron. Present the text as a concise briefing in your own voice, preserving source warnings, task names, approval/review distinctions and omitted counts. Never turn backlog into priorities or invent commitments or outcomes. If delivery is skipped, return [SILENT]. Do not call Telegram tools; the native gateway delivers your final answer.",
             inputSchema: {
               type: "object",
               properties: {

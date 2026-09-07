@@ -1,6 +1,6 @@
 # Phase 4 CEO actions
 
-> **Current next step · 7 September 2026:** Engineering follows [the V6 native-first implementation plan](../docs/planning/RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. Decision 1 is now executed: Malaysia West runs the V6 bundle, the supervised native dashboard is active privately, and backup/isolated-restore proof passed. The remaining CEO actions are native cron/memory decisions, dashboard comparison and user acceptance; no new login requirement has been established by the plan.
+> **Current next step · 7 September 2026:** Engineering follows [the V6 native-first implementation plan](../docs/planning/RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. Decision 1 is now executed: Malaysia West runs the V6 bundle, native cron owns the two daily reports, the supervised native dashboard is active privately, and backup/isolated-restore proof passed. Remaining CEO actions are the report readability deployment/review, dashboard usefulness review, Obsidian client review, the bounded DuitSini tracer decision and RM-40 issue acceptance; no new login requirement has been established by the plan.
 
 > **Live deployment record:** [RM-40 V6 deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md). The East Asia VM remains deallocated and undeleted for rollback. Do not paste any credential values into this file.
 
@@ -181,43 +181,39 @@ secret or Tailscale credential into Codex, Telegram, GitHub or this file.
 The complete technical sequence and rollback plan remain in
 [RM-40-phase4-activation-runbook.md](RM-40-phase4-activation-runbook.md).
 
-## 7. Native Hermes scheduled reports — pending CEO cutover
+## 7. Native Hermes scheduled reports — live; focus-first presentation staged
 
 The repository now separates report composition from scheduling and delivery.
 Real-Ming still composes the 07:30 Morning Brief and 21:30 Executive Roll-Up;
-native Hermes cron will trigger them and deliver the exact returned text through
-the already-connected native Telegram gateway. No live cron job has been
-created or run by the implementation work.
+native Hermes cron now owns both triggers and the already-connected native
+Telegram gateway delivers the final Hermes response. Real-Ming's
+`real_ming_run_scheduled_report` operation returns a bounded, replayable
+evidence artifact; Hermes presents that evidence in its own voice. The live
+job IDs and ownership proof are in the
+[cron cutover evidence](../docs/evidence/RM-40-v6-milestone-5-cron-cutover-2026-09-07.md).
 
-**Latest live preflight (6 September):** the native cron ticker is healthy but
-has zero jobs; the deployed `real-ming` MCP server still exposes three tools,
-not the staged scheduled-report tool; and the protected release files do not
-yet contain the native-cron flags. This is the expected safe staged state, not
-a failed Telegram gateway.
+The branch now contains a focus-first presentation refinement: one focus
+sentence, source-health warnings, decisions/blockers, at most three possible
+next steps and explicit omitted counts. It keeps the full structured lists for
+the dashboard while preventing a Telegram backlog dump. This refinement is
+controlled-tested but is not yet deployed to Malaysia West.
 
-Ming must perform the live cutover because it creates Telegram-delivering
-scheduled jobs and changes the production owner. Follow the engineering
-[native cron cutover procedure](../docs/planning/RM-40-v6-native-cron-cutover.md)
-after the new image is deployed. The procedure includes the read-only
-preflight, exact manifest, one-run/restart verification, ownership switch and
-rollback.
-
-Before switching ownership, confirm all of the following personally:
+Before deploying the refinement, confirm all of the following personally:
 
 - exactly two native jobs exist, in `Asia/Kuala_Lumpur`, addressed to the
   protected CEO Telegram destination;
 - each job calls the fourth `real-ming_run_scheduled_report` MCP operation and
-  returns the builder's readable text without a cron wrapper;
+  lets Hermes compose the final response without a cron wrapper;
 - one deliberate run per job appears in both Hermes history and the private
   dashboard, with no duplicate after a Hermes restart; and
-- only after that verification, the two protected ownership flags are changed
-  to `native-hermes-cron`/`true` and the services are restarted.
+- after deployment, one scheduled or deliberate run shows the focus-first
+  format on Ming's phone and still records the same source evidence.
 
 Do not paste the Telegram chat id, bridge key or any provider credential into
-this file, an issue, a prompt or the evidence bundle. Keep the old scheduler
-enabled until the cutover procedure reaches its explicit switch step.
+this file, an issue, a prompt or the evidence bundle. A new deployment is a
+separate outward-facing action; approve it before it is applied.
 
-## 8. Native Hermes memory and Obsidian acceptance — pending CEO checks
+## 8. Native Hermes memory and Obsidian acceptance — live; client review remains
 
 Engineering has prepared the native configuration and recovery wiring. Review
 the secret-free [configuration fragment](../hermes/config.native-first.example.yaml)
@@ -228,10 +224,9 @@ opinion about any of it — see the withdrawn Decision B above. The limits that
 once appeared here (`memory_char_limit`, `user_char_limit`) are Hermes shipped
 defaults and were removed rather than restated.
 
-What is left is observation, not configuration: confirm the native `obsidian`
-and `llm-wiki` skills, create one small
-source-cited note, retrieve it in a follow-up Telegram turn, restart Hermes and
-retrieve it again. The editable native vault is
+What remains is a client-side observation, not configuration: open the proven
+native `obsidian` vault from Ming's own Obsidian client. Note/recall/restart
+acceptance is already live-verified. The editable native vault is
 `/var/lib/hermes-real-ming/obsidian-vault`; the generated Real-Ming CEO
 projection remains `/var/lib/real-ming/obsidian`. Do not sync either directory
 to another device until its scope is reviewed.
@@ -240,8 +235,9 @@ Engineering has now run the protected backup and inspected the manifest for the
 whitelisted native Hermes state/profile files. The set was restored to an
 isolated container destination with providers, delivery and schedules
 disabled; no OAuth, auth, config, cache or log file belonged in the backup.
-Native note/recall and the deliberate memory-write approval are still required
-before milestone 6 can be marked accepted.
+Native note/recall and restart retrieval are live-verified; no Real-Ming
+memory-write approval is enabled. The only remaining CEO action for this
+milestone is the Obsidian client review.
 
 For the isolated restore, engineering provides an explicit guarded command
 after the backup ID is known (replace only the two paths; never paste a secret):

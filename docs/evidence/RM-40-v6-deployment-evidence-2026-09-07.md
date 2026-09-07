@@ -4,6 +4,11 @@ Prepared 7 September 2026 (Asia/Kuala_Lumpur) after the approved Decision 1
 deployment. This records production wiring and recovery checks; it does not
 turn the remaining CEO acceptance gates into completed milestones.
 
+> **Historical boundary:** this deployment snapshot predates the live native
+> cron cutover later on 7 September. Its “zero jobs” and pending acceptance
+> rows describe the deployment point only. Current scheduler ownership is
+> recorded in [the cron cutover evidence](RM-40-v6-milestone-5-cron-cutover-2026-09-07.md).
+
 ## Deployment identity
 
 - Host: `real-ming-control-plane-my` (Malaysia West), private Tailscale access

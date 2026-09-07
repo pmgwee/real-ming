@@ -7,13 +7,46 @@ uncommitted milestone 5–9 implementation/evidence; the last clean checkpoint
 had `npm run check` exit 0. Current direct gates are recorded in the newest
 milestone evidence files.
 
-The latest controlled regression after the recovery addition is **69 Vitest
-files, 814 passed and 2 intentionally skipped**, exit 0; typecheck, production
+The latest controlled regression after the recovery addition is **70 Vitest
+files, 820 passed and 2 intentionally skipped**, exit 0; typecheck, production
 build, deployment preflight, audit and diff checks also exited 0. No live
 provider, cron, Telegram-delivery or Obsidian action was performed by that
 regression.
 
-**Nothing is blocking. Continue at milestone 5's remainder.**
+## Current continuation update · 7 September 2026
+
+The snapshot below was written before the live cron cutover. The current branch
+is `codex/rm-40-readiness`; use `git rev-parse --short HEAD` for its current
+revision and use the implementation plan and newest evidence as the source of
+truth. Native Hermes cron now owns the two live jobs
+(`Real-Ming Morning Brief` at 07:30 and `Real-Ming Executive Roll-Up` at 21:30,
+`Asia/Kuala_Lumpur`). The native gateway remains the sole Telegram consumer and
+the deployed Real-Ming extension exposes the scheduled-report MCP operation.
+Duplicate suppression and restart no-replay are live-verified.
+
+Milestone 6 note/recall/restart and byte-identical backup/restore are accepted;
+only opening the proven vault in Ming's Obsidian client remains. Milestone 7
+dashboard comparison and leakage checks are accepted; Ming's usefulness review
+remains. Milestone 8 has live Notion read-back and honest failure; the public
+DuitSini tracer ran against a real checkout and left two Windows-specific tests
+failing honestly after a minimal fixture-loading fix. Milestone 9 restart/
+reconcile and recovery checks are live-verified; closeout still needs the
+remaining CEO reviews and the issue-criteria decision.
+
+The current branch also contains a controlled-tested focus-first report
+refinement. It keeps Real-Ming's complete structured evidence for dashboards,
+shows only useful sections and at most three ready options, and instructs
+Hermes to write the final Telegram message in its own voice. It is **not yet
+deployed** to Malaysia West. Deploying it is a new outward-facing action and
+requires CEO approval, followed by phone readability and no-duplicate checks.
+
+The historical 6 September snapshot and its “Do this next” section below are
+retained as traceability only; do not follow their zero-job or pending-memory
+statements. Continue from the current implementation plan, the cron cutover
+evidence and [daily report readability evidence](../evidence/RM-40-v6-daily-report-readability-2026-09-07.md).
+
+**Nothing is technically blocking. Continue with the staged report refinement
+and the remaining CEO acceptance actions listed in the current update.**
 
 ## Deployment update · 7 September 2026
 
@@ -29,8 +62,7 @@ passed; see [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-
 The first backup attempt exposed and then corrected a Windows CRLF packaging
 defect. Use `git -c core.autocrlf=false archive` for future Linux deployment
 archives; commit `2c708f4` adds the repository line-ending guard. Native cron
-still has zero jobs and memory write approval is still disabled; neither was
-changed by this deployment.
+now owns the two daily report jobs; memory write approval remains disabled.
 
 ## Read these first, in this order
 
@@ -66,11 +98,11 @@ Read the one for the milestone you are continuing.
 | 2 · Reversible one-owner migration | ✅ Complete |
 | 3 · Activate native Telegram | ✅ Transport live and core phone matrix user-observed accepted; staged progress, attachment handling and semantic recall are recorded |
 | 4 · Roles and sources | ✅ Notion + Calendar. **GitHub/Vercel have no credential** |
-| 5 · Task, schedule and action contracts | 🔄 **Extension live; scheduler composition implemented; live cron cutover pending** |
-| 6 · Native memory, Obsidian, cited knowledge | 🔄 Native config/vault foundation and backup wiring implemented; live note/recall/restore acceptance pending |
-| 7 · Private dashboard and CEO outcomes | 🔄 Native Hermes dashboard live-observed privately; authenticated Real-Ming comparison and CEO outcomes review pending |
-| 8 · Complete acceptance scenarios | 🔄 Acceptance matrix and controlled regression assembled; live/user acceptance pending |
-| 9 · Recovery, readiness, close the milestone | 🔄 Manifest-verified isolated restore and native-state backup coverage controlled-tested; live restore/restart and closeout pending |
+| 5 · Task, schedule and action contracts | ✅ Native cron owns both reports; duplicate guard and restart no-replay live-verified; first unattended success and report readability review remain |
+| 6 · Native memory, Obsidian, cited knowledge | ✅ Note/recall/restart and byte-identical restore live-verified; Obsidian client review remains |
+| 7 · Private dashboard and CEO outcomes | ✅ Comparison and leakage checks live-verified; CEO usefulness review remains |
+| 8 · Complete acceptance scenarios | 🔄 Notion read-back and honest failure live-verified; DuitSini tracer leaves two Windows-specific failures to resolve or accept |
+| 9 · Recovery, readiness, close the milestone | 🔄 Restart/reconcile and recovery live-verified; final reviews and closeout remain |
 
 ### Live system
 
@@ -84,15 +116,14 @@ Read the one for the milestone you are continuing.
   **do not re-login.**
 - Real-Ming runs image `real-ming:v6-23bd903` with
   `REAL_MING_TELEGRAM_OWNERSHIP=native-hermes-gateway`; it polls nothing.
-- The Real-Ming extension is registered as MCP server `real-ming` (3 tools,
+- The Real-Ming extension is registered as MCP server `real-ming` (4 tools,
   enabled) from `/opt/real-ming-extension`.
-- A read-only service-account check on 7 September found the native cron
-  ticker healthy but **zero scheduled jobs**, and the protected release files
-  do not yet contain the native-cron ownership/enablement flags. The fourth
-  scheduled-report tool is therefore not exposed on the deployed image; the
-  repository manifest and bridge are staged for a deliberate cutover.
-- Native memory and the user profile are enabled, but `memory.write_approval`
-  remains `false` pending Ming's live policy acceptance. The native state
+- Native cron is healthy with exactly two enabled jobs at 07:30 and 21:30
+  `Asia/Kuala_Lumpur`, owned by `native-hermes-cron`; duplicate suppression and
+  restart no-replay are live-verified. The current report readability bundle
+  is staged in the repository but not deployed.
+- Native memory and the user profile are enabled, and `memory.write_approval`
+  remains disabled. The native state
   directory contains `state.db`, Kanban, cron executions, response/evidence/
   idempotency/project stores, `sessions/sessions.json` and `memories/USER.md`;
   the new backup helper whitelists and checkpoints these without copying
@@ -109,7 +140,14 @@ Read the one for the milestone you are continuing.
 - Post-deploy backup generation `2026-09-06T16-48-52.608Z`; the East Asia VM is
   still retained deallocated for rollback.
 
-## Do this next
+## Historical “Do this next” sequence — retained for traceability
+
+The detailed sequence below describes the pre-cutover 6 September checkpoint.
+Do not follow its zero-job or pending-memory instructions. For the current
+next action, deploy the controlled-tested report refinement only after CEO
+approval, then verify the two native cron messages on Ming's phone. Continue
+with the Obsidian/dashboard reviews and the remaining acceptance rows in the
+current implementation-plan table.
 
 ### 1. Finish milestone 5 — scheduler ownership
 

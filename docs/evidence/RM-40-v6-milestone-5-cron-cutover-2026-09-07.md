@@ -37,6 +37,11 @@ returned **skipped** and the agent replied `[SILENT]` — no second brief.
 The roll-up had *not* yet run today, so the same deliberate run composed and
 delivered a real report:
 
+The sample below is the cutover-time builder output, retained as historical
+evidence. It predates the focus-first readability refinement; see [the
+refinement evidence](RM-40-v6-daily-report-readability-2026-09-07.md) for the
+current presentation contract and its controlled tests.
+
 ```
 Executive Roll-Up — 2026-09-07 (21:30 Asia/Kuala_Lumpur)
 Consolidated by the COO
@@ -151,3 +156,13 @@ its own slice of work and is not done.
 - The old Real-Ming scheduler remains installed as the rollback. Reverting is
   `REAL_MING_SCHEDULER_OWNERSHIP=real-ming` plus a restart; the native jobs
   would then need disabling to avoid two owners.
+
+## Later same-day update
+
+The unattended probe subsequently fired and exposed two separate runtime
+conditions: the first attempt could not create a restart-safe systemd scope;
+after that dispatch fix, the worker reached the model and received a temporary
+Codex subscription `429`. This proves the unattended dispatch path, but not a
+successful unattended report. The [unattended cron evidence](RM-40-v6-unattended-cron-and-duitsini-2026-09-07.md)
+and the [readability evidence](RM-40-v6-daily-report-readability-2026-09-07.md)
+carry the current follow-up state.

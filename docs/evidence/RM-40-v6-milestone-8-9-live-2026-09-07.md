@@ -4,6 +4,11 @@ Executed 7 September 2026, 03:31–03:40 UTC (11:31–11:40 KL) on
 `real-ming-control-plane-my`. Read-only against providers; one deliberate full
 service restart.
 
+> **Historical boundary:** this capture predates the later same-day native
+> capability expansion and DuitSini tracer run. Its checkout/credential blocker
+> is retained as evidence of that checkpoint; see [the later tracer evidence](RM-40-v6-unattended-cron-and-duitsini-2026-09-07.md)
+> for the updated state.
+
 ## TL;DR
 
 Notion reads back **exactly**, honest-failure behaviour holds live, and a full

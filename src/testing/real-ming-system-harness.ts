@@ -42,6 +42,7 @@ import type {
   OutcomeReport,
   GrantApprovalRequest,
   GrantStandingAuthorityRequest,
+  ImportMigratedWorkItemRequest,
   PolicyDecision,
   QuestionResponder,
   RecordWorkItemCommitmentRequest,
@@ -720,6 +721,7 @@ export interface RealMingSystemHarness {
   submitCeoCommand(command: CeoCommand): Promise<CeoCommandResult>;
   submitCeoAction(action: NormalizedCeoAction): Promise<OperationsResult>;
   executeWorkItem(workItemId: string): Promise<OperationsResult>;
+  importMigratedWorkItem(request: ImportMigratedWorkItemRequest): Promise<WorkItem>;
   reworkWorkItem(workItemId: string): Promise<OperationsResult>;
   stageWorkItemForApproval(workItemId: string): Promise<WorkItem>;
   requestAction(action: RequestedAction): Promise<PolicyDecision>;
@@ -2220,6 +2222,7 @@ export function createRealMingSystemHarness(options: {
     submitCeoCommand: (command) => gateway.submitCeoCommand(command),
     submitCeoAction: (action) => gateway.submitCeoAction(action),
     executeWorkItem: (workItemId) => gateway.executeWorkItem(workItemId),
+    importMigratedWorkItem: (request) => gateway.importMigratedWorkItem(request),
     reworkWorkItem: (workItemId) => gateway.reworkWorkItem(workItemId),
     stageWorkItemForApproval: (workItemId) =>
       gateway.stageWorkItemForApproval(workItemId),

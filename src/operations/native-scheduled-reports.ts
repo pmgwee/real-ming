@@ -71,7 +71,9 @@ function definitionFor(job: NativeScheduledReportJob) {
  * The native cron adapter is deliberately a composition boundary, not a
  * Telegram client. It claims the same durable occurrence ledger as the old
  * scheduler, composes through the existing domain builders, and returns the
- * exact text for Hermes to deliver through its own gateway.
+ * replayable evidence text for Hermes to present through its own gateway.
+ * The digest covers that source artifact; native session history holds the
+ * final prose. Neither this ledger nor composition success proves delivery.
  */
 export function createNativeScheduledReportService(options: {
   readonly state: OperationsState;

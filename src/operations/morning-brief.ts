@@ -1,4 +1,10 @@
 import type { Approval, AuditEvent, WorkItem } from "./contracts.js";
+import {
+  dailyReadyOptions,
+  digestBlocker,
+  digestSection,
+  readyOptionLabel,
+} from "./daily-digest.js";
 import type { OperationsState } from "./operations-state.js";
 import {
   blockersFor,
@@ -89,6 +95,8 @@ export interface MorningBrief {
   readonly incidents: readonly BriefEntry[];
   readonly conflicts: readonly BriefEntry[];
   readonly proposedCommitments: readonly BriefEntry[];
+  readonly readyOptions: readonly BriefEntry[];
+  readonly workItemCount: number;
   readonly text: string;
 }
 
@@ -256,8 +264,9 @@ export function buildMorningBrief(input: {
       overdueOrBlocked.push(
         entry(
           workItem,
-          [overdue, ...blockers].filter(Boolean).join("; ") +
-            ` — ${workItem.intent}`,
+          `${workItem.intent} — ${[overdue, ...blockers.map(digestBlocker)]
+            .filter(Boolean)
+            .join("; ")}`,
           reference,
         ),
       );
@@ -333,6 +342,10 @@ export function buildMorningBrief(input: {
     incidents,
     conflicts,
     proposedCommitments,
+    readyOptions: dailyReadyOptions(input.workItems).map((item) =>
+      entry(item, readyOptionLabel(item), item.id),
+    ),
+    workItemCount: input.workItems.length,
   };
   return { ...brief, text: renderMorningBrief(brief) };
 }
@@ -356,12 +369,12 @@ function section(
     unknownBecause === undefined
       ? `${title}:`
       : `${title} (incomplete — ${unknownBecause}):`;
-  return [heading, ...entries.map((item) => `  - ${item.label}`)].join("\n");
+  return digestSection(heading.replace(/:$/u, ""), entries);
 }
 
 function renderMorningBrief(brief: Omit<MorningBrief, "text">): string {
   const degraded = brief.sources.filter(
-    (source) => source.health !== "current",
+    (source) => source.health === "stale" || source.health === "unavailable",
   );
   const calendar = brief.sources.find(
     (source) => source.source === "google-calendar",
@@ -376,22 +389,35 @@ function renderMorningBrief(brief: Omit<MorningBrief, "text">): string {
         : undefined;
   return [
     `Morning Brief — ${brief.occurrenceDate} (07:30 ${morningBriefTimeZone})`,
-    "",
+    `**Focus for today**\n${calendarUnread !== undefined
+      ? "Check Google Calendar directly before committing your day; the schedule and conflicts are not verified."
+      : brief.pendingApprovals.length > 0
+        ? `Review ${brief.pendingApprovals.length} pending approval(s) to unblock the affected work.`
+        : brief.overdueOrBlocked.length > 0
+          ? `Clarify the next action for ${brief.overdueOrBlocked.length} overdue or blocked item(s).`
+          : "Start with confirmed commitments, then choose a ready option if time allows."}`,
     // Degraded sources lead. A brief that buries them reads like a clear day.
     ...(degraded.length === 0
       ? []
       : [
-          "Source health:",
-          ...degraded.map((source) => `  - ${source.detail}`),
-          "",
+          digestSection(
+            "Source health:",
+            degraded.map((source) => ({ label: source.detail })),
+          ),
         ]),
     section("Scheduled today", brief.scheduledCommitments, calendarUnread),
-    section("Overdue or blocked", brief.overdueOrBlocked),
-    section("Pending Approvals", brief.pendingApprovals),
-    section("Incidents", brief.incidents),
-    section("Conflicts", brief.conflicts, calendarUnread),
-    section("Proposed Commitments (not confirmed)", brief.proposedCommitments),
-  ].join("\n");
+    digestSection("Decisions needed", brief.pendingApprovals),
+    digestSection("Overdue or blocked — next action", brief.overdueOrBlocked),
+    digestSection("Incidents to check", brief.incidents),
+    brief.conflicts.length > 0 || calendarUnread !== undefined
+      ? section("Conflicts", brief.conflicts, calendarUnread)
+      : "",
+    brief.readyOptions.length === 0
+      ? ""
+      : `${digestSection("Possible next steps", brief.readyOptions)}\nOptions, not new commitments. Ordered by confirmed date, recorded priority, then work in progress; ties are not a preference.`,
+    digestSection("Proposed commitments — not confirmed", brief.proposedCommitments),
+    `${brief.workItemCount} Work Items checked in the local record; this does not verify a fresh Notion sync.${calendar?.health === "empty" ? ` Google Calendar holds no events for ${brief.occurrenceDate}.` : ""}`,
+  ].filter(Boolean).join("\n\n");
 }
 
 export interface MorningBriefResult {
