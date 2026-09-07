@@ -49,6 +49,8 @@ other. See the [deployment evidence](../docs/evidence/RM-40-v6-deployment-eviden
 
 **One capability is missing, and you were right about the fix.** Hermes ships an official Notion MCP connector — OAuth, no stored credential, no Real-Ming code. Installing it is one command plus one browser authorization from you; it is in the Decisions table.
 
+**7 September, later — the agent went from 4 tools to 166, and the DuitSini blocker is gone.** Eight MCP servers are installed and authorized on the Malaysia host: GitHub (47), Notion (42), Vercel (37), Supabase (29), Real-Ming (4), Deepwiki (3), Exa (2), Context7 (2). More importantly, the agent now has a working git identity — clone verified against a private repo, push access verified by dry run without writing. That closes milestone 8's *"no repo checkout or git credential on the host."* Two of your decisions are recorded in the [capability expansion evidence](../docs/evidence/RM-40-native-capability-expansion-2026-09-07.md): installing untrimmed, and scoping the token to all repositories. **None of it reaches your Telegram bot until the gateway restarts,** which is being held until the Google Calendar/Gmail work lands so the bot drops once instead of twice.
+
 For future projects, use [the build-alignment lessons and reusable prompts](../docs/agents/LESSONS-LEARNED-build-alignment.md) with the installed `$build-alignment` skill.
 
 | | |
