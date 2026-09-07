@@ -58,7 +58,11 @@ install_hermes() {
   else
     useradd --system --create-home --home-dir "${hermes_home}" real-ming
   fi
-  install -d -o real-ming -g real-ming -m 0700 "${hermes_home}" "${hermes_obsidian_vault}"
+  install -d -o real-ming -g real-ming -m 0700 "${hermes_home}"
+  # Native cron dispatches runs into `systemd-run --user --scope`, which needs a
+  # persistent user manager. Without lingering the scheduler fires and every
+  # unattended run fails to dispatch.
+  loginctl enable-linger real-ming || true "${hermes_obsidian_vault}"
 
   if [[ ! -x "${hermes_install_directory}/venv/bin/hermes" ]]; then
     if [[ -e "${hermes_install_directory}" && ! -d "${hermes_install_directory}/.git" ]]; then

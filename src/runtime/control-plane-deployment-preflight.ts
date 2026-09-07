@@ -110,6 +110,17 @@ export async function verifyControlPlaneDeployment(
       ["api-key-file", "EnvironmentFile=/etc/real-ming/hermes.env"],
       ["restart-policy", "Restart=always"],
       ["unprivileged", "User=real-ming"],
+      // Without this the native cron ticker fires on schedule and every
+      // unattended run fails to dispatch, while manual runs keep working.
+      ["cron-user-runtime-dir", "Environment=XDG_RUNTIME_DIR=/run/user/999"],
+      // Setting the variable is not enough: ProtectSystem=strict gives the unit
+      // its own mount namespace where /run/user/999 does not exist.
+      // ProtectHome=true masks /run/user, so an explicit bind is what actually
+      // admits the user D-Bus into the namespace.
+      // ProtectHome=true would mask /run/user and silently break unattended
+      // cron dispatch; /home and /root are blocked explicitly instead.
+      ["cron-user-runtime-path", "BindPaths=/run/user/999"],
+      ["home-blocked-without-masking-the-bus", "InaccessiblePaths=/home /root"],
     ],
     failures,
   );
