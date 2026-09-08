@@ -1,6 +1,6 @@
 ---
 name: knowledge-consolidation
-description: Use only for the bounded native-cron knowledge consolidation job. Read deliberately selected decisions, corrections and project/research artifacts, verify support and freshness, and stage generated wiki pages without changing native memory or ordinary Hermes chat.
+description: Use when the bounded native-cron knowledge consolidation job runs. Read deliberately selected decisions, corrections and project/research artifacts, verify support and freshness, and stage generated wiki pages without changing native memory or ordinary Hermes chat.
 version: 1.0.0
 author: Real-Ming
 license: MIT

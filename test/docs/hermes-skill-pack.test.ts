@@ -8,7 +8,12 @@ const packRoot = `${repositoryRoot}hermes/`;
 const skillRoot = `${packRoot}skills/ming/`;
 
 const rolePlaybooks = ["coo", "cto", "personal-cfo", "cao", "cmo"] as const;
-const everySkill = ["real-ming", ...rolePlaybooks] as const;
+const everySkill = [
+  "real-ming",
+  "knowledge-capture",
+  "knowledge-consolidation",
+  ...rolePlaybooks,
+] as const;
 
 function skillFile(name: string): string {
   return readFileSync(`${skillRoot}${name}/SKILL.md`, "utf8");
