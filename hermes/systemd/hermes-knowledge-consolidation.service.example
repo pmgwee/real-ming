@@ -1,0 +1,20 @@
+[Unit]
+Description=Real-Ming native knowledge consolidation (inactive example)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=hermes-real-ming-knowledge
+Group=hermes-real-ming-knowledge
+WorkingDirectory=/var/lib/hermes-real-ming/knowledge-job
+EnvironmentFile=/etc/hermes-real-ming/knowledge.env
+ExecStart=/opt/real-ming/hermes/scripts/run-native-knowledge-consolidation.py --controlled
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/lib/hermes-real-ming/knowledge-job /var/lib/hermes-real-ming/obsidian-vault/.real-ming/staging /var/lib/hermes-real-ming/obsidian-vault/.real-ming/generated
+InaccessiblePaths=/var/lib/hermes/.hermes/memories /var/lib/hermes/.hermes/config.yaml /var/lib/hermes/.hermes/auth.json
+
+# This file is an inactive review artifact. Do not install or enable it as
+# part of Tasks 0-8; activation is a separate CEO-approved live step.

@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 const testDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(testDirectory, "../..");
 const probe = join(repositoryRoot, "hermes", "scripts", "verify-native-knowledge-isolation.py");
+const wrapper = join(repositoryRoot, "hermes", "scripts", "run-native-knowledge-consolidation.py");
 const hermesPython = join(
   process.env.LOCALAPPDATA ?? "",
   "hermes",
@@ -96,5 +97,38 @@ describe("native Hermes knowledge-job isolation hard gate", () => {
     expect(status).toBe(78);
     expect(result.eligible).toBe(false);
     expect(result.reason).toEqual(expect.any(String));
+  });
+
+  it("keeps the proposed wrapper inactive unless controlled flags and a named auth profile are explicit", () => {
+    expect(existsSync(wrapper)).toBe(true);
+    const child = spawnSync(
+      python,
+      [wrapper, "--controlled"],
+      {
+        cwd: repositoryRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HERMES_HOME: join(repositoryRoot, ".tmp", "task6-wrapper-hermes-home"),
+          HERMES_SKIP_MEMORY: "1",
+          HERMES_MCP_TOOLS: [
+            "real_ming_knowledge_list_candidates",
+            "real_ming_read_knowledge_source",
+            "real_ming_stage_knowledge_generation",
+            "real_ming_wiki_retrieve",
+          ].join(","),
+          HERMES_KNOWLEDGE_AUTH_PROFILE: "controlled-profile-name",
+          REAL_MING_NETWORK_DISABLED: "1",
+          REAL_MING_NO_CREDENTIALS: "1",
+        },
+      },
+    );
+    expect(child.error).toBeUndefined();
+    expect(child.status).toBe(0);
+    expect(JSON.parse(String(child.stdout))).toMatchObject({
+      eligible: true,
+      mode: "controlled",
+      commit: "561b053f794a1781868bb032029d589c67708119",
+    });
   });
 });
