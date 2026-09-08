@@ -17,7 +17,7 @@ to keep. Part 2 also installs desktop software, which is yours to install.
 
 | Need | Check | Fix |
 | --- | --- | --- |
-| Tailscale up on the laptop | `tailscale status` lists `real-ming-control-plane-my` | Sign in to Tailscale |
+| Tailscale up on the laptop | `tailscale status` lists `real-ming-malaysia` | Sign in to Tailscale |
 | Host reachable | `ping 100.110.253.35` | Confirm the VM is Running, not deallocated |
 | SSH key present | `ls ~/.ssh/real_ming_southeastasia_ed25519` | It is the key used for every deployment this milestone |
 
@@ -53,6 +53,44 @@ ssh -N -L 9119:127.0.0.1:9119 -i ~/.ssh/real_ming_southeastasia_ed25519 azureuse
 
 It prints nothing at all. That is correct — `-N` means "open the tunnel, run no
 command". Silence is success.
+
+## Step 1b · Make it one command (do this once)
+
+You have no `~/.ssh/config` today, so this creates one rather than editing it.
+
+```powershell
+notepad $HOME\.ssh\config
+```
+
+Paste this in and save:
+
+```
+Host ming-dash
+    HostName 100.110.253.35
+    User azureuser
+    IdentityFile ~/.ssh/real_ming_southeastasia_ed25519
+    LocalForward 9119 127.0.0.1:9119
+```
+
+From then on, Step 1 is the whole command:
+
+```powershell
+ssh -N ming-dash
+```
+
+Verified working on 8 September 2026.
+
+If you would rather double-click, save this on the Desktop as
+`Ming Dashboard.cmd`:
+
+```
+@echo off
+start "" ssh -N ming-dash
+timeout /t 3 >nul
+start "" http://127.0.0.1:9119
+```
+
+Closing the SSH window still closes the tunnel. That has not changed.
 
 ## Step 2 · Open the browser
 
@@ -215,6 +253,83 @@ decision, not a step — see the Decisions table in `README.md`.
 
 ---
 
+# 📱 Part 3 — From your phone
+
+**Yes, but through the same kind of tunnel — and there is no way around that.**
+
+The dashboard answers only to `127.0.0.1:9119` and `localhost:9119`. Every other
+`Host` header, including the Tailscale name and the Tailscale IP, gets an HTTP
+400. Measured against the running host on 8 September 2026:
+
+| `Host` header sent | Response |
+| --- | --- |
+| `127.0.0.1:9119` | 200 |
+| `localhost:9119` | 200 |
+| `real-ming-malaysia` | 400 |
+| `real-ming-malaysia.tail54f32e.ts.net` | 400 |
+| `100.110.253.35:9119` | 400 |
+
+That is deliberate, and it is the same protection described in Part 1 Step 3.
+The dashboard's entire authentication is *"you reached me over loopback"* — it
+mints a token and injects it into the page. If it also trusted a hostname, any
+web page you visited could point that name at your own loopback and read the
+token. Hermes says so in its own help text: *"Bind 127.0.0.1 + tunnel to keep
+it local."*
+
+## What works today, with no change to the server
+
+Two apps on the phone:
+
+1. **Tailscale** — sign in with the same account. The phone joins the tailnet
+   and can reach `100.110.253.35`, exactly as your laptop already does.
+2. **An SSH client that can do local port forwarding** — forward the phone's
+   `9119` to `127.0.0.1:9119` on the host, then open `http://127.0.0.1:9119` in
+   the phone's browser. The `Host` is loopback, so it is accepted.
+
+Candidates are Termius (iOS and Android), or Termux with `openssh` on Android.
+**I have not tested either on your phone.** Local port forwarding sits behind
+the paid tier in some clients, and I cannot verify that from here.
+
+Expect one nuisance on iOS: the system suspends backgrounded apps, so the
+tunnel tends to drop when you switch from the SSH app to the browser. Android
+with Termux and `autossh` holds it open more reliably.
+
+## What looks like the answer but is not
+
+**Tailscale Serve.** Two independent reasons, both checked on 8 September:
+
+- Serve is **not enabled on your tailnet** at all. The host reported
+  *"Serve is not enabled on your tailnet"* and printed an admin-console link.
+- Enabling it would still not work. Serve passes the `ts.net` hostname through
+  as the `Host` header, which the dashboard rejects with 400 — and
+  `hermes dashboard` has **no flag** to allow an additional hostname.
+
+You could put a Host-rewriting proxy in front of it. Do not. That deliberately
+disables the rebinding protection above and hands the session token to anything
+on the tailnet.
+
+## The supported way, if you want this properly — decision 3
+
+Hermes does support a non-loopback bind. It simply requires real authentication
+instead of the loopback assumption: the `--insecure` help documents that a
+public bind always demands an auth provider, and `hermes dashboard register`
+wires OAuth through Nous Portal.
+
+Choosing it changes the deployment contract, so it is yours rather than mine:
+
+- `src/runtime/control-plane-deployment-preflight.ts` pins `--host 127.0.0.1`
+  and fails the build if that changes
+- `docs/BASELINE.md` states the dashboard is loopback-only
+- It would need an ADR
+
+**Recommendation: not yet.** You already carry the agent on your phone — that is
+Telegram, and it is the interface that actually matters. The dashboard is for
+inspection. Milestone 9 asks you to judge whether it earns its keep at all;
+answer that first. If it turns out you want it in your pocket weekly, the ADR
+is worth writing then, on evidence.
+
+---
+
 # 🧯 Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -228,6 +343,8 @@ decision, not a step — see the Decisions table in `README.md`.
 | `tar: command not found`, or a corrupted archive | Wrong shell for the vault pull | Use Git Bash or WSL; PowerShell cannot pipe binary between processes |
 | `The token '&&' is not a valid statement separator` | PowerShell 5.1 has no `&&` | Run the two commands separately, or use `; if ($?) { ... }` |
 | Kanban shows no board | Plugin disabled | Plugins → Kanban → Enable |
+| Phone browser cannot connect to `127.0.0.1:9119` | The phone's own tunnel is not up, or the SSH app was backgrounded | Re-open the SSH client and re-establish the forward — see Part 3 |
+| Tailscale name or IP returns `400` in any browser | By design, not a fault | Reach it as `127.0.0.1` through a tunnel — see Part 3 |
 
 # 📎 What this runbook does not cover
 
