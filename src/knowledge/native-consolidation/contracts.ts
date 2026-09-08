@@ -179,6 +179,16 @@ export interface ActivationRequest {
   readonly now: string;
 }
 
+export interface ReconcileRequest {
+  readonly generatedRoot: string;
+  readonly active?: ActiveGeneration;
+  readonly now: string;
+}
+
+export type ReconcileResult =
+  | { readonly kind: "healthy"; readonly activeGenerationId: string | null; readonly quarantined: readonly string[] }
+  | { readonly kind: "needs-repair"; readonly reason: string; readonly quarantined: readonly string[] };
+
 export type ActivationResult =
   | { readonly kind: "activated"; readonly generationId: string; readonly publicationEpoch: number }
   | { readonly kind: "fenced"; readonly reason: string }
