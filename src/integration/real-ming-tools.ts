@@ -2,6 +2,15 @@ import type { WorkItem, WorkItemState } from "../operations/contracts.js";
 import type { ExecutionLinkStore } from "./execution-link.js";
 import type { NativeScheduledReportRequest } from "../operations/native-scheduled-reports.js";
 import type { NativeCronReportClient } from "./native-cron-client.js";
+import type {
+  CaptureResult,
+  NativeKnowledgeCandidate,
+  SourceSnapshot,
+  WikiRetrieveRequest,
+} from "../knowledge/native-consolidation/contracts.js";
+import { captureCandidate } from "../knowledge/native-consolidation/evidence.js";
+import { wikiRetrieve } from "../knowledge/native-consolidation/retrieval.js";
+import type { NativeKnowledgeRegistry } from "../knowledge/native-consolidation/registry.js";
 
 /**
  * The Real-Ming extension: the small set of operations native Hermes cannot
@@ -31,6 +40,23 @@ export interface RealMingTools {
     name: string,
     args: Record<string, unknown>,
   ) => Promise<RealMingToolResult>;
+}
+
+/**
+ * Optional native-knowledge boundary. It is absent from ordinary Real-Ming
+ * processes and becomes available only to the pinned consolidation job or a
+ * deliberately selected capture request.
+ */
+export interface NativeKnowledgeToolContext {
+  readonly registry: NativeKnowledgeRegistry;
+  readonly generatedRoot: string;
+  readonly readSource?: (
+    args: Record<string, unknown>,
+  ) => Promise<SourceSnapshot | { readonly kind: "unavailable"; readonly reason: string }>;
+  readonly stageGeneration?: (
+    args: Record<string, unknown>,
+  ) => Promise<unknown>;
+  readonly isolationEligible?: () => boolean;
 }
 
 /** One calendar entry, reduced to what a briefing actually reads out. */
@@ -247,6 +273,8 @@ export function createRealMingTools(options: {
   readonly mail?: MailboxClient;
   /** The calendar read when the caller names none. */
   readonly defaultCalendarId?: string;
+  /** Optional bounded native-knowledge MCP boundary. */
+  readonly knowledge?: NativeKnowledgeToolContext;
 }): RealMingTools {
   const scheduledReports = options.scheduledReports;
   const calendar = options.calendar;
@@ -254,6 +282,7 @@ export function createRealMingTools(options: {
     options.mail === undefined || options.mail.mailboxes.length === 0
       ? undefined
       : options.mail;
+  const knowledge = options.knowledge;
   const definitions: readonly RealMingToolDefinition[] = [
     {
       name: "real_ming_list_work_items",
@@ -305,6 +334,68 @@ export function createRealMingTools(options: {
         required: ["workItemId", "nativeTaskId", "idempotencyKey"],
       },
     },
+    ...(knowledge === undefined
+      ? []
+      : [
+          {
+            name: "real_ming_capture_knowledge_candidate",
+            description:
+              "Admit one explicitly saved decision, correction, or deliberately selected project/research artifact. No ordinary conversation sweep and no native Hermes memory write.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                candidate: { type: "object" },
+                explicit: { type: "boolean" },
+                marked: { type: "boolean" },
+              },
+              required: ["candidate"],
+            },
+          } satisfies RealMingToolDefinition,
+          {
+            name: "real_ming_knowledge_list_candidates",
+            description:
+              "List opaque admitted native-knowledge candidate metadata for the bounded consolidation job; prose is never returned from the registry.",
+            inputSchema: {
+              type: "object",
+              properties: { status: { type: "string" } },
+            },
+          } satisfies RealMingToolDefinition,
+          {
+            name: "real_ming_read_knowledge_source",
+            description:
+              "Read one declared, bounded knowledge source through its provider route and return source identity, version, hash and content for evidence checking.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                sourceIdentity: { type: "string" },
+                sourceReference: { type: "string" },
+                sourceVersion: { type: "string" },
+              },
+              required: ["sourceIdentity", "sourceReference"],
+            },
+          } satisfies RealMingToolDefinition,
+          {
+            name: "real_ming_stage_knowledge_generation",
+            description:
+              "Stage one complete immutable generated wiki snapshot through the deterministic publication boundary; activation remains a separate registry operation.",
+            inputSchema: { type: "object" },
+          } satisfies RealMingToolDefinition,
+          {
+            name: "real_ming_wiki_retrieve",
+            description:
+              "Retrieve cited, fresh pages only from the verified active generated knowledge snapshot. Staging, quarantine, tombstoned and malformed state fails closed.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                query: { type: "string" },
+                now: { type: "string" },
+                role: { type: "string" },
+                maxResults: { type: "number" },
+              },
+              required: ["query", "now"],
+            },
+          } satisfies RealMingToolDefinition,
+        ]) ,
     ...(scheduledReports === undefined
       ? []
       : [
@@ -745,6 +836,83 @@ export function createRealMingTools(options: {
     };
   };
 
+  const candidateFromArgs = (args: Record<string, unknown>): NativeKnowledgeCandidate | undefined => {
+    const value = args["candidate"];
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
+    const candidate = value as Partial<NativeKnowledgeCandidate>;
+    const strings = [
+      candidate.candidateId,
+      candidate.kind,
+      candidate.claimClass,
+      candidate.claim,
+      candidate.sourceIdentity,
+      candidate.sourceReference,
+      candidate.sourceVersion,
+      candidate.excerpt,
+      candidate.contentHash,
+      candidate.capturedAt,
+      candidate.asOf,
+      candidate.trustDomain,
+      candidate.sensitivity,
+      candidate.retentionClass,
+    ];
+    if (!strings.every((entry) => typeof entry === "string" && entry.trim().length > 0)) return undefined;
+    if (!Array.isArray(candidate.dependencies) || !candidate.dependencies.every((entry) => typeof entry === "string")) return undefined;
+    return candidate as NativeKnowledgeCandidate;
+  };
+
+  const captureKnowledge = async (args: Record<string, unknown>): Promise<RealMingToolResult> => {
+    if (knowledge === undefined) return { kind: "failed", reason: "Native knowledge capture is not enabled." };
+    const candidate = candidateFromArgs(args);
+    if (candidate === undefined) return { kind: "failed", reason: "candidate contains invalid or missing fields." };
+    const result: CaptureResult = await captureCandidate({
+      candidate,
+      explicit: args["explicit"] === true,
+      marked: args["marked"] === true,
+      registry: knowledge.registry,
+    });
+    return { kind: "ok", value: result };
+  };
+
+  const listKnowledge = (args: Record<string, unknown>): RealMingToolResult => {
+    if (knowledge === undefined) return { kind: "failed", reason: "Native knowledge registry is not enabled." };
+    const status = requiredString(args, "status") as Parameters<NativeKnowledgeRegistry["listCandidates"]>[0];
+    return { kind: "ok", value: { candidates: knowledge.registry.listCandidates(status) } };
+  };
+
+  const readKnowledgeSource = async (args: Record<string, unknown>): Promise<RealMingToolResult> => {
+    if (knowledge?.readSource === undefined) return { kind: "failed", reason: "No bounded knowledge source route is configured." };
+    const sourceIdentity = requiredString(args, "sourceIdentity");
+    const sourceReference = requiredString(args, "sourceReference");
+    if (sourceIdentity === undefined || sourceReference === undefined) return { kind: "failed", reason: "sourceIdentity and sourceReference are required." };
+    const result = await knowledge.readSource(args);
+    return "kind" in result && result.kind === "unavailable"
+      ? { kind: "failed", reason: result.reason }
+      : { kind: "ok", value: result };
+  };
+
+  const stageKnowledge = async (args: Record<string, unknown>): Promise<RealMingToolResult> => {
+    if (knowledge?.stageGeneration === undefined) return { kind: "failed", reason: "Native knowledge staging is not enabled." };
+    return { kind: "ok", value: await knowledge.stageGeneration(args) };
+  };
+
+  const retrieveKnowledge = (args: Record<string, unknown>): RealMingToolResult => {
+    if (knowledge === undefined) return { kind: "failed", reason: "Native knowledge retrieval is not enabled." };
+    const query = requiredString(args, "query");
+    const now = requiredString(args, "now");
+    if (query === undefined || now === undefined) return { kind: "failed", reason: "query and now are required." };
+    const rawMax = args["maxResults"];
+    const role = requiredString(args, "role");
+    const request: WikiRetrieveRequest = {
+      query,
+      now,
+      ...(role === undefined ? {} : { role }),
+      ...(typeof rawMax === "number" ? { maxResults: rawMax } : {}),
+    };
+    const result = wikiRetrieve({ ...request, registry: knowledge.registry, generatedRoot: knowledge.generatedRoot });
+    return { kind: "ok", value: result };
+  };
+
   const tools: RealMingTools = {
     list: () => definitions,
     call(name, args) {
@@ -823,6 +991,17 @@ export function createRealMingTools(options: {
             value: { ...result.link, deduplicated: result.deduplicated },
           };
         }
+        case "real_ming_knowledge_list_candidates":
+          return listKnowledge(args);
+        case "real_ming_capture_knowledge_candidate":
+        case "real_ming_read_knowledge_source":
+        case "real_ming_stage_knowledge_generation":
+          return {
+            kind: "failed",
+            reason: "This knowledge tool requires the asynchronous MCP call path.",
+          };
+        case "real_ming_wiki_retrieve":
+          return retrieveKnowledge(args);
         case "real_ming_run_scheduled_report":
           return scheduledReports === undefined
             ? {
@@ -871,7 +1050,8 @@ export function createRealMingTools(options: {
   if (
     scheduledReports === undefined &&
     calendar === undefined &&
-    mail === undefined
+    mail === undefined &&
+    knowledge === undefined
   ) {
     return tools;
   }
@@ -886,6 +1066,9 @@ export function createRealMingTools(options: {
       if (name === "real_ming_create_calendar_event") {
         return writeCalendarEvent(args);
       }
+      if (name === "real_ming_capture_knowledge_candidate") return captureKnowledge(args);
+      if (name === "real_ming_read_knowledge_source") return readKnowledgeSource(args);
+      if (name === "real_ming_stage_knowledge_generation") return stageKnowledge(args);
       if (name !== "real_ming_run_scheduled_report") {
         // Everything else is synchronous; route it back through the same
         // implementation rather than a second copy that can drift.
