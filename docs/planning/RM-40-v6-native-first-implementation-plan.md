@@ -368,10 +368,17 @@ reviews:
 | Remaining | Owner | Milestone |
 | --- | --- | --- |
 | Open the vault in an Obsidian client | Ming | 6 |
-| Review whether the private dashboard earns its keep | Ming | 7 |
 | Approve the five native-experience criteria on RM-40 (#41) and close it | Ming | 9 |
 | Merge or reject [DuitSini#17](https://github.com/pmgwee/DuitSini/pull/17) | Ming, not a milestone gate | 8 |
 | Install the chosen third-party skills | Ming, deferred by his decision | — |
+
+**Milestone 7's review is answered.** On 8 September Ming opened both
+surfaces and chose the Hermes Kanban dashboard (`127.0.0.1:9119`) as the one he
+will actually use. Real-Ming's own dashboard (`127.0.0.1:8787`) is kept as-is
+and deliberately unstyled: it exists so `test/browser/dashboard.browser.test.ts`
+can drive a real Chromium and assert `data-field` values against the read
+model. It was built to be verifiable rather than looked at, and neither styling
+nor retirement was chosen.
 
 **Nothing remains on engineering.** Milestone 8 closed on 8 September when the
 coding round trip ran end to end from Telegram; the last engineering item, the
