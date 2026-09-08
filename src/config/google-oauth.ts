@@ -3,6 +3,22 @@ export const googleCalendarScopes: readonly string[] = [
   "https://www.googleapis.com/auth/calendar.calendarlist.readonly",
 ];
 
+/**
+ * What a mailbox credential is allowed to do.
+ *
+ * `gmail.compose` is the narrowest scope that can write a draft, and Google
+ * bundles sending into it — there is no draft-only scope. Real-Ming never
+ * calls the send endpoint and a contract scenario asserts that, so the
+ * guarantee lives in the code rather than in the grant. `userinfo.email` is
+ * requested so the helper can prove the token belongs to the mailbox that was
+ * asked for, which matters when three accounts are being authorized.
+ */
+export const googleMailScopes: readonly string[] = [
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/gmail.compose",
+  "https://www.googleapis.com/auth/userinfo.email",
+];
+
 export const googleAuthorizationEndpoint =
   "https://accounts.google.com/o/oauth2/v2/auth";
 
@@ -13,6 +29,8 @@ export function buildAuthorizationUrl(request: {
   readonly redirectUri: string;
   readonly state: string;
   readonly scopes?: readonly string[];
+  /** Pre-selects an account, so three consents cannot be given as one. */
+  readonly loginHint?: string;
 }): string {
   const url = new URL(googleAuthorizationEndpoint);
   url.searchParams.set("client_id", request.clientId);
@@ -25,6 +43,9 @@ export function buildAuthorizationUrl(request: {
   url.searchParams.set("access_type", "offline");
   url.searchParams.set("prompt", "consent");
   url.searchParams.set("state", request.state);
+  if (request.loginHint !== undefined) {
+    url.searchParams.set("login_hint", request.loginHint);
+  }
   return url.toString();
 }
 

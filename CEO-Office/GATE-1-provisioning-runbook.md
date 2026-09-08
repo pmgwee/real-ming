@@ -117,7 +117,7 @@ If the incomplete-configuration message persists after the first two are filled,
 | **Application privacy policy link** | Public URL serving `consent-site/privacy.html` |
 | **Authorised domains** | The domain both URLs live on |
 
-Both pages are in [`consent-site/`](../consent-site/) with deployment instructions in its README. `npx vercel deploy consent-site --prod` publishes them. **Application Terms of Service link stays empty** - it is not required.
+Both pages are in [`consent-site/`](../consent-site) with deployment instructions in its README. `npx vercel deploy consent-site --prod` publishes them. **Application Terms of Service link stays empty** - it is not required.
 
 ⚠️ **The domain must be one Google accepts.** Every domain shown on the consent screen must be pre-registered under Authorised domains, and production generally expects a domain verifiable in Google Search Console. A domain you own is the reliable choice; a `*.vercel.app` subdomain may be rejected because `vercel.app` is a public suffix you cannot verify. See `consent-site/README.md`.
 
@@ -201,7 +201,7 @@ Comment on [#7](https://github.com/pmgwee/real-ming/issues/7) confirming:
 
 Then close it. **Paste no values into the comment.**
 
-Then restart the loop with [RESUME-PROMPT.md](RESUME-PROMPT.md).
+Then restart the loop with [RESUME-PROMPT.md](../docs/agents/RESUME-PROMPT.md).
 
 ---
 

@@ -32,6 +32,10 @@ import {
   createGoogleCalendarAdapter,
   type GoogleCalendarAdapter,
 } from "../providers/google-calendar-adapter.js";
+import {
+  createGmailAdapter,
+  type GmailAdapter,
+} from "../providers/gmail-adapter.js";
 import type { CutoverWorkspace } from "../migration/master-tasks-cutover.js";
 import { legacyTaskSourceDefinitions, type LegacyTaskSource } from "../migration/task-migration-rehearsal.js";
 
@@ -368,6 +372,7 @@ export interface NotionProvisioningContractHarness {
   viewNames(): readonly string[];
   masterTaskPageCreateCount(): number;
   masterTaskPageUpdateCount(): number;
+  simulateMasterTaskExternalEdit(workItemId: string, lastEditedTime: string): void;
 }
 
 export function createNotionProvisioningContractHarness(options: {
@@ -608,6 +613,25 @@ export function createNotionProvisioningContractHarness(options: {
     viewNames: () => views.map((view) => view.name),
     masterTaskPageCreateCount: () => pagesCreated,
     masterTaskPageUpdateCount: () => pagesUpdated,
+    simulateMasterTaskExternalEdit: (workItemId, lastEditedTime) => {
+      const page = pages.find((candidate) => {
+        const properties = candidate["properties"];
+        if (!isRecord(properties)) return false;
+        const property = properties["Work Item ID"];
+        if (!isRecord(property)) return false;
+        const richText = property["rich_text"];
+        return Array.isArray(richText) &&
+          richText.some(
+            (entry) =>
+              isRecord(entry) &&
+              (entry["plain_text"] === workItemId ||
+                (isRecord(entry["text"]) &&
+                  entry["text"]["content"] === workItemId)),
+          );
+      });
+      if (page === undefined) throw new Error("Controlled Master Tasks page not found.");
+      page["last_edited_time"] = lastEditedTime;
+    },
   };
 }
 
@@ -811,6 +835,7 @@ export interface CalendarContractHarness {
   providerCallCount(): number;
   externalEffectCount(): number;
   listRequests(): readonly URL[];
+  createdEvents(): readonly string[];
 }
 
 export function createCalendarContractHarness(
@@ -831,6 +856,7 @@ export function createCalendarContractHarness(
   let providerCalls = 0;
   let externalEffects = 0;
   const listRequests: URL[] = [];
+  const createdEvents: string[] = [];
   const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
     "authentication-failed": 401,
     "invalid-input": 404,
@@ -856,6 +882,11 @@ export function createCalendarContractHarness(
             : {}),
         },
       );
+    }
+    if ((init?.method ?? "GET") === "POST") {
+      externalEffects += 1;
+      if (typeof init?.body === "string") createdEvents.push(init.body);
+      return Response.json({ id: "contract-created-event", updated: now });
     }
     if ((init?.method ?? "GET") === "PATCH") {
       externalEffects += 1;
@@ -917,6 +948,7 @@ export function createCalendarContractHarness(
     providerCallCount: () => providerCalls,
     externalEffectCount: () => externalEffects,
     listRequests: () => listRequests,
+    createdEvents: () => [...createdEvents],
   };
 }
 
@@ -1769,5 +1801,177 @@ export function createVercelDeploymentContractHarness(options: {
       now: () => now,
     }),
     requests: () => [...requests],
+  };
+}
+
+
+export interface MailContractHarness {
+  readonly adapter: GmailAdapter;
+  providerCallCount(): number;
+  listRequests(): readonly URL[];
+  /** Every path the adapter touched, so "it never sends" is provable. */
+  touchedPaths(): readonly string[];
+  draftBodies(): readonly string[];
+}
+
+/**
+ * Gmail answers a search in two steps: a list of identifiers, then one
+ * metadata read per identifier. Serving both here means the adapter's
+ * header extraction is exercised rather than bypassed.
+ */
+export function createMailContractHarness(
+  scenario: {
+    readonly failure?: ProviderFailureClass;
+    readonly emptyValue?: boolean;
+    readonly asOf?: string;
+    readonly now?: string;
+    readonly unreadableMessage?: boolean;
+    /** Fail only the per-message read, as a revoked scope does mid-page. */
+    readonly detailFailure?: ProviderFailureClass;
+    readonly draftFailure?: ProviderFailureClass;
+    /** Serve the body as HTML only, as most marketing mail does. */
+    readonly htmlOnlyBody?: boolean;
+    /** Bury the text part inside nested multiparts, as real mail does. */
+    readonly nestedBody?: boolean;
+    readonly longBody?: boolean;
+  } = {},
+): MailContractHarness {
+  const now = scenario.now ?? "2026-09-07T09:00:00.000Z";
+  const asOf = scenario.asOf ?? now;
+  let providerCalls = 0;
+  const listRequests: URL[] = [];
+  const touched: string[] = [];
+  const draftBodies: string[] = [];
+  const statusByClass: Readonly<Record<ProviderFailureClass, number>> = {
+    "authentication-failed": 401,
+    "invalid-input": 404,
+    "permission-denied": 403,
+    "rate-limited": 429,
+    "unsupported-capability": 400,
+    unavailable: 503,
+    "provider-error": 422,
+  };
+
+  const fetchImplementation = async (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ): Promise<Response> => {
+    providerCalls += 1;
+    const url = new URL(String(input));
+    touched.push(url.pathname);
+    const isDetail = /\/messages\/[^/]+$/.test(url.pathname);
+
+    if (url.pathname.endsWith("/drafts")) {
+      if (typeof init?.body === "string") draftBodies.push(init.body);
+      return scenario.draftFailure === undefined
+        ? Response.json({ id: "contract-draft-1" })
+        : Response.json(
+            { error: { message: rawProviderError(scenario.draftFailure) } },
+            { status: statusByClass[scenario.draftFailure] },
+          );
+    }
+
+    if (scenario.failure !== undefined) {
+      return Response.json(
+        { error: { message: rawProviderError(scenario.failure) } },
+        {
+          status: statusByClass[scenario.failure],
+          ...(scenario.failure === "rate-limited"
+            ? { headers: { "retry-after": "1" } }
+            : {}),
+        },
+      );
+    }
+    if (isDetail && url.searchParams.get("format") === "full") {
+      const plain = scenario.longBody === true
+        ? "x".repeat(25000)
+        : "Thanks for applying. We would like to meet on Thursday at 3pm.";
+      const b64 = (text: string): string =>
+        Buffer.from(text, "utf8")
+          .toString("base64")
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/, "");
+      const textPart = {
+        mimeType: "text/plain",
+        body: { data: b64(plain) },
+      };
+      const htmlPart = {
+        mimeType: "text/html",
+        body: {
+          data: b64(
+            "<html><head><style>p{}</style></head><body><p>Thanks for applying.</p>" +
+              "<p>We would like to meet on <b>Thursday</b> at 3pm.</p></body></html>",
+          ),
+        },
+      };
+      const payload = scenario.htmlOnlyBody === true
+        ? { ...htmlPart, headers: [] }
+        : scenario.nestedBody === true
+          ? {
+              mimeType: "multipart/mixed",
+              parts: [
+                { mimeType: "multipart/alternative", parts: [htmlPart, textPart] },
+              ],
+            }
+          : { mimeType: "multipart/alternative", parts: [textPart, htmlPart] };
+      return Response.json({
+        id: "contract-message-1",
+        threadId: "contract-thread-1",
+        internalDate: String(Date.parse(asOf)),
+        payload: {
+          ...payload,
+          headers: [
+            { name: "From", value: "Recruiting <talent@example.com>" },
+            { name: "To", value: "contract@example.com" },
+            { name: "Subject", value: "Interview scheduling" },
+          ],
+        },
+      });
+    }
+    if (isDetail) {
+      if (scenario.detailFailure !== undefined) {
+        return Response.json(
+          { error: { message: rawProviderError(scenario.detailFailure) } },
+          { status: statusByClass[scenario.detailFailure] },
+        );
+      }
+      return Response.json({
+        ...(scenario.unreadableMessage === true
+          ? {}
+          : { id: "contract-message-1" }),
+        threadId: "contract-thread-1",
+        snippet: "We would like to invite you to a first interview.",
+        labelIds: ["INBOX", "UNREAD"],
+        internalDate: String(Date.parse(asOf)),
+        payload: {
+          headers: [
+            { name: "From", value: "Recruiting <talent@example.com>" },
+            { name: "Subject", value: "Your application" },
+            { name: "Date", value: asOf },
+          ],
+        },
+      });
+    }
+    listRequests.push(url);
+    return Response.json(
+      scenario.emptyValue === true
+        ? {}
+        : { messages: [{ id: "contract-message-1" }] },
+    );
+  };
+
+  return {
+    adapter: createGmailAdapter({
+      accessToken: "contract-mail-access-token",
+      workspaceId: "workspace:real-ming",
+      mailbox: "contract@example.com",
+      fetch: fetchImplementation as unknown as typeof fetch,
+      now: () => now,
+    }),
+    providerCallCount: () => providerCalls,
+    listRequests: () => [...listRequests],
+    touchedPaths: () => [...touched],
+    draftBodies: () => [...draftBodies],
   };
 }

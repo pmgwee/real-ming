@@ -199,6 +199,21 @@ export interface Clarification {
   readonly question: string;
 }
 
+/**
+ * A final response produced by Hermes after Real-Ming has applied its
+ * identity, projection and tool policy.  Keeping this as a command result
+ * lets Telegram use the same durable ingress/replay path as legacy commands
+ * while retaining the provenance needed by the dashboard.
+ */
+export interface HermesAnswer {
+  readonly kind: "hermes-answer";
+  readonly answer: string;
+  readonly intent: "answer" | "clarification" | "research" | "work";
+  readonly sessionId: string;
+  readonly turnId: string;
+  readonly workItem?: WorkItem;
+}
+
 export type CommandClassification =
   | { readonly kind: "information-question" }
   | { readonly kind: "action" }
@@ -207,6 +222,7 @@ export type CommandClassification =
 export type CeoCommandResult =
   | InformationAnswer
   | Clarification
+  | HermesAnswer
   | WorkItemAcknowledgement;
 
 export interface WorkItem {

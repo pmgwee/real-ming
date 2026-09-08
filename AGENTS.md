@@ -59,7 +59,26 @@ Anything only Ming can do — creating an identity, handling a secret, approving
 2. Write or update a runbook in `CEO-Office/`, following the format of the existing ones: TL;DR, why it cannot be delegated, prerequisites, numbered steps, test cases with expected output, troubleshooting table.
 3. Refresh the status board in `CEO-Office/README.md`.
 
-Never bury a blocker in a summary, and never leave a new document for him to discover. `CEO-Office/` is the only place CEO-facing material belongs — not `docs/`.
+Never bury a blocker in a summary, and never leave a new document for him to discover.
+
+## Where a document belongs
+
+`CEO-Office/` is a queue, not an archive. It holds only what needs Ming's own
+hand: a manual action, an approval, a credential he must provision, a decision
+only he can make. Everything else drowns that signal and belongs elsewhere.
+
+| Put it here | For |
+| --- | --- |
+| `CEO-Office/` | Runbooks whose steps Ming performs, approval packets, the credential inventory, the action checklist, the status board that indexes them |
+| `docs/evidence/` | Milestone outcomes, reports, test and audit evidence |
+| `docs/planning/` | Implementation plans, requirement ledgers, disposition inventories |
+| `docs/architecture/` | Diagrams, architecture and capability reviews |
+| `docs/adr/` | Decision records |
+| `docs/agents/` | Agent guidance, lessons learned, handoff and resume prompts |
+| `docs/specs/` | The specification |
+
+A milestone report is not CEO-facing material merely because Ming may read it.
+The test is whether the document is asking him to *do* something.
 
 ## Decisions he must make
 
@@ -77,4 +96,6 @@ Values live only in a gitignored `.env` or the secret store. Code reads variable
 
 ## Baseline
 
-Preserve **Real-Ming v1.1 · Architecture Revision 3** across `docs/BASELINE.md`, the specification, and both v3 diagrams. A test fails the build if any artifact drifts.
+Preserve **Real-Ming v1.1 · Architecture Revision 6** across `docs/BASELINE.md`, the specification, and the current V6 diagram. A test fails the build if any artifact drifts.
+
+Two labels exist and must not be conflated. The **design baseline** is Revision 6 (native Hermes owns transport, conversation and execution; Real-Ming is a thin additive extension — see `docs/adr/0020-run-ming-on-the-native-hermes-runtime.md`). The **deployed revision** is stated separately in `docs/BASELINE.md` and is allowed to lag; never cite one as evidence for the other. Superseded revisions keep their original labels as historical evidence; the baseline test enforces that preservation rather than rewriting them.

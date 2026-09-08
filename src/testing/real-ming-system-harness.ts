@@ -42,6 +42,7 @@ import type {
   OutcomeReport,
   GrantApprovalRequest,
   GrantStandingAuthorityRequest,
+  ImportMigratedWorkItemRequest,
   PolicyDecision,
   QuestionResponder,
   RecordWorkItemCommitmentRequest,
@@ -248,6 +249,25 @@ import {
 } from "../operations/entertainment-email-digest.js";
 import type { EmailMessage, GmailEmailAdapter } from "../providers/email-provider-adapter.js";
 import type { CutoverBindings } from "../migration/master-tasks-cutover.js";
+import type { HermesRuntimeClient } from "../hermes/contracts.js";
+import {
+  executionLinkStatePath,
+  SqliteExecutionLinkStore,
+} from "../integration/execution-link.js";
+import {
+  createRealMingTools,
+  type RealMingToolDefinition,
+  type RealMingToolResult,
+} from "../integration/real-ming-tools.js";
+import {
+  createHermesSessionStore,
+  type HermesSessionStore,
+} from "../hermes/hermes-session-store.js";
+import {
+  createHermesTurnCoordinator,
+  type HermesTurnCoordinator,
+} from "../hermes/hermes-turn-coordinator.js";
+import type { HermesProjectionBroker } from "../knowledge/hermes-projection.js";
 
 import {
   createGoogleCalendarAdapter,
@@ -263,15 +283,23 @@ import {
 
 import {
   createMorningBriefRunner,
+  createMorningBriefComposer,
   type MorningBriefResult,
   type MorningBriefRunner,
 } from "../operations/morning-brief.js";
 
 import {
   createExecutiveRollUpRunner,
+  createExecutiveRollUpComposer,
   type ExecutiveRollUpResult,
   type ExecutiveRollUpRunner,
 } from "../operations/executive-roll-up.js";
+import {
+  createNativeScheduledReportService,
+  type NativeScheduledReportRequest,
+  type NativeScheduledReportResult,
+  type NativeScheduledReportService,
+} from "../operations/native-scheduled-reports.js";
 import {
   createPersonalContextIngestion,
   type PersonalContextCandidate,
@@ -350,6 +378,31 @@ export interface ControlledVaultOptions {
   readonly failure?: VaultFailure;
   /** Counts reads, so a test can prove a failed vault is not retried per credential. */
   readonly onRead?: () => void;
+}
+
+/**
+ * Ming's mailboxes as the extension sees them. The Gmail wire shape is proved
+ * by the Provider Adapter Contract Harness; this seam is about which mailbox
+ * the agent read and what it is told when it cannot read one.
+ */
+export interface ControlledMailOptions {
+  readonly mailboxes: readonly string[];
+  readonly messages?: Readonly<
+    Record<
+      string,
+      readonly {
+        readonly id: string;
+        readonly from: string;
+        readonly subject: string;
+        readonly snippet: string;
+        readonly receivedAt: string;
+        readonly unread: boolean;
+      }[]
+    >
+  >;
+  /** Full bodies, keyed by message id, for the read-one-message scenarios. */
+  readonly bodies?: Readonly<Record<string, string>>;
+  readonly unavailable?: boolean;
 }
 
 export interface ControlledCalendarOptions {
@@ -518,6 +571,9 @@ export interface RealMingSystemHarness {
   }): Promise<ResolvedCredentials>;
   runMorningBrief(): Promise<MorningBriefResult>;
   runExecutiveRollUp(): Promise<ExecutiveRollUpResult>;
+  runNativeScheduledReport(
+    request: NativeScheduledReportRequest,
+  ): Promise<NativeScheduledReportResult>;
   admitExceptionNotice(
     notification: ExceptionNotice,
   ): Promise<ExceptionNoticeAdmission>;
@@ -537,6 +593,17 @@ export interface RealMingSystemHarness {
   acknowledgeCeoAction(
     action: NormalizedCeoAction,
   ): Promise<WorkItemAcknowledgement>;
+  /** The Real-Ming extension Hermes reaches as tools. Not a separate seam. */
+  realMingTools(): readonly RealMingToolDefinition[];
+  callRealMingTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): RealMingToolResult;
+  /** The provider-backed tools (calendar, scheduled reports) answer here. */
+  callRealMingToolAsync(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<RealMingToolResult>;
   listCalendarEvents(request: {
     readonly calendarId: string;
   }): Promise<ProviderReadResult<readonly CalendarEvent[]>>;
@@ -547,6 +614,17 @@ export interface RealMingSystemHarness {
     request: ChangeCalendarCommitmentRequest,
   ): Promise<CalendarChange>;
   calendarWriteCount(): number;
+  /** Drafts the agent wrote. Nothing here was ever sent. */
+  draftedEmails(): readonly {
+    readonly mailbox: string;
+    readonly to: readonly string[];
+    readonly subject: string;
+    readonly body: string;
+  }[];
+  createdCalendarEvents(): readonly {
+    readonly calendarId: string;
+    readonly title: string;
+  }[];
   buildCutoverPlanFromEvidence(evidence: {
     readonly digest: string;
     readonly sources: readonly CutoverEvidenceSource[];
@@ -679,6 +757,7 @@ export interface RealMingSystemHarness {
   submitCeoCommand(command: CeoCommand): Promise<CeoCommandResult>;
   submitCeoAction(action: NormalizedCeoAction): Promise<OperationsResult>;
   executeWorkItem(workItemId: string): Promise<OperationsResult>;
+  importMigratedWorkItem(request: ImportMigratedWorkItemRequest): Promise<WorkItem>;
   reworkWorkItem(workItemId: string): Promise<OperationsResult>;
   stageWorkItemForApproval(workItemId: string): Promise<WorkItem>;
   requestAction(action: RequestedAction): Promise<PolicyDecision>;
@@ -693,6 +772,7 @@ export interface RealMingSystemHarness {
     readonly actorId: string;
     readonly workspaceId: string;
   }): DashboardOverview;
+  hermesOverview(): import("../hermes/hermes-turn-coordinator.js").HermesConversationOverview | undefined;
   recordProviderObservation(
     record: ProviderObservationInput,
   ): Promise<ProviderObservationTransition>;
@@ -1069,6 +1149,9 @@ export function createRealMingSystemHarness(options: {
   readonly financialExports?: {
     readonly sources: readonly FinancialExportSource[];
   };
+  readonly financialSnapshots?: {
+    readonly beforeSuccessorInsert?: () => void;
+  };
   readonly career?: {
     readonly files: Readonly<Record<string, CareerFile>>;
   };
@@ -1094,6 +1177,7 @@ export function createRealMingSystemHarness(options: {
   readonly legacyTaskSources?: readonly LegacyTaskSource[];
   readonly cutover?: ControlledCutoverOptions;
   readonly calendar?: ControlledCalendarOptions;
+  readonly mail?: ControlledMailOptions;
   readonly morningBrief?: ControlledMorningBriefOptions;
   readonly schedulerRunnerTimeoutMs?: number;
   readonly personalContext?: {
@@ -1108,8 +1192,175 @@ export function createRealMingSystemHarness(options: {
   readonly evidence?: {
     readonly provider: AgentBrainEvidenceProvider;
   };
+  /** Optional Hermes runtime used by the Telegram integration seam. */
+  readonly hermes?: {
+    readonly runtime: HermesRuntimeClient;
+    readonly projection?: HermesProjectionBroker;
+    readonly model?: string;
+  };
 }): RealMingSystemHarness {
   const state = new OperationsState(options.statePath);
+  // Opened on first use, not at construction. Several scenarios deliberately
+  // make harness construction throw, and a handle opened before that point is
+  // never closed -- which on Windows leaves the temp directory undeletable and
+  // fails an unrelated test's cleanup.
+  let executionLinks: SqliteExecutionLinkStore | undefined;
+  const links = (): SqliteExecutionLinkStore => {
+    executionLinks ??= new SqliteExecutionLinkStore(
+      executionLinkStatePath(options.statePath),
+    );
+    return executionLinks;
+  };
+  const realMingTools = createRealMingTools({
+    workItems: () => state.workItems(),
+    workItem: (id) => state.workItem(id),
+    links: {
+      link: (request) => links().link(request),
+      forWorkItem: (workItemId) => links().forWorkItem(workItemId),
+      close: () => links().close(),
+    },
+    now: () => (options.now ?? (() => new Date().toISOString()))(),
+    // Registered only where a calendar is actually configured, so an agent
+    // never holds a tool that can answer nothing.
+    ...(options.calendar === undefined
+      ? {}
+      : {
+          calendar: {
+            listEvents: async ({
+              calendarId,
+            }: {
+              readonly calendarId: string;
+            }) => {
+              const result = await calendarAdapter.listEvents(calendarId);
+              if (result.kind === "failed") {
+                return {
+                  kind: "unavailable" as const,
+                  reason: result.failure.message,
+                };
+              }
+              return {
+                kind: "ok" as const,
+                events: result.value.map((event) => ({
+                  title: event.title,
+                  start: event.start,
+                  end: event.end,
+                  allDay: event.allDay,
+                  status: event.status,
+                })),
+                retrievedAt: (options.now ?? (() => new Date().toISOString()))(),
+              };
+            },
+            createEvent: async (request: {
+              readonly calendarId: string;
+              readonly title: string;
+              readonly idempotencyKey: string;
+            }) => {
+              const already = createdCalendarEvents.some(
+                (entry) =>
+                  entry.calendarId === request.calendarId &&
+                  entry.title === request.title,
+              );
+              if (!already) {
+                createdCalendarEvents.push({
+                  calendarId: request.calendarId,
+                  title: request.title,
+                });
+              }
+              return {
+                kind: "ok" as const,
+                reference: `google-calendar:${request.calendarId}:${request.idempotencyKey}`,
+                deduplicated: already,
+              };
+            },
+          },
+        }),
+    ...(options.mail === undefined
+      ? {}
+      : {
+          mail: {
+            mailboxes: options.mail.mailboxes,
+            search: async ({ mailbox }: { readonly mailbox: string }) =>
+              options.mail?.unavailable === true
+                ? {
+                    kind: "unavailable" as const,
+                    reason: "Controlled mailbox failure.",
+                  }
+                : {
+                    kind: "ok" as const,
+                    messages: options.mail?.messages?.[mailbox] ?? [],
+                    retrievedAt: (options.now ?? (() => new Date().toISOString()))(),
+                  },
+            read: async (request: {
+              readonly mailbox: string;
+              readonly messageId: string;
+            }) => {
+              if (options.mail?.unavailable === true) {
+                return {
+                  kind: "unavailable" as const,
+                  reason: "Controlled mailbox failure.",
+                };
+              }
+              const listed = (options.mail?.messages?.[request.mailbox] ?? []).find(
+                (entry) => entry.id === request.messageId,
+              );
+              const body = options.mail?.bodies?.[request.messageId];
+              if (listed === undefined || body === undefined) {
+                // A message that is not there is reported, never invented as
+                // an empty body the agent would summarise as "nothing said".
+                return {
+                  kind: "unavailable" as const,
+                  reason: `No message ${request.messageId}.`,
+                };
+              }
+              return {
+                kind: "ok" as const,
+                message: {
+                  from: listed.from,
+                  to: request.mailbox,
+                  subject: listed.subject,
+                  receivedAt: listed.receivedAt,
+                  body,
+                  convertedFromHtml: false,
+                  truncated: false,
+                },
+              };
+            },
+            draft: async (request: {
+              readonly mailbox: string;
+              readonly to: readonly string[];
+              readonly subject: string;
+              readonly body: string;
+              readonly idempotencyKey: string;
+            }) => {
+              if (options.mail?.unavailable === true) {
+                return {
+                  kind: "unavailable" as const,
+                  reason: "Controlled mailbox failure.",
+                };
+              }
+              const already = draftedEmails.some(
+                (entry) =>
+                  entry.mailbox === request.mailbox &&
+                  entry.subject === request.subject &&
+                  entry.body === request.body,
+              );
+              if (!already) {
+                draftedEmails.push({
+                  mailbox: request.mailbox,
+                  to: request.to,
+                  subject: request.subject,
+                  body: request.body,
+                });
+              }
+              return {
+                kind: "ok" as const,
+                reference: `gmail:${request.mailbox}:draft:${request.idempotencyKey}`,
+                deduplicated: already,
+              };
+            },
+          },
+        }),
+  });
   const deploymentCandidateStore = new SqliteDeploymentCandidateStore(
     deploymentCandidateStatePath(options.statePath),
   );
@@ -1321,6 +1572,23 @@ export function createRealMingSystemHarness(options: {
     },
     ...(options.now === undefined ? {} : { now: options.now }),
   });
+  const hermesStore: HermesSessionStore | undefined = options.hermes === undefined
+    ? undefined
+    : createHermesSessionStore(
+        options.statePath === ":memory:" ? ":memory:" : `${options.statePath}.hermes.sqlite`,
+      );
+  const hermesCoordinator: HermesTurnCoordinator | undefined =
+    options.hermes === undefined || hermesStore === undefined
+      ? undefined
+      : createHermesTurnCoordinator({
+          runtime: options.hermes.runtime,
+          sessions: hermesStore,
+          gateway,
+          ...(options.hermes.projection === undefined ? {} : { projection: options.hermes.projection }),
+          ...(options.hermes.model === undefined ? {} : { model: options.hermes.model }),
+          workItem: (id) => state.workItem(id),
+          ...(options.now === undefined ? {} : { now: options.now }),
+        });
   const cutoverWorkspace =
     options.cutover === undefined
       ? undefined
@@ -1402,6 +1670,16 @@ export function createRealMingSystemHarness(options: {
     return cutover;
   };
 
+  const draftedEmails: {
+    readonly mailbox: string;
+    readonly to: readonly string[];
+    readonly subject: string;
+    readonly body: string;
+  }[] = [];
+  const createdCalendarEvents: {
+    readonly calendarId: string;
+    readonly title: string;
+  }[] = [];
   let calendarWrites = 0;
   const calendarAdapter = createGoogleCalendarAdapter({
     accessToken: "controlled-calendar-access-token",
@@ -1461,6 +1739,7 @@ export function createRealMingSystemHarness(options: {
           },
         }),
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(hermesCoordinator === undefined ? {} : { hermesTurn: hermesCoordinator }),
   });
   const deploymentPromotionExecutor = new ControlledDeploymentPromotionExecutor(
     options.deploymentPromotion ?? {},
@@ -1548,7 +1827,14 @@ export function createRealMingSystemHarness(options: {
     gateway,
     actorId: "ceo:ming",
     workspaceId: "workspace:real-ming",
+    statePath: options.statePath,
     now: clock,
+    ...(options.financialSnapshots?.beforeSuccessorInsert === undefined
+      ? {}
+      : {
+          beforeSuccessorInsert:
+            options.financialSnapshots.beforeSuccessorInsert,
+        }),
   });
   const financialReconciliation = createFinancialReconciliationCoordinator({
     sources: options.financialExports?.sources ?? [],
@@ -1716,12 +2002,26 @@ export function createRealMingSystemHarness(options: {
       hangFor: (job) => forcedHangs.delete(job),
     });
   }
+  const executiveRollUpComposer = createExecutiveRollUpComposer({
+    state,
+    workspaceId: "workspace:real-ming",
+    ...(options.now === undefined ? {} : { now: options.now }),
+  });
   const executiveRollUp: ExecutiveRollUpRunner = createExecutiveRollUpRunner({
     state,
     workspaceId: "workspace:real-ming",
     admit: admitTracked,
     ...(options.now === undefined ? {} : { now: options.now }),
   });
+  const morningBriefComposer =
+    options.morningBrief === undefined
+      ? undefined
+      : createMorningBriefComposer({
+          state,
+          listEvents: (window) =>
+            calendarAdapter.listEvents(calendarId, window),
+          ...(options.now === undefined ? {} : { now: options.now }),
+        });
   const morningBrief: MorningBriefRunner | undefined =
     options.morningBrief === undefined
       ? undefined
@@ -1730,6 +2030,15 @@ export function createRealMingSystemHarness(options: {
           listEvents: (window) =>
             calendarAdapter.listEvents(calendarId, window),
           admit: admitTracked,
+          ...(options.now === undefined ? {} : { now: options.now }),
+        });
+  const nativeScheduledReports: NativeScheduledReportService | undefined =
+    morningBriefComposer === undefined
+      ? undefined
+      : createNativeScheduledReportService({
+          state,
+          morningBrief: morningBriefComposer,
+          executiveRollUp: executiveRollUpComposer,
           ...(options.now === undefined ? {} : { now: options.now }),
         });
 
@@ -1858,6 +2167,14 @@ export function createRealMingSystemHarness(options: {
       return morningBrief.run();
     },
     runExecutiveRollUp: () => executiveRollUp.run(),
+    runNativeScheduledReport: (request) => {
+      if (nativeScheduledReports === undefined) {
+        throw new Error(
+          "This harness was not configured with native scheduled reports.",
+        );
+      }
+      return nativeScheduledReports.run(request);
+    },
     admitExceptionNotice: admitTracked,
     recordExceptionNoticeRecovery: async (signature) => {
       const admission = await exceptionNoticeRhythm.recordRecovery(signature);
@@ -2037,12 +2354,20 @@ export function createRealMingSystemHarness(options: {
       return entertainmentEmailDigest.run();
     },
     acknowledgeCeoAction: (action) => gateway.acknowledgeCeoAction(action),
+    realMingTools: () => realMingTools.list(),
+    callRealMingTool: (name, args) => realMingTools.call(name, args),
+    callRealMingToolAsync: async (name, args) =>
+      realMingTools.callAsync === undefined
+        ? realMingTools.call(name, args)
+        : realMingTools.callAsync(name, args),
     listCalendarEvents: ({ calendarId }) =>
       calendarAdapter.listEvents(calendarId),
     reconcileCalendarCommitment: (request) =>
       calendarReconciler.reconcile(request),
     changeCalendarEvent: (request) => calendarReconciler.change(request),
     calendarWriteCount: () => calendarWrites,
+    draftedEmails: () => [...draftedEmails],
+    createdCalendarEvents: () => [...createdCalendarEvents],
     editMasterTaskThroughView: async (request) =>
       masterTasks.editThroughView(request, gateway),
     masterTasksView: (name) => masterTasks.view(name),
@@ -2055,6 +2380,7 @@ export function createRealMingSystemHarness(options: {
     submitCeoCommand: (command) => gateway.submitCeoCommand(command),
     submitCeoAction: (action) => gateway.submitCeoAction(action),
     executeWorkItem: (workItemId) => gateway.executeWorkItem(workItemId),
+    importMigratedWorkItem: (request) => gateway.importMigratedWorkItem(request),
     reworkWorkItem: (workItemId) => gateway.reworkWorkItem(workItemId),
     stageWorkItemForApproval: (workItemId) =>
       gateway.stageWorkItemForApproval(workItemId),
@@ -2074,7 +2400,9 @@ export function createRealMingSystemHarness(options: {
         deploymentCandidateStore,
         schedulerJobs,
         knowledgeOperations?.domainHealth ?? [],
+        hermesCoordinator?.overview(),
       ),
+    hermesOverview: () => hermesCoordinator?.overview(),
     recordProviderObservation: (record) =>
       providerObservationCoordinator.observe(record),
     providerObservations: () => state.providerObservations(),
@@ -2188,6 +2516,9 @@ export function createRealMingSystemHarness(options: {
         deploymentCandidates: deploymentCandidateStore,
         deploymentPromotion,
         schedulerJobs,
+        ...(hermesCoordinator === undefined
+          ? {}
+          : { hermesHealth: () => hermesCoordinator.overview() }),
         // Production wires this too. Without it the served page renders an
         // empty Knowledge Health section whatever the state holds, so no
         // browser check through this seam could ever prove the view.
@@ -2272,18 +2603,23 @@ export function createRealMingSystemHarness(options: {
     telegramMessages: () => telegramTransport.messages(),
     telegramAuditTrail: () => state.telegramAuditTrail(),
     close: () => {
+      financialSnapshots.close();
       personalContext?.close();
       privateWorker?.close();
       portfolio.close();
       deploymentCandidateStore.close();
       deploymentPromotionStore.close();
       knowledgeVault?.close();
+      hermesStore?.close();
+      executionLinks?.close();
       state.close();
     },
   };
 }
 
 export interface ControlPlaneSystemHarness {
+  telegramOwnership(): import("../runtime/daily-operations-control-plane.js").TelegramOwnership;
+  schedulerOwnership(): "real-ming" | "native-hermes-cron";
   queueTelegramUpdate(update: {
     readonly updateId: number;
     readonly senderId: string;
@@ -2293,7 +2629,11 @@ export interface ControlPlaneSystemHarness {
   failNextTelegramPoll(): void;
   telegramPollRequests(): readonly unknown[];
   runCycle(): ReturnType<DailyOperationsControlPlane["runCycle"]>;
+  runNativeScheduledReport(
+    request: NativeScheduledReportRequest,
+  ): ReturnType<DailyOperationsControlPlane["runNativeScheduledReport"]>;
   dashboardOverview(): Promise<DashboardOverview>;
+  hermesOverview(): ReturnType<DailyOperationsControlPlane["hermesOverview"]>;
   telegramMessages(): readonly TelegramOutboundMessage[];
   backup(destinationPath: string): Promise<void>;
   backupSet(
@@ -2331,6 +2671,12 @@ export async function createControlPlaneSystemHarness(options: {
   readonly notionLedgerPath?: string;
   readonly now?: () => string;
   readonly telegramSendFailures?: number;
+  /** Enable a fully controlled Hermes API edge for production-composition tests. */
+  readonly hermesEnabled?: boolean;
+  /** Rehearse the Revision 6 cutover, where the native gateway owns Telegram. */
+  readonly telegramOwnership?: import("../runtime/daily-operations-control-plane.js").TelegramOwnership;
+  /** Rehearse native Hermes cron ownership of the two scheduled reports. */
+  readonly schedulerOwnership?: "real-ming" | "native-hermes-cron";
 }): Promise<ControlPlaneSystemHarness> {
   const now = options.now ?? (() => new Date().toISOString());
   const dashboardToken = "controlled-dashboard-access-token";
@@ -2339,8 +2685,34 @@ export async function createControlPlaneSystemHarness(options: {
   let telegramSendFailures = options.telegramSendFailures ?? 0;
   let telegramPollFailures = 0;
   const pollRequests: unknown[] = [];
+  let controlledNotionPageCounter = 0;
   const controlledFetch = (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
+    if (options.hermesEnabled === true && url.endsWith("/health")) {
+      return Response.json({ status: "ok", platform: "controlled-hermes", version: "test" });
+    }
+    if (options.hermesEnabled === true && url.endsWith("/api/sessions") && init?.method === "POST") {
+      return Response.json({ status: "created" }, { status: 201 });
+    }
+    if (options.hermesEnabled === true && url.includes("/api/sessions/") && url.endsWith("/chat")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as { readonly message?: string };
+      const requestMessage = body.message ?? "";
+      const request = JSON.parse(requestMessage) as { readonly request?: string };
+      return Response.json({
+        session_id: decodeURIComponent(url.split("/api/sessions/")[1]?.split("/")[0] ?? ""),
+        message: {
+          role: "assistant",
+          content: JSON.stringify({
+            intent: "answer",
+            answer: `Controlled Hermes answered: ${request.request ?? ""}`,
+            contextRequests: [],
+            toolRequests: [],
+          }),
+        },
+        usage: { input_tokens: 5, output_tokens: 7 },
+        runtime: { model: "gpt-5.6-sol", provider: "openai-codex" },
+      });
+    }
     if (url.includes("api.telegram.org") && url.endsWith("/getUpdates")) {
       if (telegramPollFailures > 0) {
         telegramPollFailures -= 1;
@@ -2384,7 +2756,18 @@ export async function createControlPlaneSystemHarness(options: {
       return Response.json({ object: "list", results: [], has_more: false, next_cursor: null });
     }
     if (url.endsWith("api.notion.com/v1/pages")) {
-      return Response.json({ object: "page", id: `controlled-page-${messages.length}` });
+      const pageId = `controlled-page-${controlledNotionPageCounter}`;
+      controlledNotionPageCounter += 1;
+      // The production adapter requires Notion's server version so it can
+      // bind a subsequent overwrite to the page that was last read. Keep the
+      // controlled edge faithful to that contract instead of returning an
+      // identity-only page stub.
+      return Response.json({
+        object: "page",
+        id: pageId,
+        created_time: now(),
+        last_edited_time: now(),
+      });
     }
     throw new Error(`Controlled production edge received an unexpected request: ${new URL(url).host}.`);
   }) as typeof fetch;
@@ -2398,6 +2781,16 @@ export async function createControlPlaneSystemHarness(options: {
           : `controlled-${credential.name.toLowerCase()}`,
     ]),
   );
+  if (options.hermesEnabled === true) {
+    Object.assign(environment, {
+      REAL_MING_HERMES_ENABLED: "true",
+      REAL_MING_HERMES_BASE_URL: "http://127.0.0.1:8642",
+      REAL_MING_HERMES_API_KEY: "controlled-hermes-api-key",
+      REAL_MING_HERMES_MODEL: "gpt-5.6-sol",
+      REAL_MING_HERMES_PROVIDER: "openai-codex",
+      REAL_MING_HERMES_REASONING: "medium",
+    });
+  }
   const controlPlane = await createProductionControlPlane({
     environment,
     statePath: options.statePath,
@@ -2405,10 +2798,21 @@ export async function createControlPlaneSystemHarness(options: {
       options.notionLedgerPath ?? `${options.statePath}.notion-ledger`,
     fetch: controlledFetch,
     dashboardPort: 0,
+    ...(options.telegramOwnership === undefined
+      ? {}
+      : { telegramOwnership: options.telegramOwnership }),
+    ...(options.schedulerOwnership === undefined
+      ? {}
+      : { schedulerOwnership: options.schedulerOwnership }),
+    ...(options.hermesEnabled === true
+      ? { nativeCronApiKey: "controlled-hermes-api-key" }
+      : {}),
     now,
   });
 
   return {
+    telegramOwnership: () => controlPlane.telegramOwnership,
+    schedulerOwnership: () => controlPlane.schedulerOwnership,
     queueTelegramUpdate: (update) => {
       updates.push({
         update_id: update.updateId,
@@ -2426,6 +2830,8 @@ export async function createControlPlaneSystemHarness(options: {
       telegramPollFailures += 1;
     },
     runCycle: () => controlPlane.runCycle(),
+    runNativeScheduledReport: (request) =>
+      controlPlane.runNativeScheduledReport(request),
     dashboardOverview: async () => {
       const response = await fetch(`${controlPlane.dashboardOrigin}/api/overview`, {
         headers: { Authorization: `Bearer ${dashboardToken}` },
@@ -2433,31 +2839,46 @@ export async function createControlPlaneSystemHarness(options: {
       if (!response.ok) throw new Error("Controlled dashboard read failed.");
       return response.json() as Promise<DashboardOverview>;
     },
+    hermesOverview: () => controlPlane.hermesOverview(),
     telegramMessages: () => [...messages],
     backup: (destinationPath) =>
       backupSqliteState({
         sourcePath: options.statePath,
         destinationPath,
       }),
-    backupSet: (destinationDirectory, backupOptions) =>
-      backupAndUploadControlPlaneState({
-        statePath: options.statePath,
-        notionLedgerPath:
-          options.notionLedgerPath ?? `${options.statePath}.notion-ledger`,
-        destinationDirectory,
-        backupId: now().replaceAll(":", "-"),
-        createdAt: now(),
-        ...(backupOptions?.localOnly === true
-          ? {}
-          : {
-              uploader: {
-                upload: async () =>
-                  backupOptions?.failUpload === true
-                    ? { kind: "failed", reason: "unavailable" }
-                    : { kind: "ok" },
-              },
-            }),
-      }),
+    backupSet: async (destinationDirectory, backupOptions) => {
+      const backup = await backupAndUploadControlPlaneState({
+          statePath: options.statePath,
+          notionLedgerPath:
+            options.notionLedgerPath ?? `${options.statePath}.notion-ledger`,
+          destinationDirectory,
+          backupId: now().replaceAll(":", "-"),
+          createdAt: now(),
+          ...(backupOptions?.localOnly === true
+            ? {}
+            : {
+                uploader: {
+                  upload: async () =>
+                    backupOptions?.failUpload === true
+                      ? { kind: "failed", reason: "unavailable" as const }
+                      : { kind: "ok" as const },
+                },
+              }),
+        });
+      return {
+        statePath: backup.statePath,
+        notionLedgerPath: backup.notionLedgerPath,
+        manifest: {
+          files: backup.manifest.files.flatMap((file) =>
+            file.role === "hermes-session"
+              ? []
+              : [{
+                  role: file.role as "operations-state" | "notion-write-ledger",
+                  sha256: file.sha256,
+                }]),
+        },
+      };
+    },
     smoke: () =>
       verifyControlPlaneDashboard({
         origin: controlPlane.dashboardOrigin,

@@ -1,7 +1,7 @@
 [Unit]
 Description=Real-Ming always-on control plane
-After=docker.service network-online.target
-Wants=network-online.target
+After=docker.service network-online.target hermes.service
+Wants=network-online.target hermes.service
 Requires=docker.service
 
 [Service]
@@ -10,9 +10,18 @@ Restart=always
 RestartSec=10
 TimeoutStopSec=45
 EnvironmentFile=/etc/real-ming/release.env
-ExecStartPre=/usr/bin/install -d -o 1000 -g 1000 -m 0700 /var/lib/real-ming /var/lib/real-ming/backups
+# The Real-Ming MCP extension runs as `real-ming` (Hermes's account) and has
+# to read this directory, while the container writes it as uid 1000. A shared
+# group is how both reach it. This line previously forced -g 1000 -m 0700 on
+# every start, which silently reverted that grant at each restart and left the
+# extension unable to open the database until someone noticed. setgid (2770)
+# also makes the SQLite -wal and -shm files inherit the group, which plain
+# 0770 does not.
+ExecStartPre=-/usr/sbin/groupadd -f real-ming-data
+ExecStartPre=-/usr/sbin/usermod -aG real-ming-data real-ming
+ExecStartPre=/usr/bin/install -d -o 1000 -g real-ming-data -m 2770 /var/lib/real-ming /var/lib/real-ming/backups /var/lib/real-ming/obsidian
 ExecStartPre=-/usr/bin/docker rm -f real-ming-control-plane
-ExecStart=/usr/bin/docker run --name real-ming-control-plane --network host --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --cap-drop ALL --security-opt no-new-privileges --volume /var/lib/real-ming:/var/lib/real-ming --env REAL_MING_AZURE_KEY_VAULT_NAME=real-ming-vault --env REAL_MING_STATE_PATH=/var/lib/real-ming/state.sqlite --env REAL_MING_NOTION_LEDGER_PATH=/var/lib/real-ming/notion-write-ledger.sqlite --env REAL_MING_DASHBOARD_PORT=8787 ${REAL_MING_IMAGE}
+ExecStart=/usr/bin/docker run --name real-ming-control-plane --network host --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m --cap-drop ALL --security-opt no-new-privileges --volume /var/lib/real-ming:/var/lib/real-ming --env REAL_MING_AZURE_KEY_VAULT_NAME=real-ming-vault --env REAL_MING_STATE_PATH=/var/lib/real-ming/state.sqlite --env REAL_MING_NOTION_LEDGER_PATH=/var/lib/real-ming/notion-write-ledger.sqlite --env REAL_MING_HERMES_ENABLED --env REAL_MING_HERMES_BASE_URL --env REAL_MING_HERMES_API_KEY --env REAL_MING_HERMES_MODEL --env REAL_MING_HERMES_PROVIDER --env REAL_MING_HERMES_REASONING --env REAL_MING_HERMES_SESSIONS_PATH=/var/lib/real-ming/hermes.sqlite --env REAL_MING_OBSIDIAN_DIRECTORY --env REAL_MING_OBSIDIAN_ROOTS --env REAL_MING_TELEGRAM_OWNERSHIP --env REAL_MING_SCHEDULER_OWNERSHIP --env REAL_MING_MAIL_REFRESH_TOKENS --env REAL_MING_NATIVE_CRON_ENABLED --env REAL_MING_NATIVE_CRON_ENDPOINT --env REAL_MING_DASHBOARD_PORT=8787 ${REAL_MING_IMAGE}
 ExecStop=/usr/bin/docker stop --time 30 real-ming-control-plane
 
 [Install]

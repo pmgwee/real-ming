@@ -21,6 +21,21 @@ import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 import type { DeploymentCandidate, DeploymentCandidateStore } from "../portfolio/deployment-candidate.js";
 import type { KnowledgeDomainHealth } from "../knowledge/knowledge-operations.js";
+import type { HermesConversationOverview } from "../hermes/hermes-turn-coordinator.js";
+
+/**
+ * Health metadata for the native Hermes gateway. Native Telegram owns the
+ * conversation/session store, so Real-Ming must not invent session counts from
+ * its legacy coordinator. The native dashboard remains the source for those
+ * details; this view only proves the private gateway is reachable.
+ */
+export interface NativeHermesDashboardStatus {
+  readonly owner: "native-hermes-gateway";
+  readonly status: "healthy" | "failed";
+  readonly model: string | null;
+  readonly checkedAt: string;
+  readonly lastFailure: string | null;
+}
 
 export interface DashboardWorkItemView {
   readonly id: string;
@@ -149,6 +164,10 @@ export interface DashboardOverview {
   readonly providerObservations: readonly ProviderObservation[];
   /** Payload-free per-domain Knowledge Compiler health. */
   readonly knowledge: readonly KnowledgeDomainHealth[];
+  /** Payload-free Hermes session and turn health; prompts and chain-of-thought never enter the view. */
+  readonly hermes?: HermesConversationOverview;
+  /** Native gateway reachability; session details stay in Hermes' dashboard. */
+  readonly nativeHermes?: NativeHermesDashboardStatus;
 }
 
 const executiveRoles: readonly ExecutiveRole[] = [
@@ -224,6 +243,8 @@ export function buildDashboardOverview(
   deploymentCandidates?: DeploymentCandidateStore,
   schedulerJobs: readonly SchedulerJobDefinition[] = schedulerJobInventory,
   knowledge: readonly KnowledgeDomainHealth[] = [],
+  hermes?: HermesConversationOverview,
+  nativeHermes?: NativeHermesDashboardStatus,
 ): DashboardOverview {
   const workItems = state
     .workItems()
@@ -392,5 +413,7 @@ export function buildDashboardOverview(
     controlPlane: state.controlPlaneHealth(),
     providerObservations: state.providerObservations(),
     knowledge,
+    ...(hermes === undefined ? {} : { hermes }),
+    ...(nativeHermes === undefined ? {} : { nativeHermes }),
   };
 }

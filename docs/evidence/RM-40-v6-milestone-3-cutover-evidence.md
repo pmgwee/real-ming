@@ -1,0 +1,255 @@
+# RM-40 · Milestone 3 — native Telegram cutover, executed
+
+Executed 6 September 2026, 03:58–04:14 UTC (11:58–12:14 Asia/Kuala_Lumpur) on
+`real-ming-control-plane-my`, under the CEO's explicit approval to use the
+production bot and make the required changes.
+
+## RESOLVED — 6 September 2026, 04:36 UTC
+
+Ming stopped the East Asia VM `real-ming-control-plane` (Azure Portal → Stop;
+status now Stopped (deallocated), VM and disk retained for rollback). The
+diagnosis below was correct: it was the external consumer.
+
+Immediately afterwards, with nothing local polling, the long-poll probe that had
+returned `409 Conflict` twice returned `ok: True`. The gateway was started and
+**Telegram connected**:
+
+```
+gateway: running | version: 0.21.0
+   api_server -> connected
+   telegram   -> connected
+[Telegram] Connected to Telegram (polling mode)
+[Telegram] set_my_commands OK ... 60 commands registered
+```
+
+Verified after connection:
+
+| Check | Result |
+| --- | --- |
+| Single consumer | Both open sockets to `149.154.166.110` are held by `hermes`. Two sockets is normal for the adapter: one long-poll, one for API calls |
+| Real-Ming not polling | In-container `REAL_MING_TELEGRAM_OWNERSHIP` = `native-hermes-gateway`; no Telegram connection from the container |
+| Allowlist loaded | The `No env user allowlists configured` warning last appeared at 04:01:41, before the credential was written, and has not recurred |
+| Native command menu | 60 commands registered with Telegram across default, private-chat and group scopes — the native command surface the Revision 5 bridge never exposed |
+| Session store | `ok` |
+
+**Ownership has moved.** The native Hermes gateway is the single Telegram
+consumer for `@MingCreativesBot`. What remains is Ming's phone matrix, which is
+the milestone 3 pass criterion and cannot be produced by engineering.
+
+## Phone matrix · 6 September 2026, 12:40–12:42 Asia/Kuala_Lumpur
+
+Ming ran the matrix against `@MingCreativesBot`. **The two defects that failed
+the 5 September smoke are fixed**, and one native capability appeared that the
+Revision 5 bridge never had.
+
+| Test | Result | Verdict |
+| --- | --- | --- |
+| "Hi, what can you help me with?" | A natural capability answer. No role announced, no Work Item, no template | ✅ |
+| Follow-up in the same chat | Whole conversation stayed in **one session**: `20260906_044002_66dc9dc2`, 16 messages, 04:40:01 → 04:42:16 | ✅ structurally; see the gap below |
+| `/help` and the command menu | Full native menu across two pages, plus **59 skill commands** — including Ming's own playbooks exposed as `/cao`, `/cto` and the rest | ✅ new capability |
+| Formatted answer with code | A real fenced code block plus a clean bulleted explanation | ✅ **was broken in Revision 5** |
+| "As CTO, what's the release path for a DuitSini change?" | `📚 Reading skill cto`, then the eight-step release path, Approval voided by a new commit, migrations needing their own Approval and rollback | ✅ **was bypassed entirely in Revision 5** |
+| Work Items created by the whole conversation | `work_items` count unchanged at **33** | ✅ |
+| Tools invoked | 2 × `skill_view` — visible to Ming as "Reading skill cto", nothing hidden | ✅ |
+
+### Two Revision 5 defects retired
+
+1. **Rich formatting.** The smoke findings recorded "Provider harness sends
+   Markdown without `parse_mode`", so markup could not render. The native
+   gateway produced a proper code block.
+2. **Role-prefix bypass.** The smoke findings recorded `CTO: …` entering the
+   legacy action parser "with no additional Hermes call". The native path
+   loaded the `cto` skill and the agent answered from it.
+
+### Session continuity, resolved
+
+Milestone 1 found that one-shot CLI mode never resumes a session, and flagged
+that gateway continuity could not be inferred from it. It now has its own
+evidence: all seven exchanges are one session with 16 messages. **The one-shot
+defect does not affect the product path.**
+
+### Three rows were not actually exercised
+
+Ming pasted the checklist's placeholder text verbatim rather than a real case,
+so these remain untested and are **not** claimed:
+
+| Row | Why it did not test anything |
+| --- | --- |
+| Follow-up context | The message sent was the literal string "A short follow-up about that answer", so the agent correctly asked what he wanted to know. Session structure is proven; semantic recall is not |
+| Multi-step request | The message sent was "Something multi-step", so no work ran. **Typing indicator and progress remain unverified** |
+| Photo or file | The message sent was "A photo or file" as text. Attachment handling remains unverified |
+
+### One presentation fix applied
+
+Every reply quoted Ming's message back, which is noise in a one-to-one chat.
+`platforms.telegram.reply_to_mode` was unset and defaulting to quoting.
+
+Setting it exposed a YAML trap worth recording: `hermes config set … off` stores
+the **boolean** `False`, because YAML 1.1 treats `off` as false. The adapter
+reads `getattr(config, 'reply_to_mode', 'first') or 'first'`, so `False` falls
+through to `'first'` — the change would have left quoting on. It is now written
+as the quoted string `"off"`, which the adapter's `== "off"` check matches, and
+`hermes config get` returns `off`.
+
+## TL;DR
+
+**The Malaysia side of the cutover is done.** Real-Ming now runs the Revision 6
+image and no longer polls Telegram; the native Hermes gateway owns the
+transport and is configured with the production bot credential and Ming's
+allowlist. Two defects found in earlier milestones are fixed and verified.
+
+**One thing blocks completion: something outside this host is still polling the
+same bot token.** Telegram returns `409 Conflict` even with every Malaysia
+poller stopped. I cannot reach the machine that is doing it. This needs Ming.
+
+The system is in a safe, correct state while blocked: Hermes retries Telegram in
+the background and will take the transport the moment the other consumer stops.
+No further action is needed on my side once it does.
+
+## What was changed
+
+| # | Change | Verification |
+| --- | --- | --- |
+| 1 | Pre-cutover backup taken | Generation `2026-09-06T04-01-39.054Z`; contains `state.sqlite`, `notion-write-ledger.sqlite`, `hermes.sqlite` and native `hermes-state.db` with SHA-256 per file |
+| 2 | Native default model set to `gpt-5.6-sol` / `openai-codex`; the OpenRouter `base_url` unset | A one-shot run with **no model flags** returned the expected token and reported `model: gpt-5.6-sol, provider: openai-codex`. **Milestone 1 defect 2 is fixed** |
+| 3 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_ALLOWED_USERS`, `TELEGRAM_HOME_CHANNEL` written into the protected Hermes `.env` (0600, `real-ming`-owned) | Fetched from Key Vault through the VM managed identity in a single pipeline; **no value was displayed, logged or copied**. Verified by name and length only |
+| 4 | `python-telegram-bot[webhooks]==22.8` installed into the Hermes venv | The gateway's auto-install failed under systemd confinement. Installed with `uv` at the exact pin from the pinned source. `import telegram` → 22.8 |
+| 5 | Revision 6 image built and deployed | `real-ming:rev6-fb2756a` built on-host from commit `fb2756a`; container running that tag |
+| 6 | `REAL_MING_TELEGRAM_OWNERSHIP=native-hermes-gateway` in `release.env` | In-container `printenv` returns `native-hermes-gateway` |
+| 7 | systemd unit updated to pass that variable through | See the defect below |
+
+## Defect found during the cutover — and fixed
+
+**My milestone 2 work was incomplete, and production wiring is what exposed it.**
+
+`real-ming.service` passes an explicit list of `--env` names to `docker run`.
+`REAL_MING_TELEGRAM_OWNERSHIP` was not in that list. So when the container
+started, the variable was set in `release.env`, read correctly by the
+composition, and **never reached the process**. Real-Ming silently defaulted
+back to owning Telegram and started polling — the exact double-consumer state
+the whole migration exists to prevent. Measured: 2 open connections to
+`149.154.166.110`.
+
+This is a textbook illustration of why *production-wired* is a separate evidence
+state from *controlled-tested*. Five System Harness scenarios proved the mode
+works. None of them could see a `docker run` flag.
+
+Fixed in two places:
+
+1. `deploy/systemd/real-ming.service` now passes the variable through.
+2. `src/runtime/control-plane-deployment-preflight.ts` gained a check that scans
+   the composition root for every `REAL_MING_*` name it reads and fails the
+   build unless each one either reaches the container or is listed as
+   deliberately undeployed **with a stated reason**. Five names are listed with
+   reasons; the rest must be passed through.
+
+The check was verified by removing the flag again: the preflight failed with
+`deploy/systemd/real-ming.service:unpassed-env:REAL_MING_TELEGRAM_OWNERSHIP`,
+and passed once restored.
+
+## The blocker — an external consumer of the same bot token
+
+### What is proven
+
+With **every Malaysia poller stopped** — `hermes.service` stopped, Real-Ming
+running in native mode, and `ss` showing zero connections to Telegram's IPs — a
+long-poll `getUpdates` issued directly from the host returned:
+
+```
+ok: False | error_code: 409 | Conflict: terminated by other getUpdates request
+```
+
+Twice, consecutively. `getWebhookInfo` shows no webhook (`url: ''`), so a
+webhook is not the cause. The bot is `@MingCreativesBot`, id `8943517477`.
+
+### A wrong conclusion I drew on the way, and the correction
+
+An earlier probe with `timeout=0` returned `ok: True` and I reported that there
+was no external consumer. **That was wrong.** A zero-timeout `getUpdates`
+returns immediately and does not contest the long-poll lock, so it cannot
+detect the conflict. Only the long-poll form is a valid test. I had also
+hypothesised the East Asia VM, then withdrawn that hypothesis on the strength of
+the bad probe. The long-poll result restores it.
+
+### What was ruled out
+
+| Candidate | Result |
+| --- | --- |
+| Real-Ming on Malaysia | **Ruled out.** Container runs in native mode; zero Telegram connections; verified by `ss` and by `printenv` |
+| A second Hermes gateway on Malaysia | **Ruled out.** `hermes gateway list` shows one; no Telegram connections while stopped |
+| A Telegram webhook | **Ruled out.** `getWebhookInfo` returns an empty URL |
+| A local process on Ming's Windows machine | **Ruled out.** No `node` process runs the control plane; nothing matches `real-ming` or `control-plane` in any command line |
+| **East Asia VM `real-ming-control-plane`** | **Most likely.** It is `active` on Tailscale at `100.122.240.61`, answers ICMP, and has TCP/22 open — it was never deallocated. `real-ming.service` is `enabled` there, so any reboot would restart it automatically |
+
+### Why I cannot resolve it myself
+
+- SSH to `100.122.240.61` is refused: the only key on this machine
+  (`real_ming_southeastasia_ed25519`) is not authorised there, and `publickey`
+  is the sole accepted method.
+- Tailscale SSH is not enabled on that host, so the tailnet offers no way in.
+- There is no Azure control-plane access from here: no `az` CLI, no `Az`
+  PowerShell module, no `~/.azure` token cache. The Malaysia VM's managed
+  identity holds only Key Vault Secrets User and Storage Blob Data Contributor
+  — it cannot stop another VM.
+
+## What Ming needs to do — one action
+
+Stop the East Asia VM. **This is already an approved action:** the activation
+runbook records the decision to "deallocate — but do not delete — the East Asia
+VM for rollback," and it has been outstanding since 5 September. It is now
+blocking the thing it was supposed to follow.
+
+Either route works:
+
+1. **Azure Portal** → Virtual machines → `real-ming-control-plane` → **Stop**.
+   Stop, not Delete. The disk and the VM are retained for rollback.
+2. **SSH in with whatever key you hold** and run
+   `sudo systemctl disable --now real-ming.service`. Disabling matters as much
+   as stopping: the service is `enabled`, so a reboot would restart the conflict.
+
+If the conflict persists after that, the consumer is somewhere else and I will
+need to know what other machine has ever held this bot token.
+
+## What happens automatically once it stops
+
+Nothing further is required from me. The gateway's reconnection watcher is
+running and retries Telegram in the background; it will connect on its own. If
+it has exhausted its retry budget by then, one `systemctl restart hermes.service`
+finishes it — tell me and I will run it.
+
+## Current state
+
+| Component | State |
+| --- | --- |
+| `hermes.service` | active; `api_server` connected; `telegram` retrying |
+| `real-ming.service` | active; image `real-ming:rev6-fb2756a`; ownership `native-hermes-gateway`; **not polling** |
+| Dashboard | responds `401` on loopback — private and authenticated, as intended |
+| Durable state | 33 Work Items (18 Captured, 10 Planned, 3 Ready for CEO Review, 2 Waiting/Blocked); ingress cursor `510595576` recorded before cutover |
+| Network | unchanged; no public SSH, Hermes or dashboard rule |
+| Rollback | `release.env.pre-rev6`, `real-ming.service.pre-rev6`, `config.yaml.pre-rev6`, `.env.pre-rev6` all saved on the host; previous image `real-ming:phase4-af75e3c` still present |
+
+## Still not proven
+
+The phone matrix — native commands, formatting, typing indicator, attachments,
+session continuity and a real coding request over Telegram — has not run. It
+cannot until the transport connects. That remains the milestone 3 pass
+criterion and it is Ming's to judge.
+
+## Addendum · later phone evidence (6 September 2026)
+
+The older status paragraphs above are preserved as execution-time history. The
+following user-supplied observations supersede their phone-row status:
+
+- A screenshot attachment was sent to the native bot. Hermes identified the
+  YouTube interface, heading, visible counts and plugin tree, and the reply
+  rendered with a heading, syntax-highlighted code block, copy affordance,
+  bullets and preserved indentation. Attachment handling and formatting are
+  user-observed **passed**.
+- A real semantic recall question was answered after `/new`, and again after
+  the controlled Hermes service restart. Blue Lantern and November were
+  recalled without being repeated. Semantic continuity is user-observed
+  **passed**; the later cleanup request removed the test profile entry while
+  preserving conversation history.
+- A real multi-step request with visible Telegram typing/progress behavior is
+  still **pending**. This remains the only untested phone row in the current
+  acceptance queue.

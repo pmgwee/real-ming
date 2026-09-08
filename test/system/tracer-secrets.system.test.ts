@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
@@ -106,6 +106,32 @@ describe("RM-06 credential inventory and preflight", () => {
     }
   });
 
+  it("documents every configuration name the composition actually reads", () => {
+    // The example drifted to thirteen missing names, including both Revision 6
+    // ownership switches. A name the code reads but the example omits is a
+    // setting nobody knows exists until it misbehaves.
+    const example = readFileSync(`${repositoryRoot}.env.example`, "utf8");
+    const sources = [
+      "src/config/control-plane-cli.ts",
+      "src/config/control-plane-backup-cli.ts",
+      "src/config/real-ming-mcp-cli.ts",
+      "src/runtime/production-control-plane.ts",
+    ];
+
+    const undocumented: string[] = [];
+    for (const source of sources) {
+      const contents = readFileSync(`${repositoryRoot}${source}`, "utf8");
+      for (const match of contents.matchAll(
+        /(?:environment|process\.env)\["(REAL_MING_[A-Z_]+)"\]/g,
+      )) {
+        const name = match[1]!;
+        if (!new RegExp(`^${name}=`, "m").test(example)) undocumented.push(name);
+      }
+    }
+
+    expect([...new Set(undocumented)].sort()).toEqual([]);
+  });
+
   it("keeps the real environment file out of version control", () => {
     const ignored = readFileSync(`${repositoryRoot}.gitignore`, "utf8");
     expect(ignored).toMatch(/^\.env$/m);
@@ -148,6 +174,10 @@ describe("RM-06 repository credential leak guard", () => {
     const findings: string[] = [];
     for (const relative of tracked) {
       const absolute = `${repositoryRoot}${relative}`;
+      // A deleted tracked path remains in the index until the current ticket
+      // is committed. It is not content that can leak a credential, so skip
+      // it while the working tree is in that transitional state.
+      if (!existsSync(absolute)) continue;
       if (statSync(absolute).size > 2_000_000) {
         continue;
       }

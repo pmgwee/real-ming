@@ -39,6 +39,7 @@ const missedHeartbeatGraceMs = 60 * 60 * 1000;
 const defaultRunnerTimeoutMs = 5 * 60 * 1000;
 
 export type SchedulerCriticality = "critical" | "routine";
+export type SchedulerOwner = "real-ming" | "native-hermes-cron";
 
 export interface SchedulerJobDefinition {
   readonly job: string;
@@ -49,12 +50,32 @@ export interface SchedulerJobDefinition {
   readonly criticality: SchedulerCriticality;
   readonly accountableExecutive: ExecutiveRole;
   readonly evidenceLink: string;
+  /** The process allowed to claim and deliver this job. */
+  readonly owner?: SchedulerOwner;
 }
 
 /** The active Real-Ming inventory; later providers can register definitions. */
 export const schedulerJobInventory: readonly SchedulerJobDefinition[] = [
   // The held-notice sweep runs as do-not-disturb ends, before the brief, so a
   // notice deferred overnight arrives before the morning's own account.
+  //
+  // This one deliberately stays on Real-Ming's scheduler while the brief and
+  // roll-up moved to native Hermes cron (7 September 2026). It is not an
+  // unfinished migration.
+  //
+  // The reports compose one text and Hermes delivers it, so a native cron
+  // prompt is a good fit. This sweep instead delivers N notices individually,
+  // each replayed under its original idempotency key so a crash between the
+  // send and the mark is deduplicated by the delivery ledger rather than
+  // delivered twice, with a failed one marked pending so it stays retryable
+  // and one unreachable notice never stranding the rest. Concatenating them
+  // into a single text for Hermes to deliver would discard all of that.
+  //
+  // A native cron trigger is also an LLM turn, and a model that does not call
+  // the tool leaves the run marked succeeded with nothing delivered -- which
+  // happened during the 7 September cutover. That is an acceptable risk for a
+  // brief whose absence Ming would notice; it is not acceptable for a critical
+  // alert sweep. Deterministic housekeeping keeps a deterministic trigger.
   {
     job: releaseHeldJobName,
     hour: doNotDisturbEndHour,
@@ -74,6 +95,7 @@ export const schedulerJobInventory: readonly SchedulerJobDefinition[] = [
     criticality: "critical",
     accountableExecutive: "COO",
     evidenceLink: `scheduler-definition:${morningBriefJobName}`,
+    owner: "native-hermes-cron",
   },
   {
     job: executiveRollUpJobName,
@@ -84,6 +106,7 @@ export const schedulerJobInventory: readonly SchedulerJobDefinition[] = [
     criticality: "routine",
     accountableExecutive: "COO",
     evidenceLink: `scheduler-definition:${executiveRollUpJobName}`,
+    owner: "native-hermes-cron",
   },
 ];
 
@@ -402,6 +425,10 @@ export interface SchedulerJobHealth {
   readonly failureStreak: number;
   readonly failureHistory: readonly SchedulerFailureRecord[];
   readonly evidenceLink: string;
+  readonly owner: SchedulerOwner;
+  /** Last durable execution identity, used to audit scheduler migration. */
+  readonly lastRunId: string | null;
+  readonly lastRunOwner: string | null;
   /** Backward-compatible names retained for existing dashboard clients. */
   readonly lastOccurrenceDate: string | null;
   readonly lastOutcome: "succeeded" | "failed" | "running" | null;
@@ -485,6 +512,9 @@ export function schedulerHealth(
       failureStreak: failureStreak(forJob),
       failureHistory,
       evidenceLink,
+      owner: scheduled.owner ?? "real-ming",
+      lastRunId: last?.runId ?? null,
+      lastRunOwner: last?.owner ?? null,
       lastOccurrenceDate: last?.occurrenceDate ?? null,
       lastOutcome:
         last === undefined

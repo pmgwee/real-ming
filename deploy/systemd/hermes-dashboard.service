@@ -1,0 +1,31 @@
+[Unit]
+Description=Hermes Agent private dashboard
+After=network-online.target hermes.service
+Wants=network-online.target
+Requires=hermes.service
+
+[Service]
+Type=simple
+User=real-ming
+Group=real-ming
+WorkingDirectory=/var/lib/hermes-real-ming
+Environment=HOME=/var/lib/hermes-real-ming
+Environment=HERMES_HOME=/var/lib/hermes-real-ming
+Environment=API_SERVER_HOST=127.0.0.1
+Environment=API_SERVER_PORT=8642
+Environment=OBSIDIAN_VAULT_PATH=/var/lib/hermes-real-ming/obsidian-vault
+Environment=HERMES_TUI_DIR=/opt/hermes-agent-561b053f/ui-tui
+Environment=HERMES_DASHBOARD_PUBLIC_URL=https://real-ming-malaysia.tail54f32e.ts.net
+EnvironmentFile=/etc/real-ming/hermes.env
+ExecStart=/usr/local/bin/hermes dashboard --host 127.0.0.1 --port 9119 --skip-build --no-open
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/hermes-real-ming /var/lib/real-ming
+
+[Install]
+WantedBy=multi-user.target

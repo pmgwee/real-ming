@@ -1,6 +1,10 @@
 import type { RetentionBackupPurgeResult } from "../operations/retention-policy.js";
 import type { CalendarEvent, CalendarWindow } from "../providers/google-calendar-adapter.js";
-import type { ProviderReadResult } from "../providers/adapter-contract.js";
+import type {
+  ProviderReadResult,
+  ProviderWriteResult,
+} from "../providers/adapter-contract.js";
+import type { MailBody, MailMessage } from "../providers/gmail-adapter.js";
 import {
   providerObservationFromRead,
   statusForFailure,
@@ -26,11 +30,25 @@ import {
   morningBriefJobName,
   releaseHeldJobName,
   schedulerJobInventory,
+  type SchedulerOwner,
 } from "../operations/daily-operations-scheduler.js";
 import { createExceptionNoticeRhythm } from "../operations/exception-notice-rhythm.js";
 import { createProviderObservationCoordinator } from "../operations/provider-observation-coordinator.js";
-import { createExecutiveRollUpRunner } from "../operations/executive-roll-up.js";
-import { createMorningBriefRunner } from "../operations/morning-brief.js";
+import {
+  createExecutiveRollUpComposer,
+  createExecutiveRollUpRunner,
+} from "../operations/executive-roll-up.js";
+import {
+  createMorningBriefComposer,
+  createMorningBriefRunner,
+} from "../operations/morning-brief.js";
+import {
+  createNativeScheduledReportService,
+  nativeScheduledReportOwner,
+  type NativeScheduledReportRequest,
+  type NativeScheduledReportResult,
+  type NativeScheduledReportService,
+} from "../operations/native-scheduled-reports.js";
 import {
   createOperationsGateway,
   type MaterialBlockerReason,
@@ -39,6 +57,7 @@ import { createPrivateWorkerVerifier } from "../workers/private-worker.js";
 import { OperationsState } from "../operations/operations-state.js";
 import type { DashboardServer } from "../dashboard/dashboard-server.js";
 import { createDashboardServer } from "../dashboard/dashboard-server.js";
+import type { NativeHermesDashboardStatus } from "../dashboard/dashboard-read-model.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 import {
@@ -87,8 +106,13 @@ import {
   type KnowledgeSource,
 } from "../knowledge/knowledge-operations.js";
 import { createKnowledgeCompiler, type KnowledgeOperationalOutput } from "../knowledge/knowledge-compiler.js";
-import { createKnowledgeVault, type KnowledgeVault } from "../knowledge/knowledge-vault.js";
+import { createKnowledgeVault, type KnowledgeVault, type VaultRoot } from "../knowledge/knowledge-vault.js";
+import { createObsidianMaterializer, type ObsidianMaterializationResult, type ObsidianMaterializer } from "../knowledge/obsidian-materializer.js";
+import { createHermesProjectionBroker } from "../knowledge/hermes-projection.js";
 import type { PersonalContextIngestion } from "../knowledge/personal-context-ingestion.js";
+import type { HermesRuntimeClient } from "../hermes/contracts.js";
+import type { HermesSessionStore } from "../hermes/hermes-session-store.js";
+import { createHermesTurnCoordinator, type HermesTurnCoordinator } from "../hermes/hermes-turn-coordinator.js";
 
 const workspaceId = "workspace:real-ming";
 
@@ -125,8 +149,17 @@ const refusingResponder: QuestionResponder = {
   },
 };
 
+/**
+ * Which process holds the single Telegram consumer. Telegram permits one
+ * reliable polling owner; Architecture Revision 6 moves that owner to the
+ * native Hermes gateway (ADR-0020) without relaxing the invariant.
+ */
+export type TelegramOwnership = "real-ming-ingress" | "native-hermes-gateway";
+
 export interface DailyOperationsControlPlane {
   readonly dashboardOrigin: string;
+  readonly telegramOwnership: TelegramOwnership;
+  readonly schedulerOwnership: SchedulerOwner;
   readonly projectPortfolio: ProjectPortfolio | undefined;
   readonly projectEvidence: ProjectEvidenceBroker | undefined;
   bindPortfolioProject(request: ProjectEvidenceBindingRequest): void;
@@ -136,6 +169,12 @@ export interface DailyOperationsControlPlane {
   promoteDeploymentCandidate(input: DeploymentPromotionRequest): Promise<DeploymentPromotionResult>;
   readonly emailOperations: EmailOperationsCoordinator | undefined;
   readonly entertainmentEmailDigest: EntertainmentEmailDigestRunner | undefined;
+  readonly hermesOverview: () => import("../hermes/hermes-turn-coordinator.js").HermesConversationOverview | undefined;
+  readonly materializeObsidian: () => ObsidianMaterializationResult | undefined;
+  /** Native Hermes cron calls this boundary and delivers the returned text. */
+  readonly runNativeScheduledReport: (
+    request: NativeScheduledReportRequest,
+  ) => Promise<NativeScheduledReportResult>;
   runCycle(): Promise<ControlPlaneCycle>;
   run(): Promise<void>;
   stop(): void;
@@ -180,6 +219,37 @@ export async function createDailyOperationsControlPlane(options: {
   readonly listCalendarEvents: (
     window: CalendarWindow,
   ) => Promise<ProviderReadResult<readonly CalendarEvent[]>>;
+  /** Present only where the calendar credential may write. */
+  readonly createCalendarEvent?: (request: {
+    readonly calendarId: string;
+    readonly title: string;
+    readonly start: string;
+    readonly end: string;
+    readonly description?: string;
+    readonly location?: string;
+    readonly idempotencyKey: string;
+  }) => Promise<ProviderWriteResult>;
+  /** The mailboxes this process holds a credential for. */
+  readonly mailboxes?: readonly string[];
+  readonly searchMail?: (request: {
+    readonly mailbox: string;
+    readonly query?: string;
+    readonly limit?: number;
+  }) => Promise<ProviderReadResult<readonly MailMessage[]>>;
+  /** Opens one message in full, on request. */
+  readonly readMail?: (request: {
+    readonly mailbox: string;
+    readonly messageId: string;
+  }) => Promise<ProviderReadResult<MailBody>>;
+  /** Writes a draft. There is no send anywhere in this chain. */
+  readonly draftMail?: (request: {
+    readonly mailbox: string;
+    readonly to: readonly string[];
+    readonly subject: string;
+    readonly body: string;
+    readonly cc?: readonly string[];
+    readonly idempotencyKey: string;
+  }) => Promise<ProviderWriteResult>;
   readonly now?: () => string;
   readonly wait?: () => Promise<void>;
   /** Optional scheduled Knowledge Compiler runtime backed by an encrypted vault. */
@@ -194,8 +264,33 @@ export async function createDailyOperationsControlPlane(options: {
     readonly personalContext?: PersonalContextIngestion;
     readonly retentionRequired?: boolean;
   };
+  /**
+   * Which process owns the single Telegram consumer. Defaults to the
+   * Revision 5 behaviour so nothing changes until the cutover runs.
+   */
+  readonly telegramOwnership?: TelegramOwnership;
+  /** Which process owns the scheduled brief/roll-up trigger and delivery. */
+  readonly schedulerOwnership?: SchedulerOwner;
+  /** Shared Hermes bridge key for the loopback native-cron endpoint. */
+  readonly nativeCronApiKey?: string;
+  /** Optional real Hermes API-server runtime. Real-Ming remains the governance boundary. */
+  readonly hermes?: {
+    readonly runtime: HermesRuntimeClient;
+    readonly sessions: HermesSessionStore;
+    readonly model?: string;
+  };
+  /** Optional CEO-facing local Obsidian export. No directory means no export. */
+  readonly obsidian?: {
+    readonly directory: string;
+    readonly roots?: readonly VaultRoot[];
+  };
 }): Promise<DailyOperationsControlPlane> {
   const now = options.now ?? (() => new Date().toISOString());
+  const telegramOwnership: TelegramOwnership =
+    options.telegramOwnership ?? "real-ming-ingress";
+  const schedulerOwnership: SchedulerOwner =
+    options.schedulerOwnership ?? "real-ming";
+  const ownsTelegram = telegramOwnership === "real-ming-ingress";
   const state = new OperationsState(options.statePath);
   const projectEvidence =
     options.evidenceProvider === undefined || options.portfolio === undefined
@@ -275,6 +370,67 @@ export async function createDailyOperationsControlPlane(options: {
     },
     now,
   });
+  let knowledgeCompiler: import("../knowledge/knowledge-compiler.js").KnowledgeCompiler | undefined;
+  const hermesProjection = options.hermes === undefined
+    ? undefined
+    : createHermesProjectionBroker({
+        state,
+        pages: () => knowledgeCompiler?.pages() ?? [],
+      });
+  // Revision 6 retires the mandatory JSON turn envelope. When the native
+  // gateway owns conversation, Real-Ming must hold no Hermes conversation of
+  // its own, or two systems would claim the same session and the CEO would
+  // get two answers to one message.
+  const hermesCoordinator: HermesTurnCoordinator | undefined = options.hermes === undefined || !ownsTelegram
+    ? undefined
+    : createHermesTurnCoordinator({
+        runtime: options.hermes.runtime,
+        sessions: options.hermes.sessions,
+        gateway,
+        ...(hermesProjection === undefined ? {} : { projection: hermesProjection }),
+        ...(options.hermes.model === undefined ? {} : { model: options.hermes.model }),
+        workItem: (id) => state.workItem(id),
+        now,
+      });
+  // In Revision 6 the native gateway owns the Telegram conversation. Keep a
+  // small, read-only reachability check in the Real-Ming dashboard without
+  // fabricating legacy coordinator sessions or copying Hermes conversation
+  // content into the control plane.
+  const nativeHermesHealth =
+    options.hermes === undefined || ownsTelegram
+      ? undefined
+      : async (): Promise<NativeHermesDashboardStatus> => {
+          const configuredHermes = options.hermes;
+          if (configuredHermes === undefined) {
+            // The branch is unreachable by construction, but retaining an
+            // explicit failed status makes a future configuration race safe.
+            return {
+              owner: "native-hermes-gateway",
+              status: "failed",
+              model: null,
+              checkedAt: now(),
+              lastFailure: "Native Hermes runtime is not configured.",
+            };
+          }
+          try {
+            const health = await configuredHermes.runtime.health();
+            return {
+              owner: "native-hermes-gateway",
+              status: health.status,
+              model: health.model ?? configuredHermes.model ?? null,
+              checkedAt: now(),
+              lastFailure: health.failure ?? null,
+            };
+          } catch {
+            return {
+              owner: "native-hermes-gateway",
+              status: "failed",
+              model: configuredHermes.model ?? null,
+              checkedAt: now(),
+              lastFailure: "Native Hermes health check failed.",
+            };
+          }
+        };
   const frontDoor = createTelegramFrontDoor({
     ceoTelegramId: options.ceoTelegramId,
     ceoTelegramChatId: options.ceoTelegramChatId,
@@ -283,6 +439,7 @@ export async function createDailyOperationsControlPlane(options: {
     transport: createTelegramTransport(options.telegram),
     auditPseudonymKey: options.auditPseudonymKey,
     now,
+    ...(hermesCoordinator === undefined ? {} : { hermesTurn: hermesCoordinator }),
   });
   const deploymentPromotion =
     options.deploymentCandidateStore === undefined || options.deploymentPromotionStore === undefined
@@ -367,7 +524,7 @@ export async function createDailyOperationsControlPlane(options: {
         encryptionKey: options.knowledgeOperations.encryptionKey,
         now,
       });
-  const knowledgeCompiler = knowledgeVault === undefined
+  knowledgeCompiler = knowledgeVault === undefined
     ? undefined
     : createKnowledgeCompiler({ vault: knowledgeVault, actorId: "ceo:ming", now });
   const knowledgeRuntime: KnowledgeOperations | undefined =
@@ -392,6 +549,18 @@ export async function createDailyOperationsControlPlane(options: {
             return admission;
           },
         });
+  const obsidianMaterializer: ObsidianMaterializer | undefined =
+    knowledgeVault === undefined || options.obsidian === undefined
+      ? undefined
+      : createObsidianMaterializer({ vault: knowledgeVault, now });
+  let lastObsidianMaterialization: ObsidianMaterializationResult | undefined;
+  let lastObsidianSignature: string | undefined;
+  const obsidianSignature = (): string => {
+    const roots = options.obsidian?.roots ?? ["CEO"];
+    return roots
+      .map((root) => `${root}:${knowledgeVault?.currentGeneration(root)?.id ?? ""}`)
+      .join("|");
+  };
   const schedulerJobs = entertainmentEmailDigest === undefined && knowledgeRuntime === undefined
     ? schedulerJobInventory
     : [
@@ -399,9 +568,14 @@ export async function createDailyOperationsControlPlane(options: {
         ...(entertainmentEmailDigest === undefined ? [] : [entertainmentEmailDigestJobDefinition]),
         ...(knowledgeRuntime === undefined ? [] : knowledgeJobInventory),
       ];
-  const primarySchedulerJobs = entertainmentEmailDigest === undefined
+  const configuredPrimarySchedulerJobs = entertainmentEmailDigest === undefined
     ? schedulerJobInventory
     : [...schedulerJobInventory, entertainmentEmailDigestJobDefinition];
+  const primarySchedulerJobs = configuredPrimarySchedulerJobs.filter(
+    (job) =>
+      schedulerOwnership !== nativeScheduledReportOwner ||
+      job.owner !== nativeScheduledReportOwner,
+  );
   const runEntertainmentEmailDigest = async (): Promise<void> => {
     if (entertainmentEmailDigest === undefined) return;
     const result = await entertainmentEmailDigest.run();
@@ -439,7 +613,7 @@ export async function createDailyOperationsControlPlane(options: {
     );
     recordExceptionNoticeHealth(admission);
   };
-  const morningBrief = createMorningBriefRunner({
+  const morningBriefComposer = createMorningBriefComposer({
     state,
     listEvents: async (window) => {
       const result = await options.listCalendarEvents(window);
@@ -458,7 +632,31 @@ export async function createDailyOperationsControlPlane(options: {
       );
       return result;
     },
+    now,
+  });
+  const morningBrief = createMorningBriefRunner({
+    state,
+    listEvents: async (window) => {
+      const result = await options.listCalendarEvents(window);
+      await observeProvider?.(
+        providerObservationFromRead(
+          {
+            provider: "google-calendar",
+            accountReference: "google-calendar:real-ming",
+          },
+          "calendar:primary",
+          result,
+          now(),
+        ),
+      );
+      return result;
+    },
     admit: admitTracked,
+    now,
+  });
+  const rollUpComposer = createExecutiveRollUpComposer({
+    state,
+    workspaceId,
     now,
   });
   const rollUp = createExecutiveRollUpRunner({
@@ -467,6 +665,13 @@ export async function createDailyOperationsControlPlane(options: {
     admit: admitTracked,
     now,
   });
+  const nativeScheduledReports: NativeScheduledReportService =
+    createNativeScheduledReportService({
+      state,
+      morningBrief: morningBriefComposer,
+      executiveRollUp: rollUpComposer,
+      now,
+    });
   const scheduler = createDailyOperationsScheduler({
     state,
     now,
@@ -509,6 +714,169 @@ export async function createDailyOperationsControlPlane(options: {
         }),
     schedulerJobs,
     ...(knowledgeRuntime === undefined ? {} : { knowledgeHealth: () => knowledgeRuntime.domainHealth }),
+    ...(hermesCoordinator === undefined ? {} : { hermesHealth: () => hermesCoordinator.overview() }),
+    ...(nativeHermesHealth === undefined ? {} : { nativeHermesHealth }),
+    ...(options.nativeCronApiKey === undefined
+      ? {}
+      : {
+          nativeCron: {
+            apiKey: options.nativeCronApiKey,
+            run: (request: NativeScheduledReportRequest) =>
+              nativeScheduledReports.run(request),
+          },
+          // The MCP process holds no Google credential, so it asks here. This
+          // process already reads the calendar for the morning brief; serving
+          // the same read to the agent adds no second credential path.
+          providerReads: {
+            apiKey: options.nativeCronApiKey,
+            ...(options.createCalendarEvent === undefined
+              ? {}
+              : {
+                  createCalendarEvent: async (request: {
+                    readonly calendarId: string;
+                    readonly title: string;
+                    readonly start: string;
+                    readonly end: string;
+                    readonly description?: string;
+                    readonly location?: string;
+                    readonly idempotencyKey: string;
+                  }) => {
+                    const written = await options.createCalendarEvent?.(request);
+                    if (written === undefined || written.kind === "failed") {
+                      return {
+                        kind: "unavailable" as const,
+                        reason:
+                          written === undefined
+                            ? "Creating calendar events is not configured."
+                            : written.failure.message,
+                      };
+                    }
+                    return {
+                      kind: "ok" as const,
+                      reference: written.effectReference,
+                      deduplicated: written.deduplicated,
+                    };
+                  },
+                }),
+            ...(options.mailboxes === undefined ? {} : { mailboxes: options.mailboxes }),
+            ...(options.searchMail === undefined
+              ? {}
+              : {
+                  searchMail: async (request: {
+                    readonly mailbox: string;
+                    readonly query?: string;
+                    readonly limit?: number;
+                  }) => {
+                    const read = await options.searchMail?.(request);
+                    if (read === undefined || read.kind === "failed") {
+                      return {
+                        kind: "unavailable" as const,
+                        reason:
+                          read === undefined
+                            ? "That mailbox is not configured."
+                            : read.failure.message,
+                      };
+                    }
+                    return {
+                      kind: "ok" as const,
+                      messages: read.value.map((message) => ({
+                        id: message.id,
+                        from: message.from,
+                        subject: message.subject,
+                        snippet: message.snippet,
+                        receivedAt: message.receivedAt,
+                        unread: message.unread,
+                      })),
+                      retrievedAt: read.provenance.retrievedAt,
+                    };
+                  },
+                }),
+            ...(options.readMail === undefined
+              ? {}
+              : {
+                  readMail: async (request: {
+                    readonly mailbox: string;
+                    readonly messageId: string;
+                  }) => {
+                    const read = await options.readMail?.(request);
+                    if (read === undefined || read.kind === "failed") {
+                      return {
+                        kind: "unavailable" as const,
+                        reason:
+                          read === undefined
+                            ? "That mailbox is not configured."
+                            : read.failure.message,
+                      };
+                    }
+                    return {
+                      kind: "ok" as const,
+                      message: {
+                        from: read.value.from,
+                        to: read.value.to,
+                        subject: read.value.subject,
+                        receivedAt: read.value.receivedAt,
+                        body: read.value.body,
+                        convertedFromHtml: read.value.convertedFromHtml,
+                        truncated: read.value.truncated,
+                      },
+                    };
+                  },
+                }),
+            ...(options.draftMail === undefined
+              ? {}
+              : {
+                  draftMail: async (request: {
+                    readonly mailbox: string;
+                    readonly to: readonly string[];
+                    readonly subject: string;
+                    readonly body: string;
+                    readonly cc?: readonly string[];
+                    readonly idempotencyKey: string;
+                  }) => {
+                    const written = await options.draftMail?.(request);
+                    if (written === undefined || written.kind === "failed") {
+                      return {
+                        kind: "unavailable" as const,
+                        reason:
+                          written === undefined
+                            ? "Drafting is not configured for that mailbox."
+                            : written.failure.message,
+                      };
+                    }
+                    return {
+                      kind: "ok" as const,
+                      reference: written.effectReference,
+                      deduplicated: written.deduplicated,
+                    };
+                  },
+                }),
+            calendarEvents: async (request: {
+              readonly from?: string;
+              readonly to?: string;
+            }) => {
+              const read = await options.listCalendarEvents({
+                ...(request.from === undefined ? {} : { timeMin: request.from }),
+                ...(request.to === undefined ? {} : { timeMax: request.to }),
+              });
+              if (read.kind === "failed") {
+                return {
+                  kind: "unavailable" as const,
+                  reason: read.failure.message,
+                };
+              }
+              return {
+                kind: "ok" as const,
+                events: read.value.map((event) => ({
+                  title: event.title,
+                  start: event.start,
+                  end: event.end,
+                  allDay: event.allDay,
+                  status: event.status,
+                })),
+              };
+            },
+          },
+        }),
     credentials: [
       {
         actorId: "ceo:ming",
@@ -550,14 +918,23 @@ export async function createDailyOperationsControlPlane(options: {
     });
   };
 
-  const supervisor = createControlPlaneSupervisor({
-    pollTelegram: async () => {
-      const recovery = await frontDoor.retryPendingDeliveries();
-      if (recovery.failed > 0 || recovery.uncertain > 0) {
-        recordExceptionNoticeHealthOutcome("failed");
-      } else if (recovery.sent > 0) {
-        recordExceptionNoticeHealthOutcome("healthy");
-      }
+  // Delivery recovery is an outbound-notification concern, not an ingress one.
+  // Revision 5 ran it inside the polling loop; Revision 6 hands the consumer
+  // away, so the retry has to keep an owner of its own or a durable failed
+  // brief would sit unsent forever after cutover.
+  const recoverPendingDeliveries = async (): Promise<void> => {
+    const recovery = await frontDoor.retryPendingDeliveries();
+    if (recovery.failed > 0 || recovery.uncertain > 0) {
+      recordExceptionNoticeHealthOutcome("failed");
+    } else if (recovery.sent > 0) {
+      recordExceptionNoticeHealthOutcome("healthy");
+    }
+    if (recovery.failed > 0 || recovery.uncertain > 0) {
+      throw new Error("Telegram delivery recovery remains unresolved.");
+    }
+  };
+
+  const pollTelegram = async (): Promise<void> => {
       const cursor = state.telegramIngressCursor();
       const read = await options.telegram.read({ reference: `offset:${cursor + 1}` });
       if (read.kind === "failed") {
@@ -594,13 +971,35 @@ export async function createDailyOperationsControlPlane(options: {
       if (polled.failed > 0) {
         throw new Error("A Telegram update could not be handled.");
       }
-      if (recovery.failed > 0 || recovery.uncertain > 0) {
-        throw new Error("Telegram delivery recovery remains unresolved.");
-      }
-    },
+  };
+
+  const supervisor = createControlPlaneSupervisor({
+    ...(ownsTelegram
+      ? {
+          pollTelegram: async () => {
+            await recoverPendingDeliveries();
+            await pollTelegram();
+          },
+        }
+      : {}),
     tickSchedule: async () => {
+      if (!ownsTelegram) await recoverPendingDeliveries();
       const primary = await scheduler.tick();
       const knowledge = await knowledgeRuntime?.scheduler.tick();
+      if (
+        obsidianMaterializer !== undefined &&
+        knowledge !== undefined &&
+        knowledge.failed.length === 0 &&
+        obsidianSignature() !== lastObsidianSignature
+      ) {
+        lastObsidianMaterialization = obsidianMaterializer.materialize({
+          directory: options.obsidian!.directory,
+          actorId: "ceo:ming",
+          ...(options.obsidian?.roots === undefined ? {} : { roots: options.obsidian.roots }),
+          generatedAt: now(),
+        });
+        lastObsidianSignature = obsidianSignature();
+      }
       if (primary.failed.length > 0 || (knowledge?.failed.length ?? 0) > 0) {
         throw new Error("A scheduled operations job failed.");
       }
@@ -628,6 +1027,8 @@ export async function createDailyOperationsControlPlane(options: {
 
   return {
     dashboardOrigin: dashboard.origin,
+    telegramOwnership,
+    schedulerOwnership,
     projectPortfolio: options.portfolio,
     projectEvidence,
     bindPortfolioProject(request) {
@@ -659,6 +1060,9 @@ export async function createDailyOperationsControlPlane(options: {
     },
     emailOperations,
     entertainmentEmailDigest,
+    hermesOverview: () => hermesCoordinator?.overview(),
+    materializeObsidian: () => lastObsidianMaterialization,
+    runNativeScheduledReport: (request) => nativeScheduledReports.run(request),
     runCycle: () => supervisor.runCycle(),
     run: () => supervisor.run(),
     stop: () => supervisor.stop(),
@@ -670,6 +1074,7 @@ export async function createDailyOperationsControlPlane(options: {
       options.deploymentCandidateStore?.close();
       options.deploymentPromotionStore?.close();
       knowledgeVault?.close();
+      options.hermes?.sessions.close();
       state.close();
     },
   };

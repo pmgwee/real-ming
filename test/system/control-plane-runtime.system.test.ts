@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -670,6 +670,58 @@ describe("RM-15 production-equivalent control plane composition", () => {
       expect(after.telegramMessages()).toHaveLength(0);
     } finally {
       await after.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps Linux deployment entrypoints free of carriage returns", () => {
+    const linuxFiles = [
+      "deploy/backup-control-plane.sh",
+      "deploy/verify-deployment.sh",
+      "deploy/systemd/hermes.service",
+      "deploy/systemd/hermes-dashboard.service",
+      "deploy/systemd/real-ming.service",
+      "deploy/systemd/real-ming-backup.service",
+      "deploy/systemd/real-ming-backup.timer",
+      "hermes/deploy-skills.sh",
+    ];
+
+    for (const relativePath of linuxFiles) {
+      expect(readFileSync(join(process.cwd(), relativePath), "utf8"), relativePath).not.toContain("\r");
+    }
+  });
+
+  it("routes an ordinary production Telegram turn through the configured Hermes API edge", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm40-hermes-production-"));
+    const harness = await createControlPlaneSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      hermesEnabled: true,
+      now: () => "2026-09-04T12:00:00.000Z",
+    });
+    try {
+      harness.queueTelegramUpdate({
+        updateId: 9801,
+        senderId: "100000001",
+        chatId: "100000001",
+        text: "What is the next step for my personal agent?",
+      });
+      await harness.runCycle();
+      expect(harness.telegramMessages()).toContainEqual({
+        chatId: "100000001",
+        text: "Controlled Hermes answered: What is the next step for my personal agent?",
+      });
+      expect(harness.hermesOverview()).toMatchObject({
+        status: "healthy",
+        model: "gpt-5.6-sol",
+        sessionCount: 1,
+        turnCount: 1,
+        lastIntent: "answer",
+      });
+      await expect(harness.dashboardOverview()).resolves.toMatchObject({
+        hermes: expect.objectContaining({ sessionCount: 1, turnCount: 1 }),
+      });
+    } finally {
+      await harness.close();
       rmSync(directory, { recursive: true, force: true });
     }
   });

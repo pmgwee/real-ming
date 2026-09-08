@@ -80,6 +80,17 @@ export interface ChangeCalendarEventRequest {
   readonly idempotencyKey: string;
 }
 
+export interface CreateCalendarEventRequest {
+  readonly calendarId: string;
+  readonly title: string;
+  readonly start: string;
+  readonly end: string;
+  readonly description?: string;
+  readonly location?: string;
+  /** Stable key so a retried call does not double-book the day. */
+  readonly idempotencyKey: string;
+}
+
 export interface GoogleCalendarAdapter
   extends ProviderAdapter<readonly CalendarEvent[]> {
   listEvents(
@@ -88,6 +99,9 @@ export interface GoogleCalendarAdapter
   ): Promise<ProviderReadResult<readonly CalendarEvent[]>>;
   changeEventTime(
     request: ChangeCalendarEventRequest,
+  ): Promise<ProviderWriteResult>;
+  createEvent(
+    request: CreateCalendarEventRequest,
   ): Promise<ProviderWriteResult>;
 }
 
@@ -309,6 +323,114 @@ export function createGoogleCalendarAdapter(
     }
   };
 
+  const createEvent: GoogleCalendarAdapter["createEvent"] = async (event) => {
+    const retrievedAt = now();
+    const reference = `${event.calendarId}:new`;
+    const payloadDigest = `${event.title}|${event.start}|${event.end}`;
+    if (
+      event.idempotencyKey.trim() === "" ||
+      event.calendarId.trim() === "" ||
+      event.title.trim() === "" ||
+      event.start.trim() === "" ||
+      event.end.trim() === ""
+    ) {
+      return {
+        kind: "failed",
+        failure: providerFailure(
+          "invalid-input",
+          "Creating an event needs a calendar, a title, a start, an end and an idempotency key.",
+        ),
+      };
+    }
+    const replayed = ledger.receipt(event.idempotencyKey);
+    if (replayed !== undefined) {
+      if (replayed.payloadDigest !== payloadDigest) {
+        // Reusing a key for different details would silently overwrite the
+        // meaning of the first booking in the record.
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            "invalid-input",
+            "A calendar idempotency key was reused for a different event.",
+          ),
+        };
+      }
+      // A retry must not put a second copy of the meeting on the day.
+      return {
+        kind: "ok",
+        identity,
+        provenance: provenanceFor(reference, retrievedAt, retrievedAt),
+        effectReference: replayed.effectReference,
+        deduplicated: true,
+      };
+    }
+    try {
+      const response = await request(
+        `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(
+          event.calendarId,
+        )}/events`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            summary: event.title,
+            start: { dateTime: event.start },
+            end: { dateTime: event.end },
+            ...(event.description === undefined
+              ? {}
+              : { description: event.description }),
+            ...(event.location === undefined
+              ? {}
+              : { location: event.location }),
+          }),
+        },
+      );
+      if (!response.ok) {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            failureClassForStatus(response.status),
+            `Google Calendar returned HTTP ${response.status} creating an event.`,
+          ),
+        };
+      }
+      const body: unknown = await response.json();
+      const id = isRecord(body) && typeof body["id"] === "string" ? body["id"] : "";
+      if (id === "") {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            "provider-error",
+            "Google Calendar accepted the event but returned no identifier.",
+          ),
+        };
+      }
+      const effectReference = calendarSourceReference(event.calendarId, id);
+      ledger.record(event.idempotencyKey, {
+        reference,
+        payloadDigest,
+        effectReference,
+      });
+      return {
+        kind: "ok",
+        identity,
+        provenance: provenanceFor(reference, retrievedAt, retrievedAt),
+        effectReference,
+        deduplicated: false,
+      };
+    } catch (error) {
+      return {
+        kind: "failed",
+        failure: providerFailure(
+          "unavailable",
+          error instanceof Error
+            ? `Google Calendar is unreachable: ${error.message}`
+            : "Google Calendar is unreachable.",
+        ),
+      };
+    }
+  };
+
   const changeEventTime: GoogleCalendarAdapter["changeEventTime"] = async (
     change,
   ) => {
@@ -458,5 +580,6 @@ export function createGoogleCalendarAdapter(
     },
     listEvents,
     changeEventTime,
+    createEvent,
   };
 }

@@ -1,6 +1,9 @@
 # Credential inventory
 
-The ten credentials required for the Daily Operations tracer. This file records **no secret values** - only the variable name, who owns it, what it is for, where it lives, and how to revoke it. That is exactly what [issue #7](https://github.com/pmgwee/real-ming/issues/7) requires.
+The ten credentials required for the Daily Operations tracer are listed first.
+The Phase 4 Hermes bridge credential is listed separately below. This file
+records **no secret values** - only variable names, ownership, purpose, storage
+and revocation. That is exactly what [issue #7](https://github.com/pmgwee/real-ming/issues/7) requires.
 
 Step-by-step provisioning instructions are in [GATE-1-provisioning-runbook.md](GATE-1-provisioning-runbook.md).
 
@@ -19,17 +22,26 @@ Generated from `src/config/tracer-secrets.ts`. A test fails the build if this ta
 | `REAL_MING_VAULT_KEY` | CEO | Derive the Knowledge Vault encryption key. | Provision during Gate 1 | control-plane | Re-key the vault and republish each root generation. |
 | `REAL_MING_WORKER_SHARED_SECRET` | CEO | Authenticate the Lenovo private worker to the control plane. | Provision during Gate 1 | private-worker | Rotate the shared secret on both the worker and control plane. |
 
+## Phase 4 Hermes bridge credential
+
+| Variable | Owner | Purpose | Storage | Revocation |
+| --- | --- | --- | --- | --- |
+| `REAL_MING_HERMES_API_KEY` | CEO | Authenticate Real-Ming to the private Hermes API server. Hermes retains the Codex OAuth session; Real-Ming never receives that OAuth token. | Azure Key Vault secret `real-ming-hermes-api-key` or protected release environment | Rotate Hermes `API_SERVER_KEY` and restart both services. |
+
 ## Where the control plane runs
 
-Recorded 28 August 2026 as part of RM-06.
+Updated 5 September 2026 for the Malaysia West green/blue activation.
 
 | | |
 | --- | --- |
-| **Today** | Ming's local machine, with values in a gitignored `.env` at the repository root. |
-| **Secret storage** | The same `.env`. Never committed; `.gitignore` carries `.env` and `.env.*` with `!.env.example` as the sole exception. |
-| **Still to choose** | A genuinely always-on host. Deferred to RM-15, *Run Daily Operations in the always-on environment*, which is where it first matters. |
+| **Production** | East Asia VM `real-ming-control-plane` remains the sole active Telegram owner. Malaysia West VM `real-ming-control-plane-my` is the prepared green candidate and remains inactive until OAuth/private-access proof. |
+| **Secret storage** | Production tracer values are in Key Vault `real-ming-vault`; local development values remain in a gitignored `.env` at the repository root. `.env.example` carries names only. |
+| **Provisioned** | The Phase 4 bridge secret, protected service environments, Singapore backup target, container-scoped VM roles and unsynced CEO-only Obsidian destination. No value is recorded here. |
+| **Still to activate** | Complete Hermes Codex OAuth and Tailscale enrollment interactively, then prove the Hermes conversation, Telegram cutover, private dashboard and post-Hermes backup before deallocating East Asia. |
 
-RM-07 through RM-14 are implemented and verified locally, so the local machine is sufficient for them. RM-15 is the point at which a laptop that sleeps stops being adequate: a 07:30 brief cannot fire reliably from a machine that is closed. The specification deliberately leaves the hosting vendor out of scope, so that choice stays open until RM-15 forces it.
+RM-07 through RM-14 were implemented and verified locally. RM-15 settled Azure as the
+always-on host; the current Phase 4 work now moves the Hermes runtime and the
+governed Telegram composition there without copying OAuth state from Lenovo.
 
 ## Handling rules
 

@@ -1,0 +1,1904 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="real-ming-architecture" content="Real-Ming Personal Agent Architecture V4 Final">
+  <meta name="description" content="Final Hermes-first, Real-Ming-enveloped personal agent architecture for Telegram, Codex OAuth, live operations, coding workspaces, data projections, and Obsidian.">
+  <title>Real-Ming Personal Agent Architecture · V4 Final</title>
+  <style>
+    :root {
+      --bg: #050a15;
+      --bg-deep: #030711;
+      --panel: #0a1423;
+      --panel-2: #0e1b2d;
+      --panel-3: #13243a;
+      --ink: #f5f8ff;
+      --muted: #aebed1;
+      --faint: #7f94ac;
+      --line: #2a3d56;
+      --line-strong: #3b536f;
+      --telegram: #55b9ff;
+      --hermes: #f4c453;
+      --hermes-soft: #ffe39a;
+      --realming: #42d6a3;
+      --context: #aa88ff;
+      --human: #ff956d;
+      --evidence: #4fd7e8;
+      --danger: #ff7d78;
+      --success: #67dda9;
+      --mono: "Cascadia Code", "Cascadia Mono", "SFMono-Regular", Consolas, monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      --ease-out: cubic-bezier(.16, 1, .3, 1);
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html {
+      background: var(--bg);
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-width: 0;
+      overflow-x: hidden;
+      background:
+        linear-gradient(rgba(79, 215, 232, .032) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(79, 215, 232, .032) 1px, transparent 1px),
+        radial-gradient(circle at 57% 15%, rgba(66, 214, 163, .075), transparent 27rem),
+        var(--bg);
+      background-size: 34px 34px, 34px 34px, auto, auto;
+      color: var(--ink);
+      font-family: var(--sans);
+      font-size: 16px;
+      line-height: 1.48;
+    }
+
+    ::selection {
+      background: var(--hermes);
+      color: var(--bg-deep);
+    }
+
+    * {
+      scrollbar-color: var(--line-strong) var(--bg-deep);
+      scrollbar-width: thin;
+    }
+
+    *::-webkit-scrollbar { width: 10px; height: 10px; }
+    *::-webkit-scrollbar-track { background: var(--bg-deep); }
+    *::-webkit-scrollbar-thumb { background: var(--line-strong); border: 2px solid var(--bg-deep); }
+
+    a { color: var(--evidence); text-underline-offset: .22em; }
+
+    button,
+    a {
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    :focus-visible {
+      outline: 3px solid var(--hermes);
+      outline-offset: 3px;
+    }
+
+    .skip-link {
+      position: fixed;
+      z-index: 50;
+      top: 12px;
+      left: 12px;
+      transform: translateY(-160%);
+      padding: 10px 14px;
+      background: var(--ink);
+      color: var(--bg);
+      font-family: var(--mono);
+      font-size: 13px;
+      text-decoration: none;
+      transition: transform 180ms var(--ease-out);
+    }
+
+    .skip-link:focus { transform: translateY(0); }
+
+    main {
+      width: min(1540px, calc(100% - 56px));
+      margin: 0 auto;
+      padding: 46px 0 38px;
+    }
+
+    h1,
+    h2,
+    h3,
+    p { margin-top: 0; }
+
+    h1,
+    h2,
+    h3,
+    .data-label,
+    .version,
+    .mode-button,
+    .node-owner,
+    .step-index,
+    .code-line,
+    .footer-line {
+      font-family: var(--mono);
+    }
+
+    h1 {
+      max-width: 18ch;
+      margin-bottom: 18px;
+      font-size: clamp(2.55rem, 5.2vw, 5.75rem);
+      font-weight: 620;
+      letter-spacing: -.038em;
+      line-height: .98;
+      text-wrap: balance;
+    }
+
+    h2 {
+      max-width: 28ch;
+      margin-bottom: 10px;
+      font-size: clamp(1.55rem, 2.5vw, 2.65rem);
+      font-weight: 610;
+      letter-spacing: -.028em;
+      line-height: 1.08;
+      text-wrap: balance;
+    }
+
+    h3 {
+      margin-bottom: 7px;
+      font-size: 1rem;
+      font-weight: 620;
+      line-height: 1.25;
+    }
+
+    p { margin-bottom: 0; }
+
+    .hero {
+      position: relative;
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(290px, .6fr);
+      gap: 44px;
+      align-items: end;
+      min-height: 370px;
+      padding: 12px 0 38px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .version {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      margin-bottom: 22px;
+      color: var(--evidence);
+      font-size: .78rem;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+
+    .version::before {
+      width: 10px;
+      height: 10px;
+      background: var(--realming);
+      border-radius: 50%;
+      content: "";
+      outline: 3px solid rgba(66, 214, 163, .12);
+      outline-offset: 2px;
+    }
+
+    .hero-copy {
+      max-width: 74ch;
+      color: var(--muted);
+      font-size: clamp(1rem, 1.25vw, 1.18rem);
+    }
+
+    .thesis {
+      position: relative;
+      padding: 25px 24px 23px;
+      background: var(--panel-2);
+      border-top: 1px solid var(--hermes);
+      border-bottom: 1px solid var(--realming);
+    }
+
+    .thesis::before {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, rgba(244, 196, 83, .08), transparent 46%, rgba(66, 214, 163, .07));
+      content: "";
+      pointer-events: none;
+    }
+
+    .thesis strong {
+      position: relative;
+      display: block;
+      margin-bottom: 13px;
+      color: var(--hermes-soft);
+      font-family: var(--mono);
+      font-size: 1.03rem;
+      line-height: 1.45;
+    }
+
+    .thesis p {
+      position: relative;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    .decision-strip {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-bottom: 1px solid var(--line);
+    }
+
+    .decision {
+      min-width: 0;
+      padding: 19px 20px 20px;
+      border-right: 1px solid var(--line);
+    }
+
+    .decision:last-child { border-right: 0; }
+
+    .data-label {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--faint);
+      font-size: .7rem;
+      letter-spacing: .09em;
+      text-transform: uppercase;
+    }
+
+    .decision strong {
+      display: block;
+      color: var(--ink);
+      font-size: .9rem;
+      line-height: 1.4;
+    }
+
+    .section {
+      padding: 78px 0 0;
+    }
+
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 34px;
+      align-items: end;
+      margin-bottom: 26px;
+    }
+
+    .section-head > p {
+      max-width: 67ch;
+      color: var(--muted);
+      font-size: .96rem;
+    }
+
+    .section-code {
+      display: block;
+      margin-top: 11px;
+      margin-bottom: 0;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: .73rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+    }
+
+    .mode-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+
+    .mode-button {
+      min-height: 40px;
+      padding: 8px 14px;
+      appearance: none;
+      background: transparent;
+      border: 1px solid var(--line-strong);
+      border-radius: 999px;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: .74rem;
+      letter-spacing: .03em;
+      transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms var(--ease-out);
+    }
+
+    .mode-button:hover {
+      border-color: var(--evidence);
+      color: var(--ink);
+      transform: translateY(-1px);
+    }
+
+    .mode-button[aria-pressed="true"] {
+      background: var(--evidence);
+      border-color: var(--evidence);
+      color: var(--bg-deep);
+    }
+
+    .mode-button:disabled {
+      cursor: not-allowed;
+      opacity: .45;
+    }
+
+    .system-map {
+      position: relative;
+      overflow: hidden;
+      padding: 22px;
+      background: rgba(8, 18, 31, .96);
+      border: 1px solid var(--line-strong);
+      border-radius: var(--radius);
+      box-shadow: 0 28px 90px rgba(0, 0, 0, .32);
+    }
+
+    .map-topline {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      align-items: center;
+      margin-bottom: 18px;
+      padding: 0 2px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: .72rem;
+    }
+
+    .health {
+      display: inline-flex;
+      gap: 9px;
+      align-items: center;
+      color: var(--success);
+    }
+
+    .health i {
+      width: 8px;
+      height: 8px;
+      background: currentColor;
+      border-radius: 50%;
+      outline: 2px solid rgba(103, 221, 169, .12);
+      outline-offset: 2px;
+    }
+
+    .flow-grid {
+      display: grid;
+      grid-template-columns: minmax(170px, .56fr) 70px minmax(650px, 2.5fr) 70px minmax(180px, .64fr);
+      gap: 12px;
+      align-items: center;
+    }
+
+    .terminal,
+    .delivery {
+      display: grid;
+      align-content: center;
+      min-height: 260px;
+      padding: 21px;
+      background: var(--panel-2);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    .terminal { border-top-color: var(--human); }
+    .delivery { border-top-color: var(--telegram); }
+
+    .terminal .data-label { color: var(--human); }
+    .delivery .data-label { color: var(--telegram); }
+
+    .terminal h3,
+    .delivery h3 {
+      font-size: 1.08rem;
+    }
+
+    .terminal p,
+    .delivery p {
+      color: var(--muted);
+      font-size: .85rem;
+    }
+
+    .message-sample {
+      margin-top: 17px;
+      padding: 13px;
+      background: var(--bg-deep);
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: .73rem;
+      line-height: 1.55;
+    }
+
+    .flow-arrow {
+      position: relative;
+      display: grid;
+      place-items: center;
+      min-height: 40px;
+      color: var(--evidence);
+    }
+
+    .flow-arrow::before {
+      width: 100%;
+      border-top: 1px dashed currentColor;
+      content: "";
+      animation: signal 1.8s linear infinite;
+    }
+
+    .flow-arrow::after {
+      position: absolute;
+      right: -1px;
+      width: 8px;
+      height: 8px;
+      border-top: 1px solid currentColor;
+      border-right: 1px solid currentColor;
+      content: "";
+      transform: rotate(45deg);
+    }
+
+    .flow-arrow span {
+      position: absolute;
+      padding: 2px 6px;
+      background: var(--panel);
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: .63rem;
+      white-space: nowrap;
+    }
+
+    .envelope {
+      position: relative;
+      padding: 18px;
+      background: rgba(11, 26, 38, .72);
+      border: 1px dashed rgba(66, 214, 163, .72);
+      border-radius: var(--radius);
+    }
+
+    .envelope-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      align-items: center;
+      margin-bottom: 14px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(66, 214, 163, .24);
+    }
+
+    .envelope-title {
+      color: var(--realming);
+      font-family: var(--mono);
+      font-size: .86rem;
+      font-weight: 650;
+    }
+
+    .envelope-note {
+      max-width: 48ch;
+      color: var(--muted);
+      font-size: .72rem;
+      text-align: right;
+    }
+
+    .ingress-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-bottom: 12px;
+      background: rgba(66, 214, 163, .045);
+      border-top: 1px solid rgba(66, 214, 163, .25);
+      border-bottom: 1px solid rgba(66, 214, 163, .25);
+    }
+
+    .micro-node {
+      min-width: 0;
+      padding: 11px 12px;
+      border-right: 1px solid rgba(66, 214, 163, .2);
+    }
+
+    .micro-node:last-child { border-right: 0; }
+
+    .micro-node strong {
+      display: block;
+      margin-bottom: 2px;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: .72rem;
+    }
+
+    .micro-node span {
+      color: var(--muted);
+      font-size: .68rem;
+    }
+
+    .hermes-core {
+      position: relative;
+      overflow: hidden;
+      padding: 24px;
+      background: #18202a;
+      border-top: 1px solid var(--hermes);
+      border-bottom: 1px solid rgba(244, 196, 83, .42);
+    }
+
+    .hermes-core::after {
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 20% 0, rgba(244, 196, 83, .14), transparent 38%);
+      content: "";
+      pointer-events: none;
+    }
+
+    .core-head {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: minmax(160px, .8fr) minmax(0, 2fr);
+      gap: 24px;
+      align-items: start;
+    }
+
+    .core-head .data-label { color: var(--hermes); }
+
+    .core-head h3 {
+      margin-bottom: 6px;
+      color: var(--hermes-soft);
+      font-size: 1.28rem;
+    }
+
+    .core-head > div > p {
+      color: var(--muted);
+      font-size: .76rem;
+    }
+
+    .reasoning-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 1px;
+      background: rgba(244, 196, 83, .18);
+    }
+
+    .reasoning-cell {
+      min-width: 0;
+      padding: 12px;
+      background: rgba(10, 20, 35, .96);
+    }
+
+    .reasoning-cell strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: .72rem;
+    }
+
+    .reasoning-cell span {
+      display: block;
+      color: var(--muted);
+      font-size: .68rem;
+      line-height: 1.42;
+    }
+
+    .turn-plan {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 13px;
+      align-items: start;
+      margin-top: 13px;
+      padding: 12px 14px;
+      background: var(--bg-deep);
+    }
+
+    .turn-plan strong {
+      color: var(--hermes);
+      font-family: var(--mono);
+      font-size: .72rem;
+      white-space: nowrap;
+    }
+
+    .code-line {
+      color: #c5d1df;
+      font-size: .68rem;
+      line-height: 1.5;
+    }
+
+    .return-loop {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin: 11px 0;
+      color: var(--evidence);
+      font-family: var(--mono);
+      font-size: .66rem;
+    }
+
+    .return-loop::before,
+    .return-loop::after {
+      height: 1px;
+      background: rgba(79, 215, 232, .36);
+      content: "";
+      flex: 1;
+    }
+
+    .operating-row {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 1px;
+      background: rgba(66, 214, 163, .2);
+      border-top: 1px solid rgba(66, 214, 163, .22);
+      border-bottom: 1px solid rgba(66, 214, 163, .22);
+    }
+
+    .operating-node {
+      min-width: 0;
+      min-height: 108px;
+      padding: 12px;
+      background: var(--panel-2);
+      transition: opacity 180ms ease, filter 180ms ease, background-color 180ms ease;
+    }
+
+    .operating-node strong {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--realming);
+      font-family: var(--mono);
+      font-size: .69rem;
+    }
+
+    .operating-node span {
+      display: block;
+      color: var(--muted);
+      font-size: .66rem;
+      line-height: 1.43;
+    }
+
+    .system-map[data-active-mode]:not([data-active-mode="all"]) [data-path] {
+      opacity: .28;
+      filter: saturate(.4);
+    }
+
+    .system-map[data-active-mode="conversation"] [data-path~="conversation"],
+    .system-map[data-active-mode="coding"] [data-path~="coding"],
+    .system-map[data-active-mode="context"] [data-path~="context"],
+    .system-map[data-active-mode="operations"] [data-path~="operations"] {
+      background-color: #162a39;
+      opacity: 1;
+      filter: none;
+    }
+
+    .dock {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr 1fr;
+      gap: 12px;
+      margin-top: 15px;
+    }
+
+    .dock-lane {
+      min-width: 0;
+      padding: 15px;
+      background: var(--panel-2);
+      border-top: 1px solid var(--dock-color);
+    }
+
+    .dock-lane:nth-child(1) { --dock-color: var(--context); }
+    .dock-lane:nth-child(2) { --dock-color: var(--hermes); }
+    .dock-lane:nth-child(3) { --dock-color: var(--evidence); }
+
+    .dock-lane strong {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--dock-color);
+      font-family: var(--mono);
+      font-size: .76rem;
+    }
+
+    .dock-lane p {
+      color: var(--muted);
+      font-size: .72rem;
+    }
+
+    .plain-note {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: rgba(79, 215, 232, .055);
+      color: #c5d6e7;
+      font-family: var(--mono);
+      font-size: .7rem;
+      text-align: center;
+    }
+
+    .protocol {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      background: var(--line);
+      gap: 1px;
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .protocol-step {
+      position: relative;
+      min-width: 0;
+      min-height: 225px;
+      padding: 20px 17px;
+      background: var(--panel);
+    }
+
+    .protocol-step::after {
+      position: absolute;
+      top: 28px;
+      right: -5px;
+      z-index: 2;
+      width: 9px;
+      height: 9px;
+      background: var(--panel);
+      border-top: 1px solid var(--line-strong);
+      border-right: 1px solid var(--line-strong);
+      content: "";
+      transform: rotate(45deg);
+    }
+
+    .protocol-step:last-child::after { display: none; }
+
+    .step-index {
+      display: inline-grid;
+      place-items: center;
+      width: 31px;
+      height: 31px;
+      margin-bottom: 28px;
+      border: 1px solid var(--step-color);
+      border-radius: 50%;
+      color: var(--step-color);
+      font-size: .7rem;
+    }
+
+    .protocol-step:nth-child(1) { --step-color: var(--telegram); }
+    .protocol-step:nth-child(2),
+    .protocol-step:nth-child(3),
+    .protocol-step:nth-child(5),
+    .protocol-step:nth-child(6) { --step-color: var(--hermes); }
+    .protocol-step:nth-child(4) { --step-color: var(--realming); }
+
+    .node-owner {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--step-color);
+      font-size: .66rem;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .protocol-step p {
+      color: var(--muted);
+      font-size: .8rem;
+    }
+
+    .protocol-callout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      margin-top: 14px;
+      background: var(--line);
+    }
+
+    .protocol-callout > div {
+      padding: 17px 19px;
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: .83rem;
+    }
+
+    .protocol-callout strong {
+      color: var(--ink);
+      font-family: var(--mono);
+    }
+
+    .ownership {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .owner-lane {
+      position: relative;
+      overflow: hidden;
+      background: var(--panel);
+      border-top: 1px solid var(--owner-color);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .owner-lane.hermes { --owner-color: var(--hermes); }
+    .owner-lane.realming { --owner-color: var(--realming); }
+
+    .owner-head {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 18px;
+      align-items: start;
+      padding: 24px 24px 20px;
+      background: linear-gradient(135deg, color-mix(in srgb, var(--owner-color) 10%, transparent), transparent 65%);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .owner-head h3 {
+      color: var(--owner-color);
+      font-size: 1.28rem;
+    }
+
+    .owner-head p {
+      max-width: 48ch;
+      color: var(--muted);
+      font-size: .82rem;
+    }
+
+    .owner-verb {
+      color: var(--owner-color);
+      font-family: var(--mono);
+      font-size: .65rem;
+      letter-spacing: .1em;
+      text-align: right;
+      text-transform: uppercase;
+    }
+
+    .owner-list {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .owner-list li {
+      min-height: 104px;
+      padding: 16px 18px;
+      border-right: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: .8rem;
+    }
+
+    .owner-list li:nth-child(even) { border-right: 0; }
+    .owner-list li:nth-last-child(-n+2) { border-bottom: 0; }
+
+    .owner-list strong {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: .78rem;
+    }
+
+    .boundary-line {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 20px;
+      align-items: center;
+      margin-top: 14px;
+      padding: 17px 19px;
+      background: rgba(255, 125, 120, .06);
+      border-top: 1px solid rgba(255, 125, 120, .38);
+      color: var(--muted);
+      font-size: .82rem;
+    }
+
+    .boundary-line strong {
+      color: var(--danger);
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .source-flow {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 64px minmax(250px, .72fr) 64px minmax(290px, .82fr);
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .source-bank {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      background: var(--line);
+      gap: 1px;
+    }
+
+    .source-item {
+      min-width: 0;
+      padding: 16px;
+      background: var(--panel);
+    }
+
+    .source-item strong {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--telegram);
+      font-family: var(--mono);
+      font-size: .78rem;
+    }
+
+    .source-item span {
+      display: block;
+      color: var(--muted);
+      font-size: .75rem;
+    }
+
+    .broker,
+    .digest {
+      display: grid;
+      align-content: center;
+      min-width: 0;
+      padding: 24px;
+      background: var(--panel-2);
+      border-top: 1px solid var(--broker-color);
+    }
+
+    .broker { --broker-color: var(--context); }
+    .digest { --broker-color: var(--hermes); }
+
+    .broker h3,
+    .digest h3 { color: var(--broker-color); }
+
+    .broker p,
+    .digest p {
+      color: var(--muted);
+      font-size: .82rem;
+    }
+
+    .broker .code-line,
+    .digest .code-line {
+      margin-top: 15px;
+      padding-top: 13px;
+      border-top: 1px solid var(--line);
+    }
+
+    .role-band {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 1px;
+      margin-top: 14px;
+      background: var(--line);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .role {
+      min-width: 0;
+      padding: 15px;
+      background: var(--panel);
+    }
+
+    .role strong {
+      display: block;
+      margin-bottom: 4px;
+      color: var(--context);
+      font-family: var(--mono);
+      font-size: .8rem;
+    }
+
+    .role span {
+      color: var(--muted);
+      font-size: .72rem;
+    }
+
+    .role-note {
+      margin-top: 10px;
+      color: var(--faint);
+      font-family: var(--mono);
+      font-size: .68rem;
+      text-align: center;
+    }
+
+    .coding-run {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 1px;
+      background: var(--line);
+      border-top: 1px solid var(--line);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .coding-step {
+      min-width: 0;
+      min-height: 205px;
+      padding: 18px 15px;
+      background: var(--panel);
+    }
+
+    .coding-step:nth-child(1),
+    .coding-step:nth-child(3),
+    .coding-step:nth-child(5),
+    .coding-step:nth-child(7) { background: #111c2b; }
+
+    .coding-step .step-index {
+      --step-color: var(--code-color);
+      margin-bottom: 24px;
+    }
+
+    .coding-step.hermes { --code-color: var(--hermes); }
+    .coding-step.realming { --code-color: var(--realming); }
+
+    .coding-step .node-owner { color: var(--code-color); }
+
+    .coding-step p {
+      color: var(--muted);
+      font-size: .76rem;
+    }
+
+    .execution-truth {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 14px;
+      margin-top: 14px;
+    }
+
+    .truth-panel {
+      padding: 19px 21px;
+      background: var(--panel-2);
+      border-top: 1px solid var(--truth-color);
+    }
+
+    .truth-panel:first-child { --truth-color: var(--hermes); }
+    .truth-panel:last-child { --truth-color: var(--realming); }
+
+    .truth-panel strong {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--truth-color);
+      font-family: var(--mono);
+      font-size: .8rem;
+    }
+
+    .truth-panel p {
+      color: var(--muted);
+      font-size: .82rem;
+    }
+
+    .topology {
+      display: grid;
+      grid-template-columns: minmax(0, 2.2fr) minmax(250px, .8fr);
+      gap: 18px;
+    }
+
+    .cloud {
+      position: relative;
+      padding: 22px;
+      background: rgba(10, 24, 36, .92);
+      border: 1px dashed rgba(85, 185, 255, .58);
+      border-radius: var(--radius);
+    }
+
+    .topology-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 22px;
+      align-items: start;
+      margin-bottom: 18px;
+    }
+
+    .topology-head h3 {
+      color: var(--telegram);
+      font-size: 1.15rem;
+    }
+
+    .topology-head p {
+      max-width: 48ch;
+      color: var(--muted);
+      font-size: .78rem;
+      text-align: right;
+    }
+
+    .cloud-layout {
+      display: grid;
+      grid-template-columns: minmax(170px, .65fr) 36px minmax(250px, 1.05fr) 36px minmax(210px, .9fr);
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .stack {
+      display: grid;
+      gap: 9px;
+    }
+
+    .deploy-node {
+      min-width: 0;
+      padding: 15px;
+      background: var(--panel-2);
+      border-top: 1px solid var(--deploy-color, var(--line-strong));
+    }
+
+    .deploy-node.gateway { --deploy-color: var(--realming); }
+    .deploy-node.hermes { --deploy-color: var(--hermes); }
+    .deploy-node.workspace { --deploy-color: var(--evidence); }
+    .deploy-node.state { --deploy-color: var(--context); }
+    .deploy-node.surface { --deploy-color: var(--telegram); }
+
+    .deploy-node strong {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--deploy-color, var(--ink));
+      font-family: var(--mono);
+      font-size: .76rem;
+    }
+
+    .deploy-node p {
+      color: var(--muted);
+      font-size: .72rem;
+    }
+
+    .vertical-arrow {
+      display: grid;
+      place-items: center;
+      color: var(--evidence);
+      font-family: var(--mono);
+      font-size: 1.15rem;
+    }
+
+    .lenovo {
+      padding: 22px;
+      background: var(--panel);
+      border-top: 1px solid var(--human);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .lenovo h3 {
+      color: var(--human);
+      font-size: 1.15rem;
+    }
+
+    .lenovo > p {
+      margin-bottom: 20px;
+      color: var(--muted);
+      font-size: .8rem;
+    }
+
+    .lenovo .deploy-node + .deploy-node { margin-top: 9px; }
+
+    .offline-note {
+      margin-top: 17px;
+      padding: 13px;
+      background: rgba(66, 214, 163, .07);
+      color: #c3e6d8;
+      font-family: var(--mono);
+      font-size: .7rem;
+    }
+
+    .credential-rail {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1px;
+      margin-top: 14px;
+      background: var(--line);
+    }
+
+    .credential-rail > div {
+      padding: 15px 17px;
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: .74rem;
+    }
+
+    .credential-rail strong {
+      display: block;
+      margin-bottom: 5px;
+      color: var(--ink);
+      font-family: var(--mono);
+      font-size: .72rem;
+    }
+
+    .dashboard-spec {
+      display: grid;
+      grid-template-columns: minmax(0, 1.7fr) minmax(290px, .8fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .event-stream {
+      overflow: hidden;
+      background: var(--panel);
+      border-top: 1px solid var(--evidence);
+    }
+
+    .stream-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 18px;
+      padding: 17px 19px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .stream-head strong {
+      color: var(--evidence);
+      font-family: var(--mono);
+      font-size: .8rem;
+    }
+
+    .stream-head span {
+      color: var(--success);
+      font-family: var(--mono);
+      font-size: .68rem;
+    }
+
+    .event-row {
+      display: grid;
+      grid-template-columns: 74px 115px minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 12px 19px;
+      border-bottom: 1px solid rgba(42, 61, 86, .75);
+      color: var(--muted);
+      font-size: .76rem;
+    }
+
+    .event-row:last-child { border-bottom: 0; }
+
+    .event-row time,
+    .event-type,
+    .event-status {
+      font-family: var(--mono);
+      font-size: .67rem;
+    }
+
+    .event-row time { color: var(--faint); }
+    .event-type { color: var(--event-color); }
+    .event-status { color: var(--success); }
+    .event-row:nth-child(2) { --event-color: var(--telegram); }
+    .event-row:nth-child(3) { --event-color: var(--hermes); }
+    .event-row:nth-child(4) { --event-color: var(--realming); }
+    .event-row:nth-child(5) { --event-color: var(--context); }
+    .event-row:nth-child(6) { --event-color: var(--evidence); }
+    .event-row:nth-child(7) { --event-color: var(--hermes); }
+
+    .visibility {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      background: var(--panel-2);
+      border-top: 1px solid var(--realming);
+    }
+
+    .visibility h3 {
+      padding: 19px 20px 0;
+      color: var(--realming);
+    }
+
+    .visibility ul {
+      margin: 0;
+      padding: 12px 20px 18px 38px;
+      color: var(--muted);
+      font-size: .8rem;
+    }
+
+    .visibility li + li { margin-top: 8px; }
+
+    .never-display {
+      padding: 14px 20px;
+      background: rgba(255, 125, 120, .055);
+      border-top: 1px solid rgba(255, 125, 120, .32);
+      color: #f1c2c0;
+      font-family: var(--mono);
+      font-size: .69rem;
+    }
+
+    .principles {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 16px;
+    }
+
+    .promise {
+      padding: 28px;
+      background: var(--panel);
+      border-top: 1px solid var(--hermes);
+    }
+
+    .promise blockquote {
+      max-width: 26ch;
+      margin: 0 0 25px;
+      color: var(--hermes-soft);
+      font-family: var(--mono);
+      font-size: clamp(1.3rem, 2vw, 2rem);
+      letter-spacing: -.025em;
+      line-height: 1.28;
+    }
+
+    .promise p {
+      max-width: 69ch;
+      color: var(--muted);
+      font-size: .88rem;
+    }
+
+    .guardrail-list {
+      display: grid;
+      background: var(--line);
+      gap: 1px;
+    }
+
+    .guardrail {
+      display: grid;
+      grid-template-columns: 18px 1fr;
+      gap: 12px;
+      padding: 15px 17px;
+      background: var(--panel-2);
+      color: var(--muted);
+      font-size: .78rem;
+    }
+
+    .guardrail i {
+      position: relative;
+      width: 15px;
+      height: 15px;
+      margin-top: 2px;
+      border: 1px solid var(--realming);
+      border-radius: 50%;
+    }
+
+    .guardrail i::after {
+      position: absolute;
+      top: 3px;
+      left: 4px;
+      width: 5px;
+      height: 3px;
+      border-left: 1px solid var(--realming);
+      border-bottom: 1px solid var(--realming);
+      content: "";
+      transform: rotate(-45deg);
+    }
+
+    .guardrail strong { color: var(--ink); }
+
+    footer {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 24px;
+      align-items: center;
+      margin-top: 76px;
+      padding: 22px 0 8px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+    }
+
+    .footer-line {
+      font-size: .7rem;
+      line-height: 1.6;
+    }
+
+    .final-mark {
+      color: var(--realming);
+      font-family: var(--mono);
+      font-size: .72rem;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+
+    @keyframes signal {
+      from { border-top-color: rgba(79, 215, 232, .35); }
+      50% { border-top-color: rgba(79, 215, 232, 1); }
+      to { border-top-color: rgba(79, 215, 232, .35); }
+    }
+
+    @media (max-width: 1220px) {
+      .flow-grid {
+        grid-template-columns: minmax(145px, .55fr) 46px minmax(560px, 2.5fr);
+      }
+
+      .flow-grid > .flow-arrow:nth-of-type(2),
+      .delivery { display: none; }
+
+      .protocol { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+      .protocol-step:nth-child(3)::after { display: none; }
+      .coding-run { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .source-flow { grid-template-columns: 1fr 44px .8fr; }
+      .source-flow > .flow-arrow:nth-of-type(2),
+      .digest { display: none; }
+      .cloud-layout { grid-template-columns: 1fr 28px 1.2fr; }
+      .cloud-layout > .vertical-arrow:nth-of-type(2),
+      .cloud-layout > .stack:last-child { display: none; }
+    }
+
+    @media (max-width: 900px) {
+      main { width: min(100% - 30px, 760px); padding-top: 28px; }
+      .hero { grid-template-columns: 1fr; gap: 28px; min-height: 0; }
+      h1 { max-width: 15ch; font-size: clamp(2.45rem, 10vw, 4.8rem); }
+      .decision-strip { grid-template-columns: 1fr 1fr; }
+      .decision:nth-child(2) { border-right: 0; }
+      .decision:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+      .section { padding-top: 62px; }
+      .section-head { display: block; }
+      .section-head > p { margin-top: 14px; }
+      .flow-grid { grid-template-columns: 1fr; }
+      .flow-grid > .flow-arrow { min-height: 42px; transform: none; }
+      .flow-grid > .flow-arrow::before,
+      .source-flow > .flow-arrow::before {
+        width: 1px;
+        height: 42px;
+        border-top: 0;
+        border-left: 1px dashed currentColor;
+      }
+      .flow-grid > .flow-arrow::after,
+      .source-flow > .flow-arrow::after {
+        right: auto;
+        bottom: 1px;
+        border-top: 0;
+        border-right: 1px solid currentColor;
+        border-bottom: 1px solid currentColor;
+        transform: rotate(45deg);
+      }
+      .terminal { min-height: 0; }
+      .delivery { display: grid; min-height: 0; }
+      .flow-grid > .flow-arrow:nth-of-type(2) { display: grid; }
+      .core-head { grid-template-columns: 1fr; }
+      .dock { grid-template-columns: 1fr; }
+      .protocol { grid-template-columns: 1fr 1fr; }
+      .protocol-step:nth-child(3)::after { display: block; }
+      .protocol-step:nth-child(even)::after { display: none; }
+      .ownership,
+      .topology,
+      .dashboard-spec,
+      .principles { grid-template-columns: 1fr; }
+      .source-flow { grid-template-columns: 1fr; }
+      .source-flow > .flow-arrow { min-height: 42px; transform: none; }
+      .source-flow > .flow-arrow:nth-of-type(2),
+      .digest { display: grid; }
+      .role-band { grid-template-columns: 1fr 1fr; }
+      .role:last-child { grid-column: 1 / -1; }
+      .coding-run { grid-template-columns: 1fr 1fr; }
+      .execution-truth { grid-template-columns: 1fr; }
+      .credential-rail { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 620px) {
+      body { font-size: 15px; }
+      main { width: min(100% - 22px, 540px); }
+      h1 { font-size: clamp(2.25rem, 12.5vw, 4rem); }
+      h2 { font-size: 1.55rem; }
+      .version { align-items: flex-start; font-size: .68rem; }
+      .decision-strip { grid-template-columns: 1fr; }
+      .decision,
+      .decision:nth-child(2) { border-right: 0; border-bottom: 1px solid var(--line); }
+      .decision:last-child { border-bottom: 0; }
+      .section { padding-top: 54px; }
+      .system-map { padding: 12px; border-radius: 12px; }
+      .map-topline { align-items: start; flex-direction: column; }
+      .terminal,
+      .delivery { padding: 17px; }
+      .envelope { padding: 10px; }
+      .envelope-head { align-items: start; flex-direction: column; }
+      .envelope-note { text-align: left; }
+      .ingress-row,
+      .reasoning-grid,
+      .operating-row { grid-template-columns: 1fr; }
+      .micro-node { border-right: 0; border-bottom: 1px solid rgba(66, 214, 163, .2); }
+      .micro-node:last-child { border-bottom: 0; }
+      .hermes-core { padding: 18px; }
+      .turn-plan { grid-template-columns: 1fr; }
+      .turn-plan strong { white-space: normal; }
+      .operating-node { min-height: 0; }
+      .protocol { grid-template-columns: 1fr; }
+      .protocol-step { min-height: 0; }
+      .protocol-step::after { display: none !important; }
+      .protocol-callout,
+      .owner-list,
+      .source-bank,
+      .role-band,
+      .coding-run,
+      .execution-truth { grid-template-columns: 1fr; }
+      .owner-list li,
+      .owner-list li:nth-child(even),
+      .owner-list li:nth-last-child(-n+2) { min-height: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+      .owner-list li:last-child { border-bottom: 0; }
+      .owner-head { grid-template-columns: 1fr; }
+      .owner-verb { text-align: left; }
+      .boundary-line { grid-template-columns: 1fr; }
+      .role:last-child { grid-column: auto; }
+      .cloud-layout { grid-template-columns: 1fr; }
+      .cloud-layout > .vertical-arrow { min-height: 26px; transform: rotate(90deg); }
+      .cloud-layout > .vertical-arrow:nth-of-type(2),
+      .cloud-layout > .stack:last-child { display: grid; }
+      .topology-head { display: block; }
+      .topology-head p { margin-top: 10px; text-align: left; }
+      .event-row { grid-template-columns: 62px 90px minmax(0, 1fr); gap: 8px; padding: 11px 13px; }
+      .event-status { display: none; }
+      footer { grid-template-columns: 1fr; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; }
+    }
+
+    @media print {
+      body { background: #fff; color: #101827; }
+      main { width: 100%; padding: 0; }
+      .mode-bar, .skip-link { display: none; }
+      .system-map,
+      .cloud,
+      .envelope { box-shadow: none; }
+      .section { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <!--
+  THESIS: Hermes is the intelligence; Real-Ming is the personalized operating layer around it.
+  OWN-WORLD: A live mission-control blueprint extending the dark, color-coded V3 architecture language.
+  STORY: Start with the one-agent experience, reveal the structured turn loop, separate ownership, then show context, coding, deployment, dashboard, and guardrails.
+  FIRST VIEWPORT: Ming enters through Telegram, a dominant Hermes core reasons inside the Real-Ming envelope, and a verified response returns.
+  FORM [seed: established-v3-operational-atlas]: Dense but calm systems map; yellow means Hermes intelligence, green means Real-Ming coordination, blue means interfaces, purple means context, cyan means evidence.
+  FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+  -->
+  <a class="skip-link" href="#architecture">Skip to architecture</a>
+  <main id="architecture">
+    <header class="hero">
+      <div>
+        <h1>One Hermes agent. One personalized operating layer.</h1>
+        <div class="version">Real-Ming personal agent · V4 final · 04 Sep 2026</div>
+        <p class="hero-copy">Ming talks naturally to Hermes through Telegram—like using a full agent harness, not a hardcoded bot. Hermes understands, plans, researches, codes and answers. Real-Ming surrounds that intelligence with personal context, integrations, continuity, visible operations and quiet guardrails.</p>
+      </div>
+      <aside class="thesis" aria-label="Architecture thesis">
+        <strong>Hermes is the intelligence.<br>Real-Ming is the personalized operating layer.</strong>
+        <p>Real-Ming never replaces the original Hermes workflow. It makes Hermes continuously useful across Ming’s projects, roles, data sources and devices.</p>
+      </aside>
+    </header>
+
+    <div class="decision-strip" aria-label="Approved architecture decisions">
+      <div class="decision"><span class="data-label">Conversation owner</span><strong>Persistent Hermes runtime</strong></div>
+      <div class="decision"><span class="data-label">Telegram transport</span><strong>Real-Ming ingress + delivery</strong></div>
+      <div class="decision"><span class="data-label">Always-on home</span><strong>Azure VM, independent of Lenovo</strong></div>
+      <div class="decision"><span class="data-label">Coding executor</span><strong>Hermes in isolated Azure workspaces</strong></div>
+    </div>
+
+    <section class="section" aria-labelledby="map-title">
+      <div class="section-head">
+        <div>
+          <h2 id="map-title">Hermes-first, Real-Ming-enveloped</h2>
+          <span class="section-code">Primary architecture</span>
+        </div>
+        <p>Real-Ming owns the reliable transport and operational envelope. Every meaningful conversational decision starts with Hermes, returns as a structured proposal, and ends with a Hermes-composed answer.</p>
+      </div>
+
+      <div class="mode-bar" aria-label="Highlight an architecture path">
+        <button class="mode-button" type="button" data-mode="all" aria-pressed="true">Whole system</button>
+        <button class="mode-button" type="button" data-mode="conversation" aria-pressed="false">Conversation</button>
+        <button class="mode-button" type="button" data-mode="coding" aria-pressed="false">Coding work</button>
+        <button class="mode-button" type="button" data-mode="context" aria-pressed="false">Context flow</button>
+        <button class="mode-button" type="button" data-mode="operations" aria-pressed="false">Live operations</button>
+      </div>
+
+      <div class="system-map" data-active-mode="all">
+        <div class="map-topline">
+          <span>USER EXPERIENCE → ONE CONTINUOUS HERMES CONVERSATION</span>
+          <span class="health"><i aria-hidden="true"></i>target state · always available</span>
+        </div>
+
+        <div class="flow-grid">
+          <article class="terminal" data-path="conversation coding context operations">
+            <span class="data-label">Ming · private command surface</span>
+            <h3>Telegram</h3>
+            <p>Questions, ideas, clarifications, commands, approvals and final outcomes in one persistent relationship.</p>
+            <div class="message-sample">“Develop the new DuitSini feature, test it, and keep me updated.”</div>
+          </article>
+
+          <div class="flow-arrow" aria-hidden="true"><span>message</span></div>
+
+          <section class="envelope" aria-label="Real-Ming operating envelope around Hermes">
+            <div class="envelope-head">
+              <strong class="envelope-title">REAL-MING · PERSONALIZED OPERATING ENVELOPE</strong>
+              <span class="envelope-note">deterministic services · no competing intelligence · no second bot persona</span>
+            </div>
+
+            <div class="ingress-row" data-path="conversation operations">
+              <div class="micro-node"><strong>CEO identity</strong><span>allowlisted Telegram user</span></div>
+              <div class="micro-node"><strong>Idempotency</strong><span>one update, one durable turn</span></div>
+              <div class="micro-node"><strong>Secret detection</strong><span>intercept before model context</span></div>
+            </div>
+
+            <article class="hermes-core" data-path="conversation coding context operations">
+              <div class="core-head">
+                <div>
+                  <span class="data-label">Primary agent harness · persistent session</span>
+                  <h3>Hermes intelligence</h3>
+                  <p>Codex OAuth-backed LLM · tools · research · coding loop · conversation memory</p>
+                </div>
+                <div class="reasoning-grid">
+                  <div class="reasoning-cell"><strong>Understands</strong><span>intent · ambiguity · whether this is chat or substantial work</span></div>
+                  <div class="reasoning-cell"><strong>Directs</strong><span>role · Work Item proposal · context · tools · plan · outputs</span></div>
+                  <div class="reasoning-cell"><strong>Executes</strong><span>research · code · tests · diagnosis · iteration · final answer</span></div>
+                </div>
+              </div>
+              <div class="turn-plan">
+                <strong>Structured Turn Plan →</strong>
+                <span class="code-line">intent · response_mode · role_hint · work_item · context_requests[] · tool_requests[] · approval_boundary · expected_output</span>
+              </div>
+            </article>
+
+            <div class="return-loop"><span>results + evidence return to Hermes for the next reasoning step</span></div>
+
+            <div class="operating-row" aria-label="Real-Ming deterministic operating services">
+              <div class="operating-node" data-path="conversation operations"><strong>Turn coordinator</strong><span>validates the plan schema; never parses final prose for actions</span></div>
+              <div class="operating-node" data-path="coding operations"><strong>Role + Work ledger</strong><span>records COO / CTO / CMO / CFO / CAO view and durable Work Item state</span></div>
+              <div class="operating-node" data-path="context"><strong>Projection + Evidence</strong><span>returns only requested, relevant provider results and cited knowledge</span></div>
+              <div class="operating-node" data-path="coding operations"><strong>Tools + workspaces</strong><span>provisions scoped adapters and isolated Git execution environments</span></div>
+              <div class="operating-node" data-path="conversation operations"><strong>Policy + outcome</strong><span>quiet defaults; gates only consequential effects; records verification</span></div>
+            </div>
+          </section>
+
+          <div class="flow-arrow" aria-hidden="true"><span>verified</span></div>
+
+          <article class="delivery" data-path="conversation operations">
+            <span class="data-label">Same conversation</span>
+            <h3>Hermes answer</h3>
+            <p>Natural response, progress update, clarification or completed outcome—delivered by Real-Ming without changing Hermes’s voice.</p>
+          </article>
+        </div>
+
+        <div class="dock" aria-label="Supporting system connections">
+          <div class="dock-lane" data-path="context"><strong>Personalized context</strong><p>Notion · Calendar · GitHub · Vercel · DuitSini · email · academic systems · Agent Brain evidence</p></div>
+          <div class="dock-lane" data-path="coding"><strong>Hermes execution</strong><p>Shell · files · Git · test runners · browsers · research · coding tools · scoped project workspaces</p></div>
+          <div class="dock-lane" data-path="operations"><strong>Control panel stream</strong><p>turn · role · Work Item · context · tool · test · evidence · error · usage · final outcome</p></div>
+        </div>
+
+        <div class="plain-note">REAL-MING COORDINATES WHAT HERMES ASKS FOR; HERMES DIGESTS THE RESULTS AND DECIDES WHAT TO DO NEXT.</div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="turn-title">
+      <div class="section-head">
+        <div>
+          <h2 id="turn-title">Reason first. Coordinate second. Answer as Hermes.</h2>
+          <span class="section-code">One Telegram turn</span>
+        </div>
+        <p>Not every message becomes a task. Hermes can answer directly, ask a clarifying question, research, or propose substantial work. A Work Item appears only when it adds useful continuity or execution state.</p>
+      </div>
+
+      <div class="protocol">
+        <article class="protocol-step"><span class="step-index">01</span><span class="node-owner">Real-Ming ingress</span><h3>Accept the turn</h3><p>Verify Ming, deduplicate the Telegram update and prevent secrets from entering model context.</p></article>
+        <article class="protocol-step"><span class="step-index">02</span><span class="node-owner">Hermes</span><h3>Understand</h3><p>Interpret intent and decide: answer, clarify, research, or perform multi-step work.</p></article>
+        <article class="protocol-step"><span class="step-index">03</span><span class="node-owner">Hermes</span><h3>Propose</h3><p>Emit the structured Turn Plan: role, Work Item need, context, tools, workflow and output.</p></article>
+        <article class="protocol-step"><span class="step-index">04</span><span class="node-owner">Real-Ming</span><h3>Coordinate</h3><p>Create or select records, retrieve projections, provision tools and apply narrow action gates.</p></article>
+        <article class="protocol-step"><span class="step-index">05</span><span class="node-owner">Hermes</span><h3>Act + iterate</h3><p>Digest results, research, code, test, diagnose and request the next operation until complete.</p></article>
+        <article class="protocol-step"><span class="step-index">06</span><span class="node-owner">Hermes → Telegram</span><h3>Answer</h3><p>Compose the final response. Real-Ming delivers it and stores evidence, status and audit events.</p></article>
+      </div>
+
+      <div class="protocol-callout">
+        <div><strong>Simple question:</strong> steps 01 → 02 → 06. No artificial task, role ceremony or dashboard clutter.</div>
+        <div><strong>Substantial job:</strong> Hermes may loop through steps 03 → 04 → 05 many times before step 06.</div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="ownership-title">
+      <div class="section-head">
+        <div>
+          <h2 id="ownership-title">The brain and the operating layer do different jobs</h2>
+          <span class="section-code">Responsibility boundary</span>
+        </div>
+        <p>This separation keeps the bot intelligent without turning governance into a second, weaker decision-maker.</p>
+      </div>
+
+      <div class="ownership">
+        <article class="owner-lane hermes">
+          <div class="owner-head">
+            <div><h3>Hermes owns intelligence</h3><p>The same capable agent harness Ming expects to talk to directly.</p></div>
+            <span class="owner-verb">thinks · directs · builds</span>
+          </div>
+          <ul class="owner-list">
+            <li><strong>Conversation</strong>Natural dialogue, clarification and final voice.</li>
+            <li><strong>Intent</strong>Determines whether a message is chat, research or work.</li>
+            <li><strong>Role proposal</strong>Selects COO, CTO, CMO, CFO or CAO as a useful perspective.</li>
+            <li><strong>Plan</strong>Chooses workflow, requested context, tools and expected output.</li>
+            <li><strong>Agent execution</strong>Researches, edits code, runs tests, diagnoses and iterates.</li>
+            <li><strong>Judgment</strong>Digests results and decides the next reasoning step.</li>
+          </ul>
+        </article>
+
+        <article class="owner-lane realming">
+          <div class="owner-head">
+            <div><h3>Real-Ming owns operations</h3><p>Deterministic services that personalize, connect, persist and make Hermes visible.</p></div>
+            <span class="owner-verb">connects · records · observes · gates</span>
+          </div>
+          <ul class="owner-list">
+            <li><strong>Transport</strong>Reliable Telegram ingress, delivery, identity and idempotency.</li>
+            <li><strong>Continuity</strong>Canonical Work Items, roles, dependencies, state and outcomes.</li>
+            <li><strong>Personal context</strong>Provider adapters, ELT, projections and cited evidence.</li>
+            <li><strong>Execution substrate</strong>Scoped tools, isolated workspaces and durable schedules.</li>
+            <li><strong>Visibility</strong>Live events, status, errors, evidence, usage and recovery.</li>
+            <li><strong>Consequential gates</strong>Approval only for external, destructive, financial or production effects.</li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="boundary-line"><strong>Hard boundary</strong><span>Real-Ming does not invent a technical plan, write the feature, choose the next reasoning step or scrape actions out of Hermes’s final prose. It validates structured requests and makes them operational.</span></div>
+    </section>
+
+    <section class="section" aria-labelledby="context-title">
+      <div class="section-head">
+        <div>
+          <h2 id="context-title">Many data sources become one relevant brief—not one giant prompt</h2>
+          <span class="section-code">Personalization and ELT</span>
+        </div>
+        <p>Hermes specifies what it needs for this turn. Real-Ming resolves that request against connected systems, source freshness and the active Work Item, then returns bounded results for Hermes to digest.</p>
+      </div>
+
+      <div class="source-flow">
+        <div class="source-bank" aria-label="Connected sources">
+          <div class="source-item"><strong>Notion</strong><span>Master Tasks · project records · approved pages</span></div>
+          <div class="source-item"><strong>Google Calendar</strong><span>commitments · schedule · deadlines</span></div>
+          <div class="source-item"><strong>GitHub + repositories</strong><span>branches · commits · PRs · source code</span></div>
+          <div class="source-item"><strong>Vercel</strong><span>previews · deployments · runtime evidence</span></div>
+          <div class="source-item"><strong>DuitSini</strong><span>product state · technical and finance records</span></div>
+          <div class="source-item"><strong>Other approved sources</strong><span>email · academic · content · Agent Brain evidence</span></div>
+        </div>
+        <div class="flow-arrow" aria-hidden="true"><span>ELT</span></div>
+        <article class="broker">
+          <h3>Projection + Evidence Brokers</h3>
+          <p>Fetch, normalize and cite source results for one purpose. Providers stay authoritative; useful output re-enters as evidence or a candidate.</p>
+          <div class="code-line">work_item + role_hint + source_scope + query + freshness</div>
+        </article>
+        <div class="flow-arrow" aria-hidden="true"><span>brief</span></div>
+        <article class="digest">
+          <h3>Hermes digests context</h3>
+          <p>The agent compares evidence, reasons over the results and chooses the next tool, question, edit or answer.</p>
+          <div class="code-line">minimum useful context · citations · vault pointers · no secret payloads</div>
+        </article>
+      </div>
+
+      <div class="role-band" aria-label="Hermes-proposed executive perspectives">
+        <div class="role"><strong>COO</strong><span>daily operations · life · career · coordination</span></div>
+        <div class="role"><strong>CTO</strong><span>software · infrastructure · technical operations</span></div>
+        <div class="role"><strong>CMO</strong><span>content · research · production · distribution</span></div>
+        <div class="role"><strong>Personal CFO</strong><span>finance · accounting · analytical snapshots</span></div>
+        <div class="role"><strong>CAO</strong><span>academic commitments · planning · draft support</span></div>
+      </div>
+      <p class="role-note">Roles are Hermes-selected working perspectives and projection scopes—not separate bots, separate memories or independent intelligence.</p>
+    </section>
+
+    <section class="section" aria-labelledby="coding-title">
+      <div class="section-head">
+        <div>
+          <h2 id="coding-title">Hermes performs the coding loop; Real-Ming makes it durable and visible</h2>
+          <span class="section-code">Worked example · DuitSini feature</span>
+        </div>
+        <p>The isolated Azure workspace exists for clean state, exact revisions and job separation—not because Ming’s GitHub projects are sensitive.</p>
+      </div>
+
+      <div class="coding-run">
+        <article class="coding-step hermes"><span class="step-index">01</span><span class="node-owner">Hermes</span><h3>Understand request</h3><p>Clarifies the feature and proposes CTO, scope, plan and completion criteria.</p></article>
+        <article class="coding-step realming"><span class="step-index">02</span><span class="node-owner">Real-Ming</span><h3>Prepare work</h3><p>Creates the Work Item, records it in Notion and binds the DuitSini repository.</p></article>
+        <article class="coding-step hermes"><span class="step-index">03</span><span class="node-owner">Hermes</span><h3>Study + design</h3><p>Reads the codebase, reasons about the change and selects implementation tools.</p></article>
+        <article class="coding-step realming"><span class="step-index">04</span><span class="node-owner">Real-Ming</span><h3>Provision</h3><p>Creates an isolated worktree or job container at an exact commit on Azure.</p></article>
+        <article class="coding-step hermes"><span class="step-index">05</span><span class="node-owner">Hermes</span><h3>Build + verify</h3><p>Edits files, runs tests, diagnoses failures and iterates to a reviewed candidate.</p></article>
+        <article class="coding-step realming"><span class="step-index">06</span><span class="node-owner">Real-Ming</span><h3>Record + gate</h3><p>Streams events, stores evidence and requests approval only for consequential release steps.</p></article>
+        <article class="coding-step hermes"><span class="step-index">07</span><span class="node-owner">Hermes</span><h3>Report outcome</h3><p>Explains what changed, tests run, risks, evidence and the recommended next step.</p></article>
+      </div>
+
+      <div class="execution-truth">
+        <div class="truth-panel"><strong>Hermes remains the coding agent</strong><p>Repository study, technical judgment, file editing, shell use, testing, debugging, iteration and the final engineering answer all stay inside the Hermes harness.</p></div>
+        <div class="truth-panel"><strong>Real-Ming remains the substrate</strong><p>It coordinates records, workspace lifecycle, source access, event telemetry, evidence and approval boundaries. It does not “code through” a hardcoded worker.</p></div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="deploy-title">
+      <div class="section-head">
+        <div>
+          <h2 id="deploy-title">Azure is the primary agent home; Lenovo is an optional extension</h2>
+          <span class="section-code">Always-on production topology</span>
+        </div>
+        <p>The Telegram agent, Hermes reasoning and GitHub coding continue while the laptop is off. Lenovo adds local capabilities later without becoming a runtime dependency.</p>
+      </div>
+
+      <div class="topology">
+        <section class="cloud" aria-label="Azure VM deployment">
+          <div class="topology-head">
+            <div><span class="data-label">Primary · always on</span><h3>Azure VM</h3></div>
+            <p>One host is enough for Phase 4. Separation is by process and workspace; scale to stronger isolation only when workload or risk demands it.</p>
+          </div>
+          <div class="cloud-layout">
+            <div class="stack">
+              <div class="deploy-node surface"><strong>Telegram Bot API</strong><p>One polling/webhook owner: Real-Ming transport.</p></div>
+              <div class="deploy-node surface"><strong>Control panel access</strong><p>Private authenticated route now; public domain only behind TLS + identity-aware auth.</p></div>
+            </div>
+            <div class="vertical-arrow" aria-hidden="true">→</div>
+            <div class="stack">
+              <div class="deploy-node gateway"><strong>Real-Ming control-plane process</strong><p>Ingress · Turn coordinator · Work Items · brokers · adapters · policy · events · dashboard read model.</p></div>
+              <div class="deploy-node hermes"><strong>Primary Hermes runtime</strong><p>Persistent conversation · Codex OAuth LLM · reasoning · research · coding tools · final answer.</p></div>
+            </div>
+            <div class="vertical-arrow" aria-hidden="true">→</div>
+            <div class="stack">
+              <div class="deploy-node workspace"><strong>Isolated coding jobs</strong><p>Per-Work-Item Git worktrees or containers · exact commit · cleanup · no cross-job contamination.</p></div>
+              <div class="deploy-node state"><strong>Encrypted durable state</strong><p>Work Items · events · evidence · compiled Knowledge Vault · backups.</p></div>
+            </div>
+          </div>
+        </section>
+
+        <aside class="lenovo" aria-label="Optional Lenovo extension">
+          <span class="data-label">Optional · available only when online</span>
+          <h3>Lenovo extension</h3>
+          <p>This means a local Hermes runtime/desktop worker—not the primary agent brain.</p>
+          <div class="deploy-node state"><strong>Obsidian</strong><p>Views a separate materialized Real-Ming vault at <code>C:\Users\quekm\Real-Ming-Vault</code>. Viewer/IDE, not policy boundary.</p></div>
+          <div class="deploy-node workspace"><strong>Future local worker</strong><p>Local files · Windows apps · authenticated browser sessions · device-only tools.</p></div>
+          <div class="offline-note">LENOVO OFFLINE → Telegram, reasoning, coding, schedules and dashboard continue on Azure.</div>
+        </aside>
+      </div>
+
+      <div class="credential-rail">
+        <div><strong>Codex OAuth ownership</strong>Hermes owns its OAuth session and credential. Real-Ming never copies or manages the token.</div>
+        <div><strong>Azure authentication</strong>The Azure Hermes runtime completes its own interactive OAuth login; do not copy the Lenovo credential.</div>
+        <div><strong>Usage accounting</strong>Track provider health, usage-window state and exhaustion—not subscription calls as RM250 metered API spend.</div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="dashboard-title">
+      <div class="section-head">
+        <div>
+          <h2 id="dashboard-title">See the agent work without exposing private reasoning</h2>
+          <span class="section-code">Real-Ming control panel</span>
+        </div>
+        <p>The dashboard is an operations console, not another chat brain. It projects durable events and evidence in real time while Telegram remains the primary conversational surface.</p>
+      </div>
+
+      <div class="dashboard-spec">
+        <div class="event-stream" aria-label="Illustrative dashboard event stream">
+          <div class="stream-head"><strong>LIVE WORK ITEM · DUITSINI FEATURE</strong><span>CONNECTED</span></div>
+          <div class="event-row"><time>09:41:03</time><span class="event-type">INGRESS</span><span>Telegram message accepted and deduplicated</span><span class="event-status">OK</span></div>
+          <div class="event-row"><time>09:41:07</time><span class="event-type">HERMES</span><span>Intent: substantial coding work · CTO proposed</span><span class="event-status">READY</span></div>
+          <div class="event-row"><time>09:41:08</time><span class="event-type">WORK ITEM</span><span>Repository and acceptance criteria bound</span><span class="event-status">ACTIVE</span></div>
+          <div class="event-row"><time>09:41:12</time><span class="event-type">CONTEXT</span><span>Project brief + cited Agent Brain evidence projected</span><span class="event-status">FRESH</span></div>
+          <div class="event-row"><time>09:42:01</time><span class="event-type">WORKSPACE</span><span>Isolated Azure worktree provisioned at exact commit</span><span class="event-status">OK</span></div>
+          <div class="event-row"><time>09:47:26</time><span class="event-type">HERMES</span><span>Implementation running · tests 18/18 passing</span><span class="event-status">VERIFY</span></div>
+        </div>
+
+        <aside class="visibility">
+          <h3>Dashboard shows</h3>
+          <ul>
+            <li>turn status and user-visible summary</li>
+            <li>Hermes-proposed role and Work Item</li>
+            <li>requested data sources and freshness</li>
+            <li>tool/workspace/test activity and errors</li>
+            <li>evidence, approvals, latency and Codex usage health</li>
+            <li>final outcome and recovery state</li>
+          </ul>
+          <div class="never-display">NEVER DISPLAY → hidden chain-of-thought · OAuth tokens · secrets · unrestricted raw records</div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="promise-title">
+      <div class="section-head">
+        <div>
+          <h2 id="promise-title">Feels like Hermes. Works like a personal system.</h2>
+          <span class="section-code">Final operating promise</span>
+        </div>
+        <p>Governance stays proportional: invisible for ordinary conversation and routine local work; explicit only where the real-world effect deserves Ming’s attention.</p>
+      </div>
+
+      <div class="principles">
+        <div class="promise">
+          <blockquote>“I talk to one capable Hermes agent. Real-Ming quietly gives it my context, tools, continuity and a live operational memory.”</blockquote>
+          <p>That is the product test for V4. If the user experiences a fixed router, competing personas or constant approval friction, the implementation has violated the architecture—even if every service is technically online.</p>
+        </div>
+        <div class="guardrail-list" aria-label="Proportional guardrails">
+          <div class="guardrail"><i aria-hidden="true"></i><span><strong>Automatic by default:</strong> questions, summaries, research, drafting, local code edits and tests.</span></div>
+          <div class="guardrail"><i aria-hidden="true"></i><span><strong>Ask when consequential:</strong> destructive changes, external messages, financial effects, production push/merge/deploy.</span></div>
+          <div class="guardrail"><i aria-hidden="true"></i><span><strong>Preserve source truth:</strong> provider systems and Agent Brain remain authoritative in their scopes.</span></div>
+          <div class="guardrail"><i aria-hidden="true"></i><span><strong>Keep secrets out:</strong> OAuth credentials and detected sensitive values never enter Hermes model context or dashboard events.</span></div>
+          <div class="guardrail"><i aria-hidden="true"></i><span><strong>Make work recoverable:</strong> durable state, exact revisions, evidence and off-host backup support restart and audit.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <p class="footer-line">REAL-MING PERSONAL AGENT ARCHITECTURE · V4 FINAL<br>Refines the execution topology established by Real-Ming v1.1 · Architecture Revision 3 without modifying the V3 baseline artifacts.</p>
+      <span class="final-mark">Approved direction · ready for Phase 4</span>
+    </footer>
+  </main>
+
+  <script>
+    (() => {
+      const map = document.querySelector('.system-map');
+      const buttons = [...document.querySelectorAll('.mode-button')];
+
+      buttons.forEach((button) => {
+        button.addEventListener('click', () => {
+          const mode = button.dataset.mode;
+          map.dataset.activeMode = mode;
+          buttons.forEach((candidate) => {
+            candidate.setAttribute('aria-pressed', String(candidate === button));
+          });
+        });
+      });
+    })();
+  </script>
+</body>
+</html>

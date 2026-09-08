@@ -292,4 +292,85 @@ describe("RM-12 Google Calendar adapter contract", () => {
 
     expect(JSON.stringify(result)).not.toContain(contractSecretFixture);
   });
+
+  describe("creating an event", () => {
+    const meeting = {
+      calendarId: "ceo@real-ming",
+      title: "Coffee with the DuitSini team",
+      start: "2026-09-11T02:00:00.000Z",
+      end: "2026-09-11T03:00:00.000Z",
+      idempotencyKey: "duitsini-coffee-1",
+    };
+
+    it("creates the event the caller described", async () => {
+      const harness = createCalendarContractHarness();
+
+      const result = await harness.adapter.createEvent(meeting);
+
+      expect(result.kind).toBe("ok");
+      if (result.kind !== "ok") throw new Error("Expected the event to be created.");
+      expect(result.effectReference).toBe(
+        "google-calendar:ceo@real-ming:contract-created-event",
+      );
+      expect(result.deduplicated).toBe(false);
+
+      const sent = JSON.parse(harness.createdEvents()[0] ?? "{}") as {
+        readonly summary?: string;
+        readonly start?: { readonly dateTime?: string };
+      };
+      expect(sent.summary).toBe("Coffee with the DuitSini team");
+      expect(sent.start?.dateTime).toBe("2026-09-11T02:00:00.000Z");
+    });
+
+    it("does not double-book when a retry replays the same key", async () => {
+      // A dropped connection mid-call is the normal case, and two identical
+      // meetings on one day is how the CEO stops trusting the calendar.
+      const harness = createCalendarContractHarness();
+
+      const first = await harness.adapter.createEvent(meeting);
+      const replay = await harness.adapter.createEvent(meeting);
+
+      expect(first).toMatchObject({ kind: "ok", deduplicated: false });
+      expect(replay).toMatchObject({ kind: "ok", deduplicated: true });
+      expect(harness.externalEffectCount()).toBe(1);
+    });
+
+    it("refuses a key reused for a different event", async () => {
+      // Silently accepting it would leave the record claiming the first
+      // booking is the second one.
+      const harness = createCalendarContractHarness();
+
+      await harness.adapter.createEvent(meeting);
+      const reused = await harness.adapter.createEvent({
+        ...meeting,
+        title: "Something else entirely",
+      });
+
+      expect(reused.kind).toBe("failed");
+      if (reused.kind !== "failed") throw new Error("Expected a refusal.");
+      expect(reused.failure.class).toBe("invalid-input");
+    });
+
+    it("refuses an incomplete event rather than booking a blank", async () => {
+      const harness = createCalendarContractHarness();
+
+      const result = await harness.adapter.createEvent({
+        ...meeting,
+        title: "   ",
+      });
+
+      expect(result.kind).toBe("failed");
+      expect(harness.externalEffectCount()).toBe(0);
+    });
+
+    it("reports an unreachable calendar without claiming the event exists", async () => {
+      const harness = createCalendarContractHarness({ failure: "unavailable" });
+
+      const result = await harness.adapter.createEvent(meeting);
+
+      expect(result.kind).toBe("failed");
+      if (result.kind !== "failed") throw new Error("Expected a failure.");
+      expect(result.failure.class).toBe("unavailable");
+    });
+  });
 });

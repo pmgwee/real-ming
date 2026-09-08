@@ -6,9 +6,28 @@ import {
   buildAuthorizationUrl,
   describeTokenResponse,
   googleCalendarScopes,
+  googleMailScopes,
   googleTokenEndpoint,
   upsertEnvValue,
 } from "./google-oauth.js";
+
+/**
+ * The mailbox this run authorizes, or undefined for the calendar credential.
+ *
+ * Ming authorizes three Google accounts for different purposes, so the run
+ * names which one it is for. Without that, the second consent silently
+ * overwrites the first and nobody notices until a brief reads the wrong
+ * inbox.
+ */
+function requestedMailbox(): string | undefined {
+  const flag = process.argv.indexOf("--mailbox");
+  if (flag === -1) return undefined;
+  const value = process.argv[flag + 1]?.trim();
+  if (value === undefined || value === "" || value.startsWith("--")) {
+    throw new Error("--mailbox needs an address, e.g. --mailbox you@gmail.com");
+  }
+  return value;
+}
 
 const envPath = new URL("../../.env", import.meta.url);
 
@@ -43,24 +62,102 @@ async function exchangeCode(request: {
   return describeTokenResponse(await response.json()).refreshToken;
 }
 
-function writeRefreshToken(refreshToken: string): void {
-  let existing = "";
+function readEnv(): string {
   try {
-    existing = readFileSync(envPath, "utf8");
+    return readFileSync(envPath, "utf8");
   } catch {
-    existing = "";
+    return "";
   }
+}
 
+function writeRefreshToken(refreshToken: string): void {
   writeFileSync(
     envPath,
-    upsertEnvValue(existing, "REAL_MING_GOOGLE_REFRESH_TOKEN", refreshToken),
+    upsertEnvValue(readEnv(), "REAL_MING_GOOGLE_REFRESH_TOKEN", refreshToken),
     "utf8",
   );
+}
+
+/**
+ * Mailbox tokens live in one JSON map rather than a variable per address, so
+ * adding a fourth mailbox needs no new configuration name and no new Key Vault
+ * secret. Existing entries are merged, never replaced.
+ */
+function writeMailRefreshToken(mailbox: string, refreshToken: string): void {
+  const existing = readEnv();
+  const current = /^REAL_MING_MAIL_REFRESH_TOKENS=(.*)$/m.exec(existing);
+  let tokens: Record<string, string> = {};
+  if (current?.[1] !== undefined && current[1].trim() !== "") {
+    try {
+      const parsed: unknown = JSON.parse(current[1].trim());
+      if (typeof parsed === "object" && parsed !== null) {
+        tokens = parsed as Record<string, string>;
+      }
+    } catch {
+      throw new Error(
+        "REAL_MING_MAIL_REFRESH_TOKENS is not valid JSON. Fix or clear it before running again; nothing was written.",
+      );
+    }
+  }
+  tokens[mailbox] = refreshToken;
+  writeFileSync(
+    envPath,
+    upsertEnvValue(
+      existing,
+      "REAL_MING_MAIL_REFRESH_TOKENS",
+      JSON.stringify(tokens),
+    ),
+    "utf8",
+  );
+}
+
+/**
+ * Refuses a token that belongs to a different account than the one asked for.
+ *
+ * With three Google accounts signed in to one browser, consenting as the wrong
+ * one is the likeliest mistake, and it fails silently: the token works, it just
+ * reads someone else's mail.
+ */
+async function accountOf(refreshToken: string, request: {
+  readonly clientId: string;
+  readonly clientSecret: string;
+}): Promise<string | undefined> {
+  const response = await fetch(googleTokenEndpoint, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: request.clientId,
+      client_secret: request.clientSecret,
+      refresh_token: refreshToken,
+      grant_type: "refresh_token",
+    }),
+  });
+  const payload: unknown = await response.json();
+  const accessToken =
+    typeof payload === "object" &&
+    payload !== null &&
+    typeof (payload as Record<string, unknown>)["access_token"] === "string"
+      ? ((payload as Record<string, unknown>)["access_token"] as string)
+      : undefined;
+  if (accessToken === undefined) return undefined;
+  const profile = await fetch(
+    "https://www.googleapis.com/oauth2/v3/userinfo",
+    { headers: { Authorization: `Bearer ${accessToken}` } },
+  );
+  if (!profile.ok) return undefined;
+  const body: unknown = await profile.json();
+  return typeof body === "object" &&
+    body !== null &&
+    typeof (body as Record<string, unknown>)["email"] === "string"
+    ? ((body as Record<string, unknown>)["email"] as string)
+    : undefined;
 }
 
 async function main(): Promise<number> {
   const clientId = requireEnv("REAL_MING_GOOGLE_CLIENT_ID");
   const clientSecret = requireEnv("REAL_MING_GOOGLE_CLIENT_SECRET");
+  const mailbox = requestedMailbox();
+  const scopes = mailbox === undefined ? googleCalendarScopes : googleMailScopes;
   const state = randomUUID();
 
   return new Promise<number>((resolve) => {
@@ -114,6 +211,38 @@ async function main(): Promise<number> {
             clientSecret,
             redirectUri: `http://localhost:${port}`,
           });
+          if (mailbox !== undefined) {
+            const granted = await accountOf(refreshToken, {
+              clientId,
+              clientSecret,
+            });
+            if (granted !== undefined && granted.toLowerCase() !== mailbox.toLowerCase()) {
+              // Writing this would point the mailbox at someone else's inbox
+              // and nothing downstream could tell.
+              finish(400, "That consent was given by the wrong account.");
+              process.stderr.write(
+                `Asked for ${mailbox} but consent came from ${granted}. ` +
+                  "Nothing was written. Sign out of the other account, or use " +
+                  "a private window, and run it again.\n",
+              );
+              server.close();
+              resolve(1);
+              return;
+            }
+            writeMailRefreshToken(mailbox, refreshToken);
+            finish(200, "Mailbox refresh token stored.");
+            process.stdout.write(
+              `\nREAL_MING_MAIL_REFRESH_TOKENS updated in .env for ${mailbox}.\n` +
+                (granted === undefined
+                  ? "The account could not be confirmed; verify it before use.\n"
+                  : `Confirmed as ${granted}.\n`) +
+                "The value was not printed, logged, or transmitted anywhere else.\n" +
+                "Store it in Key Vault as real-ming-mail-refresh-tokens.\n",
+            );
+            server.close();
+            resolve(0);
+            return;
+          }
           writeRefreshToken(refreshToken);
           finish(200, "Refresh token stored.");
           process.stdout.write(
@@ -148,14 +277,24 @@ async function main(): Promise<number> {
           "",
           "Real-Ming Google refresh token helper",
           "",
-          `Scopes requested: ${googleCalendarScopes.join(", ")}`,
+          `Scopes requested: ${scopes.join(", ")}`,
           "",
-          "1. Open this URL in the browser signed in as the calendar owner:",
+          mailbox === undefined
+            ? "1. Open this URL in the browser signed in as the calendar owner:"
+            : `1. Open this URL and consent AS ${mailbox}. Any other account is refused.`,
           "",
-          buildAuthorizationUrl({ clientId, redirectUri, state }),
+          buildAuthorizationUrl({
+            clientId,
+            redirectUri,
+            state,
+            scopes,
+            ...(mailbox === undefined ? {} : { loginHint: mailbox }),
+          }),
           "",
           '2. Expect an "unverified app" warning. Choose Advanced, then continue.',
-          "3. Approve both Calendar permissions.",
+          mailbox === undefined
+            ? "3. Approve the Calendar permissions."
+            : "3. Approve the Gmail permissions. Real-Ming reads mail and writes drafts; it never sends.",
           "",
           "Waiting for the callback...",
           "",

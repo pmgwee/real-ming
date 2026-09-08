@@ -11,6 +11,7 @@ import {
   workstreams,
 } from "../operations/contracts.js";
 import {
+  masterTaskFieldAuthority,
   masterTasksSchema,
   masterTasksViewDefinitions,
   type MasterTaskPropertyType,
@@ -39,24 +40,44 @@ interface NotionWriteReceipt {
   readonly effectReference: string;
 }
 
+export interface NotionMasterTaskVersion {
+  readonly workItemId: string;
+  readonly reference: string;
+  readonly sourceVersion: string;
+  readonly payloadDigest: string;
+}
+
 interface NotionWriteReceiptRow {
   readonly reference: string;
   readonly payload_digest: string;
   readonly effect_reference: string;
 }
 
+interface NotionMasterTaskVersionRow {
+  readonly work_item_id: string;
+  readonly reference: string;
+  readonly source_version: string;
+  readonly payload_digest: string;
+}
+
 export interface NotionWriteLedger {
   receipt(idempotencyKey: string): NotionWriteReceipt | undefined;
   record(idempotencyKey: string, receipt: NotionWriteReceipt): void;
+  /** Last provider version observed after a canonical Master Tasks write. */
+  masterTaskVersion?(workItemId: string): NotionMasterTaskVersion | undefined;
+  recordMasterTaskVersion?(version: NotionMasterTaskVersion): void;
 }
 
 export function createEphemeralNotionWriteLedger(): NotionWriteLedger {
   const receipts = new Map<string, NotionWriteReceipt>();
+  const versions = new Map<string, NotionMasterTaskVersion>();
   return {
     receipt: (idempotencyKey) => receipts.get(idempotencyKey),
     record: (idempotencyKey, receipt) => {
       receipts.set(idempotencyKey, receipt);
     },
+    masterTaskVersion: (workItemId) => versions.get(workItemId),
+    recordMasterTaskVersion: (version) => versions.set(version.workItemId, version),
   };
 }
 
@@ -72,6 +93,12 @@ export class SqliteNotionWriteLedger implements NotionWriteLedger {
         reference TEXT NOT NULL,
         payload_digest TEXT NOT NULL,
         effect_reference TEXT NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS notion_master_task_versions (
+        work_item_id TEXT PRIMARY KEY,
+        reference TEXT NOT NULL,
+        source_version TEXT NOT NULL,
+        payload_digest TEXT NOT NULL
       );
     `);
   }
@@ -104,6 +131,42 @@ export class SqliteNotionWriteLedger implements NotionWriteLedger {
         receipt.reference,
         receipt.payloadDigest,
         receipt.effectReference,
+      );
+  }
+
+  masterTaskVersion(workItemId: string): NotionMasterTaskVersion | undefined {
+    const row = this.#database
+      .prepare(
+        `SELECT work_item_id, reference, source_version, payload_digest
+         FROM notion_master_task_versions WHERE work_item_id = ?`,
+      )
+      .get(workItemId) as unknown as NotionMasterTaskVersionRow | undefined;
+    return row === undefined
+      ? undefined
+      : {
+          workItemId: row.work_item_id,
+          reference: row.reference,
+          sourceVersion: row.source_version,
+          payloadDigest: row.payload_digest,
+        };
+  }
+
+  recordMasterTaskVersion(version: NotionMasterTaskVersion): void {
+    this.#database
+      .prepare(
+        `INSERT INTO notion_master_task_versions
+           (work_item_id, reference, source_version, payload_digest)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(work_item_id) DO UPDATE SET
+           reference = excluded.reference,
+           source_version = excluded.source_version,
+           payload_digest = excluded.payload_digest`,
+      )
+      .run(
+        version.workItemId,
+        version.reference,
+        version.sourceVersion,
+        version.payloadDigest,
       );
   }
 
@@ -305,6 +368,27 @@ function propertyOf(page: Record<string, unknown>, name: string): Record<string,
   const properties = page["properties"];
   const property = isRecord(properties) ? properties[name] : undefined;
   return isRecord(property) ? property : undefined;
+}
+
+function masterTaskProperties(
+  payload: Readonly<Record<string, string>>,
+): Readonly<Record<string, unknown>> {
+  for (const name of Object.keys(payload)) {
+    const authority = masterTaskFieldAuthority[name];
+    if (authority === undefined) {
+      throw new Error(`Unknown Master Tasks field ${name}.`);
+    }
+    if (authority === "notion-computed") {
+      throw new Error(`Master Tasks field ${name} is computed by Notion.`);
+    }
+  }
+  return notionPageProperties(payload, { allowLifecycle: true });
+}
+
+function pageSourceVersion(page: unknown): string | undefined {
+  return isRecord(page) && typeof page["last_edited_time"] === "string"
+    ? page["last_edited_time"]
+    : undefined;
 }
 
 function notionText(page: Record<string, unknown>, name: string): string {
@@ -796,11 +880,37 @@ export function createNotionProviderAdapter(
           ),
         };
       }
-      const properties = notionPageProperties(payload, { allowLifecycle: true });
       const existing = results[0];
       const existingId = isRecord(existing) && typeof existing["id"] === "string"
         ? existing["id"]
         : undefined;
+      const existingVersion = pageSourceVersion(existing);
+      const priorVersion = ledger.masterTaskVersion?.(record.workItemId);
+      if (existingId !== undefined) {
+        if (existingVersion === undefined) {
+          return {
+            kind: "failed",
+            failure: providerFailure(
+              "provider-error",
+              "Notion returned a Master Tasks page without a version; refusing an unverifiable overwrite.",
+            ),
+          };
+        }
+        if (
+          priorVersion === undefined ||
+          priorVersion.reference !== existingId ||
+          priorVersion.sourceVersion !== existingVersion
+        ) {
+          return {
+            kind: "failed",
+            failure: providerFailure(
+              "invalid-input",
+              `Master Tasks page ${record.workItemId} changed outside the last synced version; read it back before retrying.`,
+            ),
+          };
+        }
+      }
+      const properties = masterTaskProperties(payload);
       const write = existingId === undefined
         ? await api("/pages", {
             method: "POST",
@@ -827,10 +937,26 @@ export function createNotionProviderAdapter(
           failure: providerFailure("provider-error", "Notion returned no Master Tasks page identity."),
         };
       }
+      const writtenVersion = pageSourceVersion(write.body) ?? existingVersion;
+      if (writtenVersion === undefined) {
+        return {
+          kind: "failed",
+          failure: providerFailure(
+            "provider-error",
+            "Notion returned a Master Tasks page without a version after writing it.",
+          ),
+        };
+      }
       ledger.record(idempotencyKey, {
         reference: pageId,
         payloadDigest: digest,
         effectReference: pageId,
+      });
+      ledger.recordMasterTaskVersion?.({
+        workItemId: record.workItemId,
+        reference: pageId,
+        sourceVersion: writtenVersion,
+        payloadDigest: digest,
       });
       const timestamp = now();
       return {

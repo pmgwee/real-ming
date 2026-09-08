@@ -170,7 +170,9 @@ describe("RM-13 07:30 Morning Brief", () => {
     // A calendar that answered and held nothing is a different, honest answer.
     const clear = await startHarness({ events: [] }).runMorningBrief();
     expect(clear.brief.text).toMatch(/Scheduled today: none/);
-    expect(clear.brief.text).toMatch(/Conflicts: none/);
+    // A current empty calendar already communicates the clear state through
+    // the scheduled section and source note; do not repeat an empty section.
+    expect(clear.brief.text).not.toMatch(/Conflicts: none/);
   });
 
   it("labels stale calendar data instead of presenting it as current", async () => {

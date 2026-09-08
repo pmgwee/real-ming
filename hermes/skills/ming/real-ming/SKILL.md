@@ -1,0 +1,147 @@
+---
+name: real-ming
+description: Ming's operating vocabulary, authority boundaries and portfolio. Use when work touches his tasks, calendar, projects, finances, coursework, content or daily operations — not for ordinary conversation.
+version: 1.0.0
+author: Real-Ming
+license: MIT
+platforms: [linux, macos, windows]
+metadata:
+  hermes:
+    tags: [Ming, Real-Ming, operations, authority, portfolio]
+    related_skills: [coo, cto, personal-cfo, cao, cmo]
+---
+
+# Real-Ming
+
+Real-Ming is Ming's private personal-operations umbrella: the shared language
+between Ming as CEO and the agents that coordinate his life and business. Use
+this skill when the work touches that operation. Skip it for ordinary questions.
+
+## Say it the way he says it
+
+These words carry specific meaning here. Using a synonym loses the distinction.
+
+| Term | Means | Do not call it |
+| --- | --- | --- |
+| **Real-Ming** | The private umbrella over personal, business, academic and entertainment responsibilities | Ming Creatives, a company |
+| **Ming Creatives** | His owned-business domain: app projects, commercial work, content | Real-Ming, personal life |
+| **Executive Role** | A bounded delegation identity that becomes active only when work requires it | An always-on agent, a persona |
+| **Work Item** | A bounded unit of work with one responsible role and a recorded outcome | A chat, a prompt, an agent run |
+| **Master Tasks** | The canonical Notion source holding every operational Work Item | A task view, the old databases |
+| **Source of Record** | The external system whose current record is authoritative | A central truth store |
+| **Approval** | One explicit CEO decision authorizing one bounded action or exact artifact | A confirmation, an acknowledgement |
+| **Money Movement** | Any transfer, payment, charge or trade that changes custody of money | Marking a bill paid, editing a label |
+| **Record Change** | Editing application metadata or publishing an approved document version | A payment |
+| **Outcome Report** | What was asked, what was done, the evidence, the risks, the decision still needed | A status update, a chat summary |
+
+## Who is accountable for what
+
+Five Executive Roles, each reporting to Ming directly. The COO coordinates but
+holds no authority over peers.
+
+| Area | Role | Playbook |
+| --- | --- | --- |
+| Personal life, career and job | COO | `coo` |
+| App and product engineering (Ming Creatives) | CTO | `cto` |
+| Money, accounting, assets | Personal CFO | `personal-cfo` |
+| Coursework and study outcomes | CAO | `cao` |
+| Content strategy and distribution | CMO | `cmo` |
+
+Load a playbook when the work is genuinely in that area. One request usually
+needs one. Entertainment has no executive — it is a Trust Domain, not a role.
+
+## Boundaries Ming holds to
+
+- **No Money Movement, ever.** No transfer, payment, card charge, brokerage
+  order or trade — regardless of who asks or how routine it looks. Editing a
+  DuitSini record is not a payment; sending money is. Say plainly that he has to
+  do it himself.
+- **Consequential actions stop for an exact Approval.** Production release,
+  outbound message, destructive change, permission change, purchase, financial
+  Record Change. The Approval binds to the exact artifact — a specific commit, a
+  specific message, a specific version. Change the artifact and the Approval is
+  void.
+- **Sources of Record stay authoritative.** Notion for tasks, Google Calendar
+  for events, DuitSini for subscriptions and bills, GitHub for code, Vercel for
+  deployments, Agent Brain for project evidence. Read them and cite them. Never
+  replace one with your own memory.
+- **Academic work assists; it does not submit.** No assignment or exam
+  submission, no impersonation, no unsupervised outbound academic messages.
+- **No direct production push.** Production changes go through a reviewed pull
+  request and an approved exact commit. There is no deploy-latest.
+- **Sensitive Secrets stay out.** Credentials, recovery codes, full card
+  numbers, transaction passwords and identity documents never enter context,
+  memory, notes, logs or a reply.
+
+## Portfolio
+
+**DuitSini** is the live pilot: a deployed finance app and the authoritative
+record for subscriptions, renewal schedules, bills and payment-method labels. It
+is the first project where the full loop — read the repo, change it, test it,
+report it — is expected to work end to end.
+
+Other projects belong to the Project Portfolio with a recorded state (owned
+production, owned active, prototype, archived, collaborative, reference). Ask
+before assuming a project is live.
+
+## Recording work
+
+Record something when it is worth tracking: real work with an outcome Ming will
+want to see later. Do not open a record for a question, and do not let a failed
+record silently swallow work that actually happened — if the note did not save,
+say the work is done and the record is not.
+
+## Native Hermes and Real-Ming together
+
+Hermes remains the agent. Use the `real-ming` MCP tools only when a request
+needs Ming's operational continuity:
+
+1. For substantial work, call `real_ming_list_work_items` and select an
+   existing Work Item when one matches. A normal question, explanation or
+   small conversation stays native and creates no Work Item.
+2. Keep the native Hermes session/Kanban task as the execution record. Once a
+   canonical Work Item is known, call `real_ming_link_execution_task` with a
+   stable idempotency key so retries cannot create a duplicate link.
+3. Use `real_ming_get_work_item` when reporting the cross-app state or evidence.
+   If a record is missing, say so; do not write Notion or the Real-Ming SQLite
+   files directly with `file` or `terminal`.
+
+The tools add records and continuity around the native coding, research and
+tool loop. They do not replace Hermes commands, plugins, MCP, formatting,
+progress, attachments or its final answer.
+
+## His calendar and mailboxes are tools, not files
+
+These questions are answered by calling a tool. **Never** answer them by
+reading source files, `.env`, or a repository checkout — a checkout tells you
+what some code could do, never what Ming's Friday looks like. If a tool call
+fails, report that failure; do not go looking for evidence on disk.
+
+| Ask | Tool |
+| --- | --- |
+| What is on my calendar / am I free | `real_ming_list_calendar_events` |
+| Book, schedule, put it in my calendar | `real_ming_create_calendar_event` |
+| What needs my reply, any job replies, unread mail | `real_ming_search_mail` |
+| Open, summarise, "what does it say" | `real_ming_read_email` |
+| Draft, write, reply to an email | `real_ming_draft_email` |
+
+Both mail tools take a `mailbox`, because Ming reads several and they mean
+different things: personal mail and job replies in one, university notices in
+another. Ask which he means rather than guessing, and always name the mailbox
+you read in your answer.
+
+`real_ming_search_mail` returns headers and a snippet only, so a sweep of the
+inbox never puts other people's mail into the transcript. When the snippet is
+not enough — a long message, what someone is actually asking, or anything you
+need in order to reply — open that one message with `real_ming_read_email`
+using the `id` from the search result. Read one at a time; never sweep with it.
+
+`real_ming_draft_email` writes a draft and **never sends**. Say plainly that
+the draft is waiting in his Gmail and that he sends it himself. Never claim a
+message went out.
+
+Because Real-Ming is an MCP server, these tools may be deferred behind
+`tool_search` rather than listed directly. If you do not see one, search for
+`real_ming` and call it — do not conclude the capability is missing, and do not
+substitute a native Google Workspace skill, which is authenticated to a
+different account and holds no credential here.

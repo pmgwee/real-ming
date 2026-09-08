@@ -678,6 +678,55 @@ describe("RM-09 Notion Master Tasks provisioning", () => {
     );
   });
 
+  it("refuses to overwrite a Master Tasks page changed outside the last synced version", async () => {
+    const harness = createNotionProvisioningContractHarness();
+    const provisioned = await harness.adapter.provisionMasterTasks({
+      parentPageId: "parent:real-ming-operations",
+      idempotencyKey: "rm09:provision:version-check",
+    });
+    if (provisioned.kind !== "ok") throw new Error("Expected successful provisioning.");
+    const store = createNotionMasterTasksStore({
+      adapter: harness.adapter,
+      dataSourceId: provisioned.value.dataSourceId,
+    });
+    const record = {
+      id: "work-item:rm09-version",
+      workItemId: "work-item:rm09-version",
+      workspaceId: "workspace:real-ming",
+      title: "Protect the current task",
+      intent: "Protect the current task",
+      source: "Operations Gateway",
+      sourceReference: "telegram:update:version",
+      trustDomain: "Ming Creatives" as const,
+      workstream: "MicroSaaS" as const,
+      accountableExecutive: "CTO" as const,
+      collaboratingExecutives: [],
+      lifecycle: "Captured" as const,
+      priority: null,
+      commitmentValue: null,
+      commitmentProvenance: null,
+      riskClass: null,
+      approvalRequired: false,
+      approvalReference: null,
+      portfolioProject: null,
+      evidenceReferences: [],
+      outcomeReportReference: null,
+      createdAt: "2026-08-29T02:00:00.000Z",
+      updatedAt: "2026-08-29T02:00:00.000Z",
+    } satisfies MasterTaskRecord;
+
+    await store.upsert(record);
+    harness.simulateMasterTaskExternalEdit(
+      record.workItemId,
+      "2026-08-29T02:05:00.000Z",
+    );
+
+    await expect(store.upsert({ ...record, priority: "High" })).rejects.toThrow(
+      /changed outside the last synced version/i,
+    );
+    expect(harness.masterTaskPageUpdateCount()).toBe(0);
+  });
+
   it("serializes Master Tasks fields by their Notion types and blocks direct lifecycle writes", async () => {
     const notionCase = cases.find((entry) => entry.name === "notion");
     if (notionCase === undefined) throw new Error("Expected the Notion contract case.");

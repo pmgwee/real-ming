@@ -82,7 +82,7 @@ List every unresolved question, then answer each one **before** closing this iss
 
 Close [#25](https://github.com/pmgwee/real-ming/issues/25) once all five sections are filled and section 5 is empty.
 
-Then restart the loop with [RESUME-PROMPT.md](RESUME-PROMPT.md) — though if RM-06 is still open, nothing will start yet.
+Then restart the loop with [RESUME-PROMPT.md](../docs/agents/RESUME-PROMPT.md) — though if RM-06 is still open, nothing will start yet.
 
 ---
 

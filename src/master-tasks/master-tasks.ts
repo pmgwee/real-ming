@@ -41,6 +41,44 @@ export const masterTasksSchema: readonly MasterTaskSchemaProperty[] = [
   { name: "Updated At", type: "last_edited_time" },
 ] as const;
 
+/**
+ * Field authority is explicit because a Notion view is a business surface,
+ * not a second lifecycle database. Values edited by Ming in a view are
+ * translated through the Operations Gateway; the remaining fields are
+ * projected from the canonical Work Item, Approval and Outcome records.
+ */
+export type MasterTaskFieldAuthority =
+  | "operations-gateway"
+  | "notion-view-through-gateway"
+  | "notion-computed";
+
+export const masterTaskFieldAuthority: Readonly<
+  Record<MasterTaskSchemaProperty["name"], MasterTaskFieldAuthority>
+> = {
+  Title: "operations-gateway",
+  "Work Item ID": "operations-gateway",
+  Workspace: "operations-gateway",
+  Source: "operations-gateway",
+  "Source Reference": "operations-gateway",
+  Intent: "operations-gateway",
+  "Trust Domain": "operations-gateway",
+  Workstream: "operations-gateway",
+  "Accountable Executive": "operations-gateway",
+  "Collaborating Executives": "operations-gateway",
+  Lifecycle: "operations-gateway",
+  Priority: "notion-view-through-gateway",
+  "Commitment Value": "operations-gateway",
+  "Commitment Provenance": "operations-gateway",
+  "Risk Class": "operations-gateway",
+  "Approval Required": "operations-gateway",
+  "Approval Reference": "operations-gateway",
+  "Portfolio Project": "operations-gateway",
+  "Evidence References": "operations-gateway",
+  "Outcome Report Reference": "operations-gateway",
+  "Created At": "notion-computed",
+  "Updated At": "notion-computed",
+} as const;
+
 export type MasterTasksViewName =
   | "CEO All Work" | "COO Work View" | "Personal CFO Work View"
   | "CAO Work View" | "CTO Work View" | "CMO Work View";
