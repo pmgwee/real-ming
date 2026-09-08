@@ -211,6 +211,23 @@ Controlled-tested · Production-wired · Live-verified · User-accepted.
 | V6-TEST-3 | Live smoke tests are opt-in behind an explicit flag plus supplied credentials | **Keep** | Native/live evidence is recorded separately from harness evidence |
 | V6-TEST-4 | Browser-level dashboard checks | **Keep** | Chromium must launch; a skip is a failure by design |
 
+### 4.6 Post-RM-40 native knowledge consolidation (Tasks 0–8)
+
+The following NKC requirements belong to the additive post-RM-40 capability,
+not to the closed 44-ticket graph. They are **controlled-tested only** as of 9
+September 2026. The inactive cron manifest, controlled evidence and activation
+runbook are authoritative; no production caller, provider mutation, live
+acceptance or local Obsidian mirror is implied.
+
+| ID range | Controlled disposition | Evidence |
+| --- | --- | --- |
+| NKC-01–NKC-04 | **Pass (controlled)** — selective capture, bounded/idempotent candidates, source-support/freshness checks and Hermes/native-memory ownership | [controlled acceptance](../evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md) and Tasks 0–2/6 tests |
+| NKC-05–NKC-06 | **Pass (controlled)** — one SQLite publication authority; durable immutable files precede pointer commit; reconciliation fails closed | [controlled acceptance](../evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md) and Tasks 1/3 tests |
+| NKC-07–NKC-08 | **Pass on supported path (controlled)** — tombstone fencing, derivative suppression, independent-head coverage and restore `needs-repair`; arbitrary direct filesystem reads remain outside the guarantee | [controlled acceptance](../evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md) and Task 4 tests |
+| NKC-09–NKC-12 | **Pass (controlled)** — retrieval fails closed, isolation/resource guardrails hold, native chat remains independent, and dashboard health is opaque | [controlled acceptance](../evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md) and Tasks 5–7 tests |
+| NKC-13 | **Deferred by scope** — stale-code deletion requires live replacement verification and separate Task 9 approval | Module-disposition inventory; Task 9 remains pending |
+| NKC-14 | **Pass (controlled)** — successive complete snapshots retain valid pages while forgetting suppresses only dependencies | [controlled acceptance](../evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md) |
+
 ## 5. Requirements that changed meaning — read this before writing code
 
 Four Revision 5 statements are now **wrong** and will mislead an implementer

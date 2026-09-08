@@ -40,15 +40,12 @@ repository's secret scan runs over every tracked file, this one included.
 It never touches `.env`, `auth.json` or any credential material.
 
 The example configuration is deliberately not copied over Hermes' live
-`config.yaml`. Review it, then apply the non-secret keys with Hermes' native
-configuration command:
+`config.yaml`. It carries no opinion about Hermes native-memory settings. The
+current Malaysia decision leaves those settings under Hermes ownership; inspect
+or change them only through Hermes' native configuration command and record
+the reason separately:
 
 ```bash
-hermes config set memory.memory_enabled true
-hermes config set memory.user_profile_enabled true
-hermes config set memory.memory_char_limit 2200
-hermes config set memory.user_char_limit 1375
-hermes config set memory.write_approval true
 hermes config check
 ```
 
@@ -56,4 +53,7 @@ The systemd unit sets `OBSIDIAN_VAULT_PATH` to the native editable vault. The
 older Real-Ming materializer writes a separate generated CEO projection, so
 neither process overwrites the other's notes. Native memory is intentionally
 small; source-backed, cross-domain knowledge still follows the LLM-Wiki and
-Projection-Broker rules.
+Projection-Broker rules. The proposed selective consolidation loop is recorded
+in [ADR-0022](../docs/adr/0022-native-knowledge-consolidation-around-hermes.md)
+and is controlled-tested for Tasks 0–8. It has no production caller or active
+cron row; deployment and live activation remain separately approved actions.

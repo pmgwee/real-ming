@@ -118,3 +118,14 @@ This recommendation preserves the current [Real-Ming v1 specification](../specs/
 ## Decision statement
 
 Adopt **Hermes + its bundled LLM Wiki/Obsidian skills + Trust-Domain-isolated Obsidian-compatible Markdown roots** as Real-Ming's persistent compiled knowledge system. Expose role-specific views through the Projection Broker. Do not use Hermes native memory, Agent Brain, or a single unrestricted Obsidian vault as universal memory. Preserve raw source authority, make every compiled claim traceable, and gate any promotion from derived knowledge into personal facts or operational records.
+
+## Status correction · 2026-09-08
+
+This document records the August research position and is retained as historical
+research. Its recommendation to set `memory.write_approval: true` is not the
+current Real-Ming decision and must not be copied into the Hermes configuration.
+The current fragment leaves native memory under Hermes ownership. The reviewed
+follow-on design is the lighter, selective native-first consolidation proposal
+in [ADR-0022](../adr/0022-native-knowledge-consolidation-around-hermes.md):
+Tasks 0–8 are now implemented and controlled-tested, but the capability is not
+production-wired or activated and does not intercept native memory housekeeping.

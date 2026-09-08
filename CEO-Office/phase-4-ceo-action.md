@@ -1,6 +1,6 @@
 # Phase 4 CEO actions
 
-> **Current next step · 7 September 2026:** Engineering follows [the V6 native-first implementation plan](../docs/planning/RM-40-v6-native-first-implementation-plan.md). Its final CEO-action table distinguishes access, product choices and acceptance from implementation work. Decision 1 is now executed: Malaysia West runs the V6 bundle, native cron owns the two daily reports, the supervised native dashboard is active privately, and backup/isolated-restore proof passed. Remaining CEO actions are the report readability deployment/review, dashboard usefulness review, Obsidian client review, the bounded DuitSini tracer decision and RM-40 issue acceptance; no new login requirement has been established by the plan.
+> **Current next step · 9 September 2026:** RM-40 is closed and the native knowledge-consolidation Tasks 0–8 are implemented and controlled-tested locally. Use the [native knowledge consolidation activation runbook](native-knowledge-consolidation-activation-runbook.md) for the remaining CEO-only sequence: review the exact artifact, separately approve deployment with recurrence disabled, authorize one harmless live run, review evidence, and optionally enable one `02:00 Asia/Kuala_Lumpur` native cron row. No live/provider/configuration/cron action is implied by the controlled evidence.
 
 > **Live deployment record:** [RM-40 V6 deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md). The East Asia VM remains deallocated and undeleted for rollback. Do not paste any credential values into this file.
 

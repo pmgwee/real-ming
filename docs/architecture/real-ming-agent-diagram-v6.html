@@ -6,9 +6,9 @@
   <meta name="color-scheme" content="dark">
   <meta name="real-ming-architecture" content="Real-Ming Agent Architecture V6 — Native Hermes + Thin Companion">
   <meta name="real-ming-baseline" content="Real-Ming v1.1 · Architecture Revision 6">
-  <meta name="real-ming-design-target" content="Architecture Revision 6 · native-first · partially activated in production">
-  <meta name="description" content="Deployed native Hermes architecture with nine deferred MCP servers, a thin Real-Ming extension, loopback provider bridge, scoped Google credentials, draft-only mail, private dashboards and native coding workspaces.">
-  <title>Real-Ming Agent Architecture · Architecture Revision 6 · Deployed topology</title>
+  <meta name="real-ming-design-target" content="Architecture Revision 6 · native-first · partially activated in production · selective consolidation designed">
+  <meta name="description" content="Deployed native Hermes architecture with nine deferred MCP servers, a thin Real-Ming extension, loopback provider bridge, scoped Google credentials, draft-only mail, private dashboards and a designed-only selective knowledge-consolidation path.">
+  <title>Real-Ming Agent Architecture · Architecture Revision 6 · Deployed topology + designed knowledge maintenance</title>
   <style>
     :root {
       --bg: #050a15;
@@ -2658,13 +2658,14 @@
 </head>
 <body>
   <!-- Architecture Revision 6. Design baseline and deployed state are distinct;
-       this rendering reflects the partially activated deployment recorded on 7 Sep 2026. -->
+       this rendering reflects the partially activated deployment recorded on 8 Sep 2026.
+       Selective knowledge consolidation is designed here but not activated. -->
   <a class="skip-link" href="#architecture">Skip to architecture</a>
   <main id="architecture">
     <header class="hero">
       <div>
         <h1>Native Hermes.<br>A personal system around it.</h1>
-        <div class="version">Real-Ming agent · Architecture Revision 6 · deployed view · 07 Sep 2026</div>
+        <div class="version">Real-Ming agent · Architecture Revision 6 · deployed view · 08 Sep 2026</div>
         <p class="hero-copy">Talk directly to the Hermes agent experience on Telegram. Keep its gateway, reasoning, tools, skills, plugins, MCP, memory and working loop. Real-Ming supplies Ming-specific context, cross-app coordination and useful operational views—only where native Hermes needs an extension.</p>
       </div>
       <aside class="thesis" aria-label="Architecture thesis">
@@ -2673,8 +2674,8 @@
       </aside>
     </header>
     <div class="review-status" aria-label="Production evidence and design status">
-      <div><strong>LIVE · ARCHITECTURE REVISION 6</strong>Malaysia West runs <code>real-ming:v6-9ef3fac</code>. The native Hermes gateway is the single Telegram consumer, with 60 native commands and Codex OAuth-backed reasoning.</div>
-      <div><strong>PARTIALLY ACTIVATED · 07 SEP 2026</strong>Nine MCP servers, native daily schedules, persistent memory, cited Obsidian knowledge, private dashboards and protected recovery are live. The remaining boundary is CEO acceptance of the final coding, dashboard and Obsidian-client experience.</div>
+      <div><strong>LIVE · RM-40 CLOSED · 08 SEP 2026</strong>Malaysia West runs <code>real-ming:v6-9ef3fac</code>. The native Hermes gateway is the single Telegram consumer, with 60 native commands and Codex OAuth-backed reasoning.</div>
+      <div><strong>DESIGNED ONLY · SELECTIVE CONSOLIDATION</strong>Native Hermes cron plus its LLM-Wiki/Obsidian skills may maintain selected, cited wiki knowledge with a minimal Real-Ming registry. No candidate job, forget ledger or activation is live yet.</div>
     </div>
     <nav class="jump-links" aria-label="Architecture chapters"><a href="#map-title">I · Hermes experience</a><a href="#reuse-title">Native vs custom</a><a href="#part-two-title">II · Real-Ming contribution</a><a href="#memory-title">Memory choices</a><a href="#part-three-title">III · Production hosting</a><a href="#acceptance-title">Prove the experience</a></nav>
     <div class="decision-strip" aria-label="V6 architecture direction">
@@ -2719,7 +2720,7 @@
           <div class="flow-arrow" aria-hidden="true"></div>
           <article class="delivery" data-path="conversation coding context operations"><h3>Native Hermes reply</h3><p>Hermes composes the answer. Its Telegram adapter renders and delivers it. No mandatory JSON envelope and no Real-Ming rewrite of the final voice.</p></article>
         </div>
-        <div class="companion-link" data-path="coding context operations">↕ Explicit native tool / MCP calls + verified plugin hooks + dashboard extensions</div>
+        <div class="companion-link" data-path="coding context operations">↕ Explicit native tool / MCP calls + potential plugin hooks (installed behavior must be proven) + dashboard extensions</div>
         <section class="companion-v6" data-path="coding context operations" aria-label="Optional Real-Ming integration extension">
           <h3>Real-Ming · thin personalization and integration extension</h3>
           <p>Deployed as Hermes-native configuration and skills plus a nine-tool MCP extension backed by the loopback Real-Ming service. This is not a second agent, a compulsory workflow engine, or another Telegram poller.</p>
@@ -2893,7 +2894,7 @@
         <tr><th scope="row">Memory · Obsidian</th><td data-label="Native first">Persistent Hermes memory/sessions plus the bundled filesystem-first Obsidian skill.</td><td data-label="Custom only if needed">Reviewed immutable generations, provenance/quarantine and restricted publication—not basic note-taking.</td></tr>
         <tr><th scope="row">Tasks · schedules · workspaces</th><td data-label="Native first">Hermes Kanban, cron and native execution/worktree capabilities.</td><td data-label="Custom only if needed">Map these to Notion and cross-source commitments. One schedule owner and one field owner, not duplicate engines.</td></tr>
         <tr><th scope="row">Dashboard</th><td data-label="Native first">Hermes web dashboard and its extension SDK for agent activity.</td><td data-label="Custom only if needed">Reuse/extend that UI or retain Real-Ming’s existing read model for unified portfolio, source and outcome semantics.</td></tr>
-        <tr><th scope="row">Policy · audit</th><td data-label="Native first">Native tool/plugin hooks and credential scopes; prove the precise installed behavior.</td><td data-label="Custom only if needed">Specific exact-action approval contracts and durable evidence reconciliation. Do not claim complete interception just because hooks exist.</td></tr>
+        <tr><th scope="row">Policy · audit</th><td data-label="Native first">Potential native tool/plugin hooks and credential scopes; no deployed hook wiring is claimed here, so prove the precise installed behavior.</td><td data-label="Custom only if needed">Specific exact-action approval contracts and durable evidence reconciliation. Do not claim complete interception just because hooks exist.</td></tr>
       </tbody></table></div>
       <p class="reading-note"><strong>Recommended minimum:</strong> native Hermes on Azure + Ming’s skill/configuration pack + one small Real-Ming integration plugin, backed only by the existing data services that are still useful. A separate full control plane is not a prerequisite. See the <a href="../../CEO-Office/RM-40-hermes-native-capability-review.md">primary-source capability review</a>.</p>
     </section>
@@ -2995,21 +2996,22 @@
           <h2 id="memory-title">Evidence becomes cited, rebuildable knowledge</h2>
           <span class="section-code">1.2 · Final memory migration pipeline</span>
         </div>
-        <p>Native memory and cited Obsidian knowledge are live and recoverable. Keep the advanced Real-Ming pipeline separate: it remains optional for paths that need versioned publication, contradiction quarantine or scoped projections.</p>
+        <p>Native memory and cited Obsidian knowledge are live and recoverable. The new selective consolidation path is controlled-tested around them: it does not alter native memory, sweep ordinary conversations or make the advanced Real-Ming pipeline mandatory.</p>
       </div>
 
       <div class="native-memory">
-        <article><h3>Native memory and Obsidian first</h3><p>Hermes provides persistent sessions and long-term memory. Its bundled Obsidian and LLM Wiki skills now maintain cited linked Markdown on Azure; retrieval survived separate sessions and a Hermes restart, and the vault restored byte-identical from backup.</p><span class="status-label">live accepted · opening in Ming’s Obsidian client remains</span></article>
-        <article><h3>Optional curated knowledge service</h3><p>Retain the custom compiler, projections and publication code for provenance validation, quarantine, immutable generations and reviewed cross-domain exports. Reuse the native LLM Wiki workflow too. Skill instructions and a transactional, access-controlled publication service offer different guarantees.</p><span class="status-label">implemented components · live wiring incomplete</span></article>
+        <article><h3>Native memory and Obsidian first</h3><p>Hermes provides persistent sessions and long-term memory. Its bundled Obsidian and LLM Wiki skills maintain cited linked Markdown on Azure; retrieval survived separate sessions and a Hermes restart, the vault restored byte-identical from backup, and Ming opened the approved vault in an Obsidian client.</p><span class="status-label">live accepted · native owner unchanged</span></article>
+        <article><h3>Selective consolidation around Hermes</h3><p>A proposed native cron job processes only explicit or deliberately marked candidates. Hermes performs source reading and synthesis; a minimal Real-Ming registry supplies eligibility, hashes, freshness checks, forget tombstones, leases and crash reconciliation. Tasks 0–8 are controlled-tested; the cron row remains inactive.</p><span class="status-label">controlled-tested · no production caller</span></article>
       </div>
-      <div class="memory-pipeline" aria-label="Optional governed knowledge compilation pipeline">
-        <article class="memory-step input"><span class="step-index">01</span><span class="node-owner">Real-Ming ingestion</span><h3>Candidate Envelope</h3><p>A bounded snapshot or source pointer with source identity, reference, hash, captured/as-of times, Trust Domain, sensitivity, allowed roles and retention class.</p></article>
+      <div class="diagram-note"><strong>CONTROLLED-TESTED FLOW · NOT ACTIVE:</strong> explicit save or marked durable signal → minimal registry admission and tombstone check → Hermes native LLM-Wiki/Obsidian synthesis → deterministic <code>activate_generation</code> verifies and selects one immutable generation → supported <code>wiki_retrieve</code> checks the active reference, tombstones and freshness. Ordinary chat and Hermes native-memory housekeeping stay outside the flow.</div>
+      <div class="memory-pipeline" aria-label="Retained optional governed knowledge compilation pipeline">
+        <article class="memory-step input"><span class="step-index">01</span><span class="node-owner">Real-Ming registry</span><h3>Candidate Envelope</h3><p>A bounded pointer or snapshot with source identity, reference, captured/as-of times, Trust Domain, sensitivity, allowed roles, retention class and a stable fingerprint.</p></article>
         <div class="pipe-arrow" aria-hidden="true">→</div>
-        <article class="memory-step validate"><span class="step-index">02</span><span class="node-owner">Real-Ming validation</span><h3>Validate / quarantine</h3><p>Confirm authority and freshness; reject secrets; detect duplicates, stale facts and conflicts. No chat dump, uncited fact or silent truth promotion.</p></article>
+        <article class="memory-step validate"><span class="step-index">02</span><span class="node-owner">Registry + source checks</span><h3>Validate / quarantine</h3><p>Check source support, claim-appropriate freshness, duplicates, secrets, conflicts and forget tombstones. A hash identifies bytes; it does not prove truth.</p></article>
         <div class="pipe-arrow" aria-hidden="true">→</div>
-        <article class="memory-step compile"><span class="step-index">03</span><span class="node-owner">Hermes intelligence</span><h3>Knowledge Compiler</h3><p>Reconciles evidence, extracts cited claims, creates summaries and concepts, maintains Wikilinks and indexes, and lints the LLM Wiki generation.</p></article>
+        <article class="memory-step compile"><span class="step-index">03</span><span class="node-owner">Hermes native skills</span><h3>LLM-Wiki synthesis</h3><p>Reads only referenced evidence, labels inference and uncertainty, writes agent-owned Markdown, maintains links/indexes and leaves authored notes untouched.</p></article>
         <div class="pipe-arrow" aria-hidden="true">→</div>
-        <article class="memory-step publish"><span class="step-index">04</span><span class="node-owner">Real-Ming publication</span><h3>Atomic versioned publish</h3><p>Encrypt and publish the new generation, preserve its predecessor, append the change log and release only permitted projections.</p></article>
+        <article class="memory-step publish"><span class="step-index">04</span><span class="node-owner">Registry + file reconciliation</span><h3>Verify / publish / recover</h3><p>Write a manifest-backed generation atomically, verify files before registry commit, suppress tombstoned material and reconcile crashes without false success.</p></article>
       </div>
 
       <div class="evidence-bridge" aria-label="Agent Brain evidence relationship">
@@ -3027,8 +3029,8 @@
         </div>
 
         <div class="vault-clarifier">
-          <div><strong>Canonical at rest</strong>The existing curated-vault implementation uses encrypted SQLite generations, provenance and publication history. Its complete live producer/export path still needs activation.</div>
-          <div><strong>Knowledge representation</strong>Each curated generation contains cited, Obsidian-compatible Markdown. Native notes may live separately; a wiki skill alone does not prove this exact publication contract.</div>
+          <div><strong>Canonical at rest</strong>Azure is canonical for the selective generated path. The existing curated-vault implementation uses encrypted SQLite generations, provenance and publication history; its complete live producer/export path remains optional and is not silently activated.</div>
+          <div><strong>Knowledge representation</strong>Native agent-owned generated notes and human-authored notes have separate writers. Supported retrieval honors forget tombstones; arbitrary shell reads of still-present plaintext are outside the hard security boundary.</div>
         </div>
 
         <div class="vault-roots-v5" aria-label="Knowledge Vault roots">
@@ -3043,9 +3045,9 @@
         <div class="vault-pattern"><strong>LLM WIKI SHAPE →</strong> SCHEMA.md · AGENTS.md · CLAUDE.md · raw/ · wiki/ · daily/ · outputs/ · quarantine/ · index.md · append-only log.md</div>
 
         <div class="memory-interfaces">
-          <article class="memory-interface"><strong>Projection Broker → Hermes</strong><p>Expose governed knowledge as a retrieval tool returning a bounded cited brief. Direct native connectors remain available for authorized sources outside that contract.</p><span class="status-label">components tested · native tool exposure pending</span></article>
-          <article class="memory-interface"><strong>Native Obsidian + LLM Wiki</strong><p>Hermes owns the live note path and retrieves cited knowledge across sessions and restarts. The Azure vault is backed up; Ming still needs to open the approved mirror in his Obsidian client.</p><span class="status-label">live · recovered byte-identical</span></article>
-          <article class="memory-interface"><strong>Hermes native memory</strong><p>Stores stable preferences, routing conventions, project pointers and conversational continuity—not authoritative tasks, finance, academic commitments, raw inboxes or Sensitive Secrets.</p><span class="status-label">active built-in provider · Real-Ming does not override it</span></article>
+          <article class="memory-interface"><strong>Projection Broker → Hermes</strong><p>Optional advanced path: expose governed knowledge as a retrieval tool returning a bounded cited brief. Direct native connectors remain available for authorized sources outside that contract.</p><span class="status-label">optional components tested · native consolidation gate controlled-tested</span></article>
+          <article class="memory-interface"><strong>Native Obsidian + LLM Wiki</strong><p>Hermes owns the live note path and retrieves cited knowledge across sessions and restarts. The Azure vault is backed up and Ming opened the approved vault in his Obsidian client. Selective consolidation is controlled-tested but not production-wired.</p><span class="status-label">live · recovered byte-identical</span></article>
+          <article class="memory-interface"><strong>Hermes native memory</strong><p>Native Hermes owns its memory and session continuity under its own policy; it is not the authoritative record for tasks, finance or academic commitments, and Real-Ming does not rewrite it.</p><span class="status-label">active built-in provider · Real-Ming does not override it</span></article>
         </div>
 
         <div class="retention-line">RAW INGESTION STAGING IS PURGEABLE · CITATIONS, HASHES, TOMBSTONES AND PURGE EVIDENCE REMAIN · COMPILED KNOWLEDGE NEVER SILENTLY REWRITES A SOURCE OF RECORD.</div>
@@ -3166,11 +3168,11 @@
     </section>
 
     <section class="section" aria-labelledby="status-title">
-      <div class="section-head"><div><h2 id="status-title">Connected, proven, and accepted are different states</h2><span class="section-code">Evidence snapshot · 07 September 2026</span></div><p>This diagram records the deployed Revision 6 topology; it does not turn engineering proof into CEO acceptance. The remaining actions are experience reviews, not missing transport or provider architecture.</p></div>
+      <div class="section-head"><div><h2 id="status-title">Connected, proven, and accepted are different states</h2><span class="section-code">Evidence snapshot · 09 September 2026</span></div><p>This diagram records the deployed Revision 6 topology and the selective-consolidation implementation state; controlled evidence does not turn the capability into a production caller or active cron job.</p></div>
       <div class="status-grid">
         <article><h3>Live in production</h3><p>Native Telegram ownership, Codex OAuth, Ming role skills, nine MCP servers / 272 tools, Notion and Google provider paths, two native cron jobs, persistent memory, cited vault, private dashboards and protected backup.</p></article>
         <article><h3>Engineering-proven</h3><p>One-consumer cutover, 60 commands, Calendar and mail contracts, draft-only send boundary, schedule restart/no-replay, cross-session recall, isolated restore, Notion read-back, dashboard leakage checks and Git clone/push reach.</p></article>
-        <article class="pending"><h3>Still needs Ming’s acceptance</h3><p>Run and accept the full coding round trip, open the vault in Obsidian, judge whether the private dashboard is useful, accept the DuitSini outcome, and confirm the final RM-40 native-experience criteria.</p></article>
+        <article class="pending"><h3>New capability controlled-tested</h3><p>Tasks 0–8 prove the selective consolidation job boundary, forget contract, source-freshness checks and crash reconciliation locally. It has no production caller or active cron row; deployment, live acceptance and recurrence require separate approval.</p></article>
       </div>
       <p class="reading-note"><strong>Operational notes:</strong> Exa’s stdio process has shown keepalive reconnects, and nine-server health checks add seconds to each turn. These are known consequences of the CEO-approved untrimmed MCP set—not evidence that the native agent or Real-Ming extension owns a second conversation loop.</p>
     </section>
@@ -3185,15 +3187,15 @@
     </section>
 
     <section class="section" aria-labelledby="acceptance-title">
-      <div class="section-head"><div><h2 id="acceptance-title">Finish the experience before declaring the platform complete</h2><span class="section-code">CEO acceptance · remaining boundary</span></div><p>The native Telegram, provider, schedule, memory, dashboard and recovery paths are deployed and tested. Completion now depends on the remaining real-use reviews; controlled evidence cannot substitute for Ming’s experience.</p></div>
+      <div class="section-head"><div><h2 id="acceptance-title">RM-40 experience accepted; consolidation controlled-tested</h2><span class="section-code">Closeout · 09 September 2026</span></div><p>The native Telegram, provider, schedule, memory, dashboard and recovery paths are deployed, tested and accepted for RM-40. Tasks 0–8 of the selective consolidation path are controlled-tested locally; production wiring and activation remain separate CEO actions.</p></div>
       <ol class="acceptance-list">
         <li><div><strong>Baseline reconciled.</strong> Architecture Revision 6, ADR-0020, the specification and deployment evidence now distinguish the design baseline from the partially activated live revision.</div></li>
         <li><div><strong>Native Hermes live.</strong> One native Telegram consumer owns commands, formatting, progress, attachments, sessions and final replies. The retired Real-Ming poller cannot compete for updates.</div></li>
-        <li><div><strong>Coding path ready; CEO round trip remains.</strong> Hermes can use native tools against a host checkout, and Git clone/push reach is proven. Ming still needs to accept one complete edit, test, commit and report experience.</div></li>
+        <li><div><strong>Coding path accepted.</strong> Hermes used native tools against a host checkout for the bounded DuitSini round trip; clone, failing-test-first implementation, verification, commit, push and pull-request evidence are recorded.</div></li>
         <li><div><strong>Skills and providers live.</strong> Ming’s role skills plus nine MCP servers are loaded. Notion, Calendar and the scoped three-account mail path have controlled and live evidence.</div></li>
         <li><div><strong>Companion contracts live.</strong> The Real-Ming MCP adds Work Item links, scheduled report composition and provider access while native Hermes keeps conversation and execution ownership.</div></li>
-        <li><div><strong>Private dashboards proven; usefulness remains.</strong> Hermes and Real-Ming views are loopback-only behind Tailscale/SSH, and leakage checks passed. Ming decides whether the companion view earns its place.</div></li>
-        <li><div><strong>Memory and recovery proven; desktop opening remains.</strong> A cited note survived session and service restart, then restored byte-identical. Ming still needs to open the approved vault in his Obsidian client.</div></li>
+        <li><div><strong>Private dashboards accepted.</strong> Hermes and Real-Ming views are loopback-only behind Tailscale/SSH, leakage checks passed, and Ming selected the Hermes Kanban dashboard while retaining the Real-Ming view as a verification surface.</div></li>
+        <li><div><strong>Memory and recovery accepted.</strong> A cited note survived session and service restart, restored byte-identical, and the approved vault was opened in Ming’s Obsidian client.</div></li>
       </ol>
       <p class="reading-note">Product promise: <strong>“I use Hermes normally. Real-Ming makes it understand my world and keeps the important cross-app outcomes connected.”</strong> Do not remove existing stores or migrate live records simply because a native feature has a similar name.</p>
     </section>
@@ -3203,6 +3205,8 @@
         <a href="../planning/RM-40-v6-native-first-implementation-plan.md">V6 implementation plan and deployment status</a>
         <a href="../evidence/RM-40-native-capability-expansion-2026-09-07.md">MCP and Git capability expansion evidence</a>
         <a href="../adr/0020-run-ming-on-the-native-hermes-runtime.md">ADR-0020 · native Hermes runtime</a>
+        <a href="../adr/0022-native-knowledge-consolidation-around-hermes.md">ADR-0022 · selective knowledge consolidation</a>
+        <a href="../superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md">Design spec · native knowledge consolidation</a>
         <a href="https://hermes-agent.nousresearch.com/docs/user-guide/messaging/telegram">Official Telegram guide</a>
         <a href="https://hermes-agent.nousresearch.com/docs/user-guide/features/extending-the-dashboard">Dashboard extension SDK</a>
         <a href="https://github.com/NousResearch/hermes-agent/blob/561b053f794a1781868bb032029d589c67708119/skills/note-taking/obsidian/SKILL.md">Bundled Obsidian skill</a>

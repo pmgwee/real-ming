@@ -60,6 +60,18 @@ correct.
   cannot send because no send tool exists.
 - **Curated-knowledge guarantees are built and controlled-tested but not wired
   to a production caller.** Revision 6 makes them optional.
+- **Selective native knowledge consolidation is controlled-tested, not live.**
+  Tasks 0–8 are implemented with native Hermes cron/LLM-Wiki/Obsidian skills
+  and a minimal Real-Ming registry. The exact pinned-runtime isolation gate,
+  candidate/forget ledger, publication authority, supported `wiki_retrieve`
+  path, job-local controls and restore fail-closed behavior are recorded in
+  the [design spec](../superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md),
+  [ADR-0022](../adr/0022-native-knowledge-consolidation-around-hermes.md),
+  the [implementation plan](../superpowers/plans/2026-09-09-native-knowledge-consolidation.md)
+  and [controlled acceptance evidence](../evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md).
+  No production caller, provider call, live acceptance, cron row, local mirror
+  or Task 9 deletion is active. The Azure vault is canonical; a future local
+  Obsidian mirror is optional, one-way, activation-triggered and read-only.
 - **No CI.** Checks run locally through `npm run check`.
 - **Single operator.** Multi-user access control is not implemented.
 

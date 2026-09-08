@@ -38,6 +38,7 @@ Capabilities below are labelled by evidence:
 | Backup and restore | **Tested** | Whitelist-only state backup with an isolated restore path. |
 | Private operations dashboard | **Live** | Loopback-bound HTTP read model; see [Operations](#operations). |
 | Curated-knowledge guarantees | **Partial** | Versioned publication, contradiction quarantine and cross-domain projection are built and controlled-tested but not wired to a production caller. Revision 6 makes them optional; see [ADR-0018](docs/adr/0018-compile-knowledge-into-trust-domain-vaults.md). |
+| Selective wiki consolidation | **Tested (controlled only)** | Tasks 0–8 are implemented and controlled-tested with native Hermes as the sole reasoning/memory runtime; the inactive `02:00 Asia/Kuala_Lumpur` manifest is not a cron row. No production caller, live acceptance or local mirror is active. See [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md), the [implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md) and [controlled evidence](docs/evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md). |
 | Event-driven mandatory controls | **Planned** | No runtime hook or event wiring exists in this repository today. Current deterministic guarantees come from build-time checks and from tool capability being absent rather than forbidden. |
 
 ## Architecture
@@ -88,6 +89,16 @@ Real-Ming is reached as a tool. It is never in the path of an ordinary conversat
 | The web dashboard and kanban surfaces | Approval-bearing semantics for consequential actions |
 
 Real-Ming states no opinion about Hermes's own features. It previously pinned Hermes memory settings and those were removed rather than set permissively, because gating the runtime's working memory costs answer quality without buying safety. The reasoning is preserved in [`hermes/config.native-first.example.yaml`](hermes/config.native-first.example.yaml), and a test fails the build if a memory opinion reappears in that fragment.
+
+The selective knowledge-consolidation implementation is additive and
+controlled-tested, but not production-wired or active. It must not change
+native memory, inspect every ordinary conversation, or be described as a hard
+security boundary for arbitrary filesystem reads. The Azure-hosted vault is
+canonical; any future local Obsidian mirror is an optional one-way,
+activation-triggered, read-only projection, never an upstream or runtime
+dependency. Its contract and evidence are in [the design spec](docs/superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md),
+[ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md) and
+[the controlled acceptance record](docs/evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md).
 
 ### How a request flows
 

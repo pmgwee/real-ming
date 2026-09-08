@@ -1,6 +1,19 @@
 # RM-40 · V6 native-first implementation plan
 
-Prepared: 6 September 2026. Status: **implementation plan; live deployment evidence is recorded separately**.
+Prepared: 6 September 2026. Status: **implementation plan closed 8 September 2026; live deployment evidence is recorded separately**.
+
+## Post-RM-40 design amendment
+
+RM-40 is closed: all nine milestones and 44 tickets are complete. The separate
+proposal to add selective native knowledge consolidation is **implemented and
+controlled-tested for Tasks 0–8** under a new post-RM-40 status/evidence chain.
+It is not a new RM-40 milestone, ticket, cron job or production claim. The
+authoritative [bounded implementation plan](../superpowers/plans/2026-09-09-native-knowledge-consolidation.md),
+[ADR-0022](../adr/0022-native-knowledge-consolidation-around-hermes.md),
+[design spec](../superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md)
+and [controlled acceptance evidence](../evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md)
+record that no production caller, live acceptance, cron activation or Task 9
+deletion is claimed or authorized.
 
 ## Milestone status
 
@@ -9,10 +22,10 @@ Prepared: 6 September 2026. Status: **implementation plan; live deployment evide
 | 0 · Reconcile requirements and inventory the real deployment | ✅ Complete, 6 Sep 2026 | [Requirement ledger and live capability inventory](RM-40-v6-requirement-ledger.md); [ADR-0020](../adr/0020-run-ming-on-the-native-hermes-runtime.md); [baseline](../BASELINE.md); `npm run check` exit 0, 771 tests |
 | 1 · Prove the native runtime before bot cutover | ✅ Complete on the CLI path, 6 Sep 2026 | [Milestone 1 native-runtime evidence](../evidence/RM-40-v6-milestone-1-native-runtime-evidence.md). Real diff, independently verified test exit 0, 15 native tool calls. Two defects recorded. Native **Telegram** presentation remains untested by design |
 | 2 · Prepare a reversible one-owner Telegram migration | ✅ Complete, 6 Sep 2026 | [Milestone 2 cutover runbook](../evidence/RM-40-v6-milestone-2-cutover-runbook.md). Composition mode implemented and proven through the System Harness; cutover and reverse procedures written; extension interface verified against the installed version |
-| 3 · Activate native Telegram and accept the core experience | ✅ Transport live and core phone matrix user-observed accepted, 6 Sep 2026; staged progress, attachment handling, formatting and semantic recall (including after restart) passed | [Milestone 3 cutover evidence](../evidence/RM-40-v6-milestone-3-cutover-evidence.md) and [Telegram/memory acceptance](../evidence/RM-40-v6-telegram-memory-acceptance-2026-09-06.md). Native gateway is the single consumer, 60 commands registered and allowlist loaded; broader V6 coding, dashboard, scheduler and recovery acceptance remains |
+| 3 · Activate native Telegram and accept the core experience | ✅ Complete, 6 Sep 2026. Transport, staged progress, attachment handling, formatting and semantic recall (including after restart) passed; the five native-experience criteria were later posted to [#41](https://github.com/pmgwee/real-ming/issues/41) and accepted at closeout | [Milestone 3 cutover evidence](../evidence/RM-40-v6-milestone-3-cutover-evidence.md) and [Telegram/memory acceptance](../evidence/RM-40-v6-telegram-memory-acceptance-2026-09-06.md). Native gateway is the single consumer and 60 commands are registered |
 | 4 · Configure Ming's roles and connect sources | ✅ Complete, 7 Sep 2026. Notion and Calendar live-proven; the capability expansion authorized nine MCP servers exposing 272 tools (GitHub 47, Notion 42, Vercel 37, Supabase 29, Higgsfield 101, Real-Ming 9, Deepwiki 3, Exa 2, Context7 2). The gateway restart is done and the set is live to Telegram | [Milestone 4 evidence](../evidence/RM-40-v6-milestone-4-configuration-and-sources.md) and [capability expansion evidence](../evidence/RM-40-native-capability-expansion-2026-09-07.md) |
-| 5 · Add the missing task, schedule and action contracts | ✅ Complete, 7 Sep 2026. Native cron owns both reports; duplicate guard and restart no-replay live-verified. **The first successful unattended run fired at 21:30:27 on 7 Sep with status `ok`** (session `cron_03d42efb662a_20260907_213027`), discovering its own tool through `tool_search`. The held-notice sweep stays Real-Ming-owned by design, not by omission. Ming's phone review of the focus-first wording remains | [Extension evidence](../evidence/RM-40-v6-milestone-5-extension-evidence.md), [scheduler ownership evidence](../evidence/RM-40-v6-milestone-5-scheduler-ownership-evidence.md), [cron cutover evidence](../evidence/RM-40-v6-milestone-5-cron-cutover-2026-09-07.md) and [readability evidence](../evidence/RM-40-v6-daily-report-readability-2026-09-07.md) |
-| 6 · Native memory, Obsidian, cited knowledge | ✅ Live acceptance 7 Sep 2026: cited note written, retrieved from separate sessions and after a Hermes restart, backed up and restored byte-identical. **Only opening the vault in Ming's Obsidian client remains** | [Milestone 6 evidence](../evidence/RM-40-v6-milestone-6-native-memory-evidence.md) and [live acceptance](../evidence/RM-40-v6-milestone-6-live-acceptance-2026-09-07.md) |
+| 5 · Add the missing task, schedule and action contracts | ✅ Complete, 7 Sep 2026. Native cron owns both reports; duplicate guard, restart no-replay and the first unattended run passed. The held-notice sweep stays Real-Ming-owned by design, not by omission. The focus-first wording was included in the closeout review | [Extension evidence](../evidence/RM-40-v6-milestone-5-extension-evidence.md), [scheduler ownership evidence](../evidence/RM-40-v6-milestone-5-scheduler-ownership-evidence.md), [cron cutover evidence](../evidence/RM-40-v6-milestone-5-cron-cutover-2026-09-07.md) and [readability evidence](../evidence/RM-40-v6-daily-report-readability-2026-09-07.md) |
+| 6 · Native memory, Obsidian, cited knowledge | ✅ Complete, 8 Sep 2026. Cited note written, retrieved from separate sessions and after a Hermes restart, backed up and restored byte-identical; Ming opened the approved vault in an Obsidian client | [Milestone 6 evidence](../evidence/RM-40-v6-milestone-6-native-memory-evidence.md) and [live acceptance](../evidence/RM-40-v6-milestone-6-live-acceptance-2026-09-07.md) |
 | 7 · Private dashboard and CEO outcomes | ✅ Complete, 8 Sep 2026. Comparison and leakage checks done 7 Sep; `src/dashboard/` resolved as keep. Ming reviewed both surfaces on 8 Sep and chose the Hermes Kanban dashboard; Real-Ming's own dashboard stays as-is, unstyled, as the verification surface its browser test asserts | [Dashboard comparison](../evidence/RM-40-v6-milestone-7-comparison-2026-09-07.md), [milestone 7 evidence](../evidence/RM-40-v6-milestone-7-dashboard-evidence.md) and [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
 | 8 · Complete acceptance scenarios | ✅ Complete, 8 Sep 2026. Notion read-back and honest failure verified live 7 Sep. **The full coding round trip ran from one Telegram message** — clone, reproduce, failing test first, implement, green, typecheck, build, independent review, commit, push, pull request — producing [DuitSini#17](https://github.com/pmgwee/DuitSini/pull/17), verified against the GitHub API as 5 files, +68/−16, mergeable. The two Windows-specific failures were resolved by injecting the platform rather than weakening either assertion | [DuitSini/tracer evidence](../evidence/RM-40-v6-unattended-cron-and-duitsini-2026-09-07.md) and [live acceptance](../evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md) |
 | 9 · Recovery, readiness, closeout | ✅ Complete, 8 Sep 2026. Restart/reconcile live-verified 7 Sep 2026 — nothing lost, nothing replayed; usage/cost/retention reviewed. The first unattended cron fire and the coding round trip are both done. **Closeout is done:** the dashboard review was answered on 8 September (Kanban wins; 8787 stays as-is), the vault was opened in an Obsidian client the same day, and the five native-experience criteria were approved and posted to [#41](https://github.com/pmgwee/real-ming/issues/41), which closed as completed | [Milestone 9 evidence](../evidence/RM-40-v6-milestone-9-recovery-evidence.md), [restart and reconcile](../evidence/RM-40-v6-milestone-8-9-live-2026-09-07.md) and [deployment evidence](../evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
@@ -24,11 +37,17 @@ Finish Real-Ming as **native Hermes + Ming-specific configuration/skills + the s
 
 The [V6 architecture](../architecture/real-ming-agent-diagram-v6.html) already states this direction. The [capability review](../architecture/RM-40-hermes-native-capability-review.md) explains the native features and integration limits. This plan turns that target into ordered work and acceptance gates. It supersedes the old V5 activation sequence for future migration work; the [old runbook](../../CEO-Office/RM-40-phase4-activation-runbook.md) remains a record of the deployed bridge and recovery setup.
 
-**Start at milestone 0, then prove native Hermes before expanding integrations.** Do not restart OAuth or Tailscale enrollment merely because the design changed. Their last recorded authorization succeeded. Recheck health when implementation reaches the live system.
+**Historical execution procedure — superseded at RM-40 closeout on 8 September
+2026.** The checklist below records how RM-40 was planned and is retained for
+traceability; it is not a current instruction to restart at milestone 0. Do not
+restart OAuth or Tailscale enrollment merely because the design changed. Their
+last recorded authorization succeeded. For current status, use the milestone
+table and closeout record above; any post-RM-40 implementation requires a new
+reviewed plan and separate approval.
 
 The deliverable is an agent Ming can use from Telegram and a private dashboard while Lenovo is off. Hermes owns native conversation, commands, tools, execution and responses. Ming's integrations add context, records and useful views when needed. Ordinary questions require no role ceremony, Work Item or mandatory JSON Turn Plan.
 
-## 1. Starting evidence and scope
+## 1. Historical starting evidence and scope
 
 This is based on the repository and the **5 September 2026 recorded live audit**, not a new live audit on the preparation date.
 
@@ -359,11 +378,14 @@ Do not ask Ming to repeat setup because a component was never implemented. Do no
 
 Keep one row per milestone with **designed / implemented / controlled-tested / production-wired / live-verified / user-accepted**, plus candidate revision, evidence links, owner and remaining action. At creation of this plan, its milestones are planned; existing historical evidence applies only to its stated scope.
 
-**Position as of 8 September 2026.** Milestones 0 through 8 are complete and
-live-verified. Milestone 5's first successful unattended cron run fired at
-21:30 on 7 September; milestone 8's coding round trip ran from Telegram just
-after midnight on 8 September. Only milestone 9 remains open, and only on
-reviews:
+**Earlier snapshot — superseded.** The following status note was written while
+milestone 9 reviews were still being collected. It is retained as a dated
+closeout trace; the immediately following closeout record is authoritative.
+
+Milestones 0 through 8 were complete and live-verified at that snapshot.
+Milestone 5's first successful unattended cron run fired at 21:30 on 7
+September; milestone 8's coding round trip ran from Telegram just after
+midnight on 8 September. Milestone 9 was then open only on reviews:
 
 | Remaining | Owner | Milestone |
 | --- | --- | --- |
