@@ -22,7 +22,11 @@ function main(): void {
   });
   process.stdout.write(
     `Control-plane restore verified ${restored.verifiedFiles} files at ${restored.directory}; ` +
-    `${restored.sqliteIntegrity.length} SQLite stores passed integrity checks.\n`,
+    `${restored.sqliteIntegrity.length} SQLite stores passed integrity checks.\n` +
+    (restored.nativeKnowledgeTombstoneOutboxPath === undefined
+      ? "Native knowledge retrieval remains independent of this restore.\n"
+      : `Native knowledge tombstone outbox restored at ${restored.nativeKnowledgeTombstoneOutboxPath}; ` +
+        "independent head coverage must be reconciled before wiki retrieval is enabled.\n"),
   );
 }
 

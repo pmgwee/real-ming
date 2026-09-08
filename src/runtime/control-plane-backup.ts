@@ -25,7 +25,8 @@ export interface ControlPlaneBackupManifest {
       | "hermes-session"
       | "hermes-native-state"
       | "hermes-native-file"
-      | "hermes-native-vault";
+      | "hermes-native-vault"
+      | "native-knowledge-tombstone-outbox";
     readonly name: string;
     readonly sha256: string;
   }[];
@@ -48,6 +49,8 @@ export interface ControlPlaneBackupSet {
   readonly hermesNativeStateDirectory?: string;
   /** Optional native Obsidian/LLM-Wiki vault directory. */
   readonly hermesVaultPath?: string;
+  /** Optional opaque local tombstone sync outbox. */
+  readonly nativeKnowledgeTombstoneOutboxPath?: string;
   readonly manifestPath: string;
   readonly manifest: ControlPlaneBackupManifest;
 }
@@ -162,6 +165,7 @@ export interface ControlPlaneBackupVerification {
 
 export interface ControlPlaneBackupRestore extends ControlPlaneBackupVerification {
   readonly directory: string;
+  readonly nativeKnowledgeTombstoneOutboxPath?: string;
 }
 
 function directoryFiles(root: string, relativePath = ""): readonly string[] {
@@ -270,6 +274,7 @@ function manifestFromDisk(manifestPath: string): ControlPlaneBackupManifest {
     "hermes-native-state",
     "hermes-native-file",
     "hermes-native-vault",
+    "native-knowledge-tombstone-outbox",
   ]);
   const names = new Set<string>();
   const files = candidate.files.map((value) => {
@@ -484,6 +489,11 @@ export function restoreControlPlaneBackup(options: {
     }
     const destinationManifest = join(directory, "manifest.json");
     copyFileSync(verification.manifestPath, destinationManifest);
+    const restoredTombstoneOutbox = verification.manifest.files.some(
+      (file) => file.role === "native-knowledge-tombstone-outbox",
+    )
+      ? containedPath(directory, "native-knowledge/tombstone-outbox.json")
+      : undefined;
     const sqliteRoles = new Set([
       "operations-state",
       "notion-write-ledger",
@@ -502,6 +512,9 @@ export function restoreControlPlaneBackup(options: {
       directory,
       manifestPath: destinationManifest,
       sqliteIntegrity: restoredSqliteIntegrity,
+      ...(restoredTombstoneOutbox === undefined
+        ? {}
+        : { nativeKnowledgeTombstoneOutboxPath: restoredTombstoneOutbox }),
     };
   } catch (error) {
     if (createdDirectory && existsSync(directory)) {
@@ -523,6 +536,8 @@ export async function backupControlPlaneState(options: {
   readonly hermesNativeStateDirectory?: string;
   /** Optional native Obsidian/LLM-Wiki vault directory. */
   readonly hermesVaultPath?: string;
+  /** Optional opaque local tombstone sync outbox. */
+  readonly nativeKnowledgeTombstoneOutboxPath?: string;
   readonly destinationDirectory: string;
   readonly backupId: string;
   readonly createdAt: string;
@@ -551,6 +566,12 @@ export async function backupControlPlaneState(options: {
   if (options.hermesVaultPath !== undefined && !existsSync(options.hermesVaultPath)) {
     throw new Error("The configured Hermes native vault must exist before backup.");
   }
+  if (options.nativeKnowledgeTombstoneOutboxPath !== undefined) {
+    if (!existsSync(options.nativeKnowledgeTombstoneOutboxPath)) {
+      throw new Error("The configured native knowledge tombstone outbox must exist before backup.");
+    }
+    assertRegularFile(options.nativeKnowledgeTombstoneOutboxPath, "native knowledge tombstone outbox");
+  }
   const directory = join(options.destinationDirectory, options.backupId);
   const statePath = join(directory, "state.sqlite");
   const notionLedgerPath = join(directory, "notion-write-ledger.sqlite");
@@ -566,6 +587,9 @@ export async function backupControlPlaneState(options: {
   const hermesVaultPath = options.hermesVaultPath === undefined
     ? undefined
     : join(directory, "hermes-vault");
+  const nativeKnowledgeTombstoneOutboxPath = options.nativeKnowledgeTombstoneOutboxPath === undefined
+    ? undefined
+    : join(directory, "native-knowledge", "tombstone-outbox.json");
   const manifestPath = join(directory, "manifest.json");
   let createdDirectory = false;
 
@@ -613,6 +637,10 @@ export async function backupControlPlaneState(options: {
       hermesVaultPath === undefined || options.hermesVaultPath === undefined
         ? undefined
         : copyDirectorySnapshot(options.hermesVaultPath, hermesVaultPath);
+    if (nativeKnowledgeTombstoneOutboxPath !== undefined && options.nativeKnowledgeTombstoneOutboxPath !== undefined) {
+      mkdirSync(dirname(nativeKnowledgeTombstoneOutboxPath), { recursive: true });
+      copyFileSync(options.nativeKnowledgeTombstoneOutboxPath, nativeKnowledgeTombstoneOutboxPath);
+    }
     const manifest: ControlPlaneBackupManifest = {
       backupId: options.backupId,
       createdAt: options.createdAt,
@@ -656,6 +684,13 @@ export async function backupControlPlaneState(options: {
               name: `hermes-vault/${file.relativePath.replaceAll("\\", "/")}`,
               sha256: file.sha256,
             }))),
+        ...(nativeKnowledgeTombstoneOutboxPath === undefined
+          ? []
+          : [{
+              role: "native-knowledge-tombstone-outbox" as const,
+              name: "native-knowledge/tombstone-outbox.json",
+              sha256: digest(nativeKnowledgeTombstoneOutboxPath),
+            }]),
       ],
       ...(vaultSnapshot === undefined
         ? {}
@@ -682,6 +717,7 @@ export async function backupControlPlaneState(options: {
       ...(hermesStatePath === undefined ? {} : { hermesStatePath }),
       ...(hermesNativeStateDirectory === undefined ? {} : { hermesNativeStateDirectory }),
       ...(hermesVaultPath === undefined ? {} : { hermesVaultPath }),
+      ...(nativeKnowledgeTombstoneOutboxPath === undefined ? {} : { nativeKnowledgeTombstoneOutboxPath }),
     };
   } catch (error) {
     if (createdDirectory && existsSync(directory)) {
@@ -719,6 +755,7 @@ export async function backupAndUploadControlPlaneState(options: {
   readonly hermesStatePath?: string;
   readonly hermesNativeStateDirectory?: string;
   readonly hermesVaultPath?: string;
+  readonly nativeKnowledgeTombstoneOutboxPath?: string;
   readonly destinationDirectory: string;
   readonly backupId: string;
   readonly createdAt: string;
