@@ -62,7 +62,7 @@ For future projects, use [the build-alignment lessons and reusable prompts](../d
 | Phase 3 tickets closed | **43 of 44** *(RM-38 closed with evidence)* |
 | Startable by an agent right now | **RM-40 (#41)** — Prove full Real-Ming v1.1 readiness, the last ticket |
 | Next engineering work | Deploy the controlled-tested focus-first report refinement after approval, then verify the two native jobs; no implementation blocker. |
-| Waiting on you | Approve the new report bundle; review one unattended pair; review dashboard usefulness; open the vault in Obsidian; and accept the RM-40 issue criteria. See [Phase 4 CEO actions](phase-4-ceo-action.md). Leave the East Asia VM stopped but undeleted; nothing to do in Tailscale. |
+| Waiting on you | Approve the new report bundle; review one unattended pair; and accept the RM-40 issue criteria. See [Phase 4 CEO actions](phase-4-ceo-action.md). Leave the East Asia VM stopped but undeleted; nothing to do in Tailscale. |
 
 **Recorded V5 implementation status (2026-09-04; not V6 acceptance).** The approved Revision 5
 Hermes-first path is implemented and covered by controlled system tests:

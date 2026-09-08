@@ -367,7 +367,6 @@ reviews:
 
 | Remaining | Owner | Milestone |
 | --- | --- | --- |
-| Open the vault in an Obsidian client | Ming | 6 |
 | Approve the five native-experience criteria on RM-40 (#41) and close it | Ming | 9 |
 | Merge or reject [DuitSini#17](https://github.com/pmgwee/DuitSini/pull/17) | Ming, not a milestone gate | 8 |
 | Install the chosen third-party skills | Ming, deferred by his decision | — |

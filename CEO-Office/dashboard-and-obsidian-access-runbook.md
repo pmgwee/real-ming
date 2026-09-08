@@ -239,8 +239,12 @@ exist, Obsidian never opened it, whatever the window appears to show.
 
 ## Step 3 · Open it in Obsidian
 
-Obsidian → **Open folder as vault** → choose `~/Obsidian/real-ming`. Decline the
-"trust author / enable plugins" prompt; nothing here needs plugins.
+Obsidian → **Open folder as vault** → choose `~/Obsidian/real-ming`.
+
+You will **not** be asked to "trust author / enable plugins". That prompt only
+appears when a vault carries community plugin code, and this one carries none —
+only the agent's Markdown. Its absence is correct, not a step you missed. If it
+ever does appear after a future pull, decline it.
 
 You should see the single note render, with its link back to the milestone 5
 evidence file.
