@@ -22,6 +22,7 @@ import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 import type { DeploymentCandidate, DeploymentCandidateStore } from "../portfolio/deployment-candidate.js";
 import type { KnowledgeDomainHealth } from "../knowledge/knowledge-operations.js";
 import type { HermesConversationOverview } from "../hermes/hermes-turn-coordinator.js";
+import type { NativeKnowledgeRunHealth } from "../knowledge/native-consolidation/contracts.js";
 
 /**
  * Health metadata for the native Hermes gateway. Native Telegram owns the
@@ -168,6 +169,8 @@ export interface DashboardOverview {
   readonly hermes?: HermesConversationOverview;
   /** Native gateway reachability; session details stay in Hermes' dashboard. */
   readonly nativeHermes?: NativeHermesDashboardStatus;
+  /** Payload-free health for the optional native knowledge extension. */
+  readonly knowledgeConsolidation?: NativeKnowledgeRunHealth;
 }
 
 const executiveRoles: readonly ExecutiveRole[] = [
@@ -245,6 +248,7 @@ export function buildDashboardOverview(
   knowledge: readonly KnowledgeDomainHealth[] = [],
   hermes?: HermesConversationOverview,
   nativeHermes?: NativeHermesDashboardStatus,
+  knowledgeConsolidation?: NativeKnowledgeRunHealth,
 ): DashboardOverview {
   const workItems = state
     .workItems()
@@ -415,5 +419,6 @@ export function buildDashboardOverview(
     knowledge,
     ...(hermes === undefined ? {} : { hermes }),
     ...(nativeHermes === undefined ? {} : { nativeHermes }),
+    ...(knowledgeConsolidation === undefined ? {} : { knowledgeConsolidation }),
   };
 }

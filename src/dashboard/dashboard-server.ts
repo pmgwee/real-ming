@@ -27,6 +27,7 @@ import type {
 } from "../portfolio/deployment-promotion.js";
 import type { SchedulerJobDefinition } from "../operations/daily-operations-scheduler.js";
 import type { KnowledgeDomainHealth } from "../knowledge/knowledge-operations.js";
+import type { NativeKnowledgeRunHealth } from "../knowledge/native-consolidation/contracts.js";
 import type { HermesConversationOverview } from "../hermes/hermes-turn-coordinator.js";
 import type {
   NativeScheduledReportRequest,
@@ -260,6 +261,8 @@ export function createDashboardServer(options: {
   readonly deploymentPromotion?: DeploymentPromotionCoordinator;
   readonly schedulerJobs?: readonly SchedulerJobDefinition[];
   readonly knowledgeHealth?: () => readonly KnowledgeDomainHealth[];
+  /** Read-only payload-free health for the optional native knowledge extension. */
+  readonly nativeKnowledgeHealth?: () => NativeKnowledgeRunHealth | Promise<NativeKnowledgeRunHealth>;
   /** Read-only Hermes runtime/session status. Prompts are never exposed. */
   readonly hermesHealth?: () => HermesConversationOverview;
   /** Read-only native Hermes gateway reachability. Session details stay native. */
@@ -287,6 +290,10 @@ export function createDashboardServer(options: {
       options.nativeHermesHealth === undefined
         ? undefined
         : await options.nativeHermesHealth();
+    const nativeKnowledge =
+      options.nativeKnowledgeHealth === undefined
+        ? undefined
+        : await options.nativeKnowledgeHealth();
     return buildDashboardOverview(
       options.state,
       { ...session, now: now() },
@@ -299,6 +306,7 @@ export function createDashboardServer(options: {
       options.knowledgeHealth?.() ?? [],
       options.hermesHealth?.(),
       nativeHermes,
+      nativeKnowledge,
     );
   };
 

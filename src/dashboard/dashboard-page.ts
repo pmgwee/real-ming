@@ -172,6 +172,22 @@ export function renderDashboardPage(overview: DashboardOverview): string {
       `<td data-field="lastFailure">${escapeHtml(overview.nativeHermes.lastFailure ?? "")}</td>` +
       "</tr>";
 
+  const knowledgeConsolidationRows = overview.knowledgeConsolidation === undefined
+    ? `<tr data-native-knowledge-status="not-configured"><td data-field="status">not-configured</td><td data-field="runId"></td><td data-field="lastSuccess"></td><td data-field="backlog">0</td><td data-field="activeGenerationId"></td><td data-field="tombstoneHeadEpoch">0</td><td data-field="staleCount">0</td><td data-field="quarantinedCount">0</td><td data-field="repairState">not-configured</td><td data-field="isolationEligible">false</td></tr>`
+    : `<tr data-native-knowledge-status="${escapeHtml(overview.knowledgeConsolidation.repairState)}">` +
+      `<td data-field="status">configured</td>` +
+      `<td data-field="runId">${escapeHtml(overview.knowledgeConsolidation.runId ?? "")}</td>` +
+      `<td data-field="lastSuccess">${escapeHtml(overview.knowledgeConsolidation.lastSuccess ?? "")}</td>` +
+      `<td data-field="backlog">${overview.knowledgeConsolidation.backlog}</td>` +
+      `<td data-field="activeGenerationId">${escapeHtml(overview.knowledgeConsolidation.activeGenerationId ?? "")}</td>` +
+      `<td data-field="tombstoneHeadEpoch">${overview.knowledgeConsolidation.tombstoneHeadEpoch}</td>` +
+      `<td data-field="staleCount">${overview.knowledgeConsolidation.staleCount}</td>` +
+      `<td data-field="quarantinedCount">${overview.knowledgeConsolidation.quarantinedCount}</td>` +
+      `<td data-field="repairState">${escapeHtml(overview.knowledgeConsolidation.repairState)}</td>` +
+      `<td data-field="isolationEligible">${overview.knowledgeConsolidation.isolationEligible}</td>` +
+      `<td data-field="lastFailureCode">${escapeHtml(overview.knowledgeConsolidation.lastFailureCode ?? "")}</td>` +
+      "</tr>";
+
   const portfolioRows = overview.projectPortfolio
     .map(
       (project) =>
@@ -324,6 +340,12 @@ export function renderDashboardPage(overview: DashboardOverview): string {
 <h2 id="native-hermes-title">Native Hermes Gateway</h2>
 <p>The native gateway owns Telegram transport, slash commands, tools, plugins, MCP and conversation sessions. Session details remain in Hermes; this panel shows only Real-Ming's read-only reachability check.</p>
 <table id="native-hermes"><tbody>${nativeHermesRows}</tbody></table>
+</section>
+
+<section aria-labelledby="native-knowledge-title">
+<h2 id="native-knowledge-title">Native Knowledge Consolidation · head epoch</h2>
+<p>Opaque health only: the Azure generated vault is canonical; native Hermes memory, handwritten notes and source payloads are not rendered here.</p>
+<table id="native-knowledge-health"><tbody>${knowledgeConsolidationRows}</tbody></table>
 </section>
 </main>
 <script>

@@ -5,6 +5,7 @@ import type { NativeCronReportClient } from "./native-cron-client.js";
 import type {
   CaptureResult,
   NativeKnowledgeCandidate,
+  NativeKnowledgeRunHealth,
   SourceSnapshot,
   WikiRetrieveRequest,
 } from "../knowledge/native-consolidation/contracts.js";
@@ -394,6 +395,12 @@ export function createRealMingTools(options: {
               },
               required: ["query", "now"],
             },
+          } satisfies RealMingToolDefinition,
+          {
+            name: "real_ming_knowledge_health",
+            description:
+              "Read opaque native knowledge consolidation health: run, backlog, active generation, tombstone epoch, freshness/quarantine counts and repair state. It never returns source payloads or native-memory content.",
+            inputSchema: { type: "object", properties: {} },
           } satisfies RealMingToolDefinition,
         ]) ,
     ...(scheduledReports === undefined
@@ -913,6 +920,16 @@ export function createRealMingTools(options: {
     return { kind: "ok", value: result };
   };
 
+  const readKnowledgeHealth = (): RealMingToolResult => {
+    if (knowledge === undefined) {
+      return { kind: "failed", reason: "Native knowledge health is not enabled." };
+    }
+    const health: NativeKnowledgeRunHealth = knowledge.registry.runHealth(
+      knowledge.isolationEligible?.() ?? false,
+    );
+    return { kind: "ok", value: health };
+  };
+
   const tools: RealMingTools = {
     list: () => definitions,
     call(name, args) {
@@ -1002,6 +1019,8 @@ export function createRealMingTools(options: {
           };
         case "real_ming_wiki_retrieve":
           return retrieveKnowledge(args);
+        case "real_ming_knowledge_health":
+          return readKnowledgeHealth();
         case "real_ming_run_scheduled_report":
           return scheduledReports === undefined
             ? {

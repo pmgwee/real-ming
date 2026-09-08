@@ -58,6 +58,7 @@ import { OperationsState } from "../operations/operations-state.js";
 import type { DashboardServer } from "../dashboard/dashboard-server.js";
 import { createDashboardServer } from "../dashboard/dashboard-server.js";
 import type { NativeHermesDashboardStatus } from "../dashboard/dashboard-read-model.js";
+import type { NativeKnowledgeRunHealth } from "../knowledge/native-consolidation/contracts.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { RepositoryCenterView } from "../portfolio/repository-center.js";
 import {
@@ -273,6 +274,8 @@ export async function createDailyOperationsControlPlane(options: {
   readonly schedulerOwnership?: SchedulerOwner;
   /** Shared Hermes bridge key for the loopback native-cron endpoint. */
   readonly nativeCronApiKey?: string;
+  /** Optional payload-free native knowledge health for the private dashboard. */
+  readonly nativeKnowledgeHealth?: () => NativeKnowledgeRunHealth | Promise<NativeKnowledgeRunHealth>;
   /** Optional real Hermes API-server runtime. Real-Ming remains the governance boundary. */
   readonly hermes?: {
     readonly runtime: HermesRuntimeClient;
@@ -716,6 +719,9 @@ export async function createDailyOperationsControlPlane(options: {
     ...(knowledgeRuntime === undefined ? {} : { knowledgeHealth: () => knowledgeRuntime.domainHealth }),
     ...(hermesCoordinator === undefined ? {} : { hermesHealth: () => hermesCoordinator.overview() }),
     ...(nativeHermesHealth === undefined ? {} : { nativeHermesHealth }),
+    ...(options.nativeKnowledgeHealth === undefined
+      ? {}
+      : { nativeKnowledgeHealth: options.nativeKnowledgeHealth }),
     ...(options.nativeCronApiKey === undefined
       ? {}
       : {
