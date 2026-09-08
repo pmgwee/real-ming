@@ -367,9 +367,10 @@ reviews:
 
 | Remaining | Owner | Milestone |
 | --- | --- | --- |
-| Approve the five native-experience criteria on RM-40 (#41) and close it | Ming | 9 |
 | Merge or reject [DuitSini#17](https://github.com/pmgwee/DuitSini/pull/17) | Ming, not a milestone gate | 8 |
 | Install the chosen third-party skills | Ming, deferred by his decision | — |
+
+**RM-40 is closed.** On 8 September the five native-experience criteria were approved and posted to [#41](https://github.com/pmgwee/real-ming/issues/41), which closed as completed. `npm run graph:status` now reports every ticket completed and selects no next node: **44 of 44**. Nothing in this plan remains open on engineering or on Ming.
 
 **Milestone 7's review is answered.** On 8 September Ming opened both
 surfaces and chose the Hermes Kanban dashboard (`127.0.0.1:9119`) as the one he
