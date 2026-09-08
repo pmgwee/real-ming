@@ -14,6 +14,7 @@ Environment=HERMES_HOME=/var/lib/hermes-real-ming
 Environment=API_SERVER_HOST=127.0.0.1
 Environment=API_SERVER_PORT=8642
 Environment=OBSIDIAN_VAULT_PATH=/var/lib/hermes-real-ming/obsidian-vault
+Environment=HERMES_TUI_DIR=/opt/hermes-agent-561b053f/ui-tui
 EnvironmentFile=/etc/real-ming/hermes.env
 ExecStart=/usr/local/bin/hermes dashboard --host 127.0.0.1 --port 9119 --skip-build --no-open
 Restart=always

@@ -151,6 +151,15 @@ export async function verifyControlPlaneDeployment(
       // "Connection closed" -- a red diagnostic for a component that was
       // actually healthy, which is worse than no diagnostic at all.
       ["extension-state-writable", "ReadWritePaths=/var/lib/hermes-real-ming /var/lib/real-ming"],
+      // Without this the dashboard Chat tab runs esbuild into the Hermes
+      // install directory on every connection. ProtectSystem=strict makes /opt
+      // read-only, the build exits 1, and the page reports "Chat unavailable: 1"
+      // -- the exit code, surfaced verbatim. Hermes takes a prebuilt-bundle
+      // branch before it ever considers building, and this variable selects it.
+      // If Hermes is reinstalled under a new hash-suffixed directory this path
+      // goes stale and the Chat tab degrades to exactly today's failure, so the
+      // path is checked here to keep the coupling visible rather than implicit.
+      ["chat-uses-prebuilt-tui", "Environment=HERMES_TUI_DIR=/opt/hermes-agent-561b053f/ui-tui"],
     ],
     failures,
   );

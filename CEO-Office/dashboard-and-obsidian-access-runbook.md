@@ -347,7 +347,21 @@ not a fault.
 ssh -N -L 8787:127.0.0.1:8787 -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35
 ```
 
-## Step 2 · Fetch the token
+## Step 2 · Get the paste-ready line
+
+One command. It prints the exact JavaScript to paste, with the token already
+in it:
+
+```powershell
+ssh -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35 ./real-ming-dashboard-cookie.sh
+```
+
+The helper reads the token from Key Vault through the VM's own managed
+identity. Nothing is written to disk on either machine, and the value appears
+only in your terminal — never in this repository, an issue, or a log.
+
+<details>
+<summary>Doing it by hand instead</summary>
 
 Azure Portal → **Key Vaults** → `real-ming-vault` → **Secrets** →
 `real-ming-dashboard-token` → the current version → **Show Secret Value**.
@@ -356,18 +370,22 @@ It is 64 characters.
 It is deliberately **not** in `/etc/real-ming/hermes.env`. The container reads
 it from Key Vault at startup, so no copy sits on the VM's disk to leak.
 
-## Step 3 · Hand the browser the token
+</details>
 
-There is no login page, so the token has to be planted as a cookie. Open
-**http://127.0.0.1:8787**, press **F12**, and paste this into the Console:
+## Step 3 · Paste it into the browser
+
+There is no login page, so the token is planted as a cookie. Open
+**http://127.0.0.1:8787**, press **F12**, choose **Console**, paste the line
+from Step 2, and press Enter. It looks like this:
 
 ```javascript
-document.cookie = "real_ming_session=PASTE_TOKEN_HERE; path=/";
-location.reload();
+document.cookie = "real_ming_session=<token>; path=/; max-age=31536000"; location.reload();
 ```
 
-The page then loads normally. `curl` users can send
-`Authorization: Bearer <token>` instead.
+The page reloads and renders. `max-age` is a year, so this is **one-time per
+browser** — afterwards the tunnel alone is enough.
+
+`curl` users can send `Authorization: Bearer <token>` instead.
 
 **Never put the token in the URL.** A query string lands in browser history,
 proxy logs and the server log; a cookie does not.
