@@ -23,7 +23,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=/var/lib/hermes-real-ming
+ReadWritePaths=/var/lib/hermes-real-ming /var/lib/real-ming
 
 [Install]
 WantedBy=multi-user.target

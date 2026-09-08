@@ -143,6 +143,14 @@ export async function verifyControlPlaneDeployment(
       ["requires-gateway", "Requires=hermes.service"],
       ["restart-policy", "Restart=always"],
       ["unprivileged", "User=real-ming"],
+      // The dashboard spawns the same stdio MCP servers the gateway does, so
+      // it needs the same state path writable. Granting it only on
+      // hermes.service left this unit's namespace with /var/lib/real-ming
+      // read-only: the gateway's tools worked over Telegram while the
+      // dashboard's own "Test connection" reported the Real-Ming server as
+      // "Connection closed" -- a red diagnostic for a component that was
+      // actually healthy, which is worse than no diagnostic at all.
+      ["extension-state-writable", "ReadWritePaths=/var/lib/hermes-real-ming /var/lib/real-ming"],
     ],
     failures,
   );
