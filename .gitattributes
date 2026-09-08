@@ -4,3 +4,9 @@
 deploy/**/*.sh text eol=lf
 deploy/systemd/* text eol=lf
 hermes/**/*.sh text eol=lf
+
+# Skill frontmatter is parsed by splitting on LF. A CRLF checkout leaves a
+# trailing CR on every value, so `name` reads as the name plus a carriage return and no skill
+# resolves -- which fails the skill-pack tests on Windows for a file that is
+# correct in Git and correct on the Linux host.
+hermes/**/*.md text eol=lf

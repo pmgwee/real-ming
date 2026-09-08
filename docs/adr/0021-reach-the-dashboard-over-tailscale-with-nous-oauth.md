@@ -114,7 +114,35 @@ that looks solid and rots quietly. Phone risk is instead managed with tailnet
 ACLs, OAuth, session lifetime and device revocation, none of which fracture the
 workflow.
 
-**Tailscale's default policy permits all tailnet devices.** An explicit ACL
-limiting the dashboard to approved devices is required for the "non-approved
-device cannot reach it" property to hold; until it exists, that property rests
-on every tailnet device being Ming's own.
+**The tailnet policy was narrowed on 8 September 2026.** Tailscale's default
+policy permits every tailnet device, so until that changed, "a non-approved
+device cannot reach it" rested on every device happening to be Ming's own. Four
+things about the change are worth keeping:
+
+- **The allow-all rule was replaced, not supplemented.** Grants are additive, so
+  a narrow rule added beside `{"src": ["*"], "dst": ["*"], "ip": ["*"]}` grants
+  nothing new and restricts nothing.
+- **Rules key on device addresses, not on the user.** Every device belongs to
+  one user, so a user selector cannot distinguish the laptop from the phone.
+- **No device was tagged.** Tagging would have been the other way to select a
+  device, but Tailscale Serve stops populating the authenticated-identity
+  headers for tagged devices, which would have removed a signal for nothing.
+- **The policy carries its own tests**, including a negative one, so the console
+  refuses a save that does not do what the rules claim and a later broadening
+  fails a test rather than passing silently.
+
+**Enabling Serve granted Funnel to every member, and that had to be undone.**
+The enablement flow offers Funnel pre-checked and writes a `nodeAttrs` entry
+granting the `funnel` attribute to `autogroup:member`. Nothing was published --
+the capability is not an exposure -- but any member could then have published
+the dashboard to the internet with one command. It was removed in a separate
+save from the grant narrowing, so that a failure would be attributable to one
+change, and its absence was confirmed by reading the node's capability map
+rather than by attempting Funnel: a test that succeeds by publishing the thing
+it is testing is not a test. Serve was unaffected, as expected -- Serve and
+Funnel are independent.
+
+**The retained rollback host is denied by these rules.** That is deliberate and
+is what the negative test asserts. It also means a failover to that host is
+blocked until the policy's host entry is updated, which belongs in the rollback
+procedure rather than being discovered mid-incident.
