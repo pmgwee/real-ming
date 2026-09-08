@@ -84,6 +84,12 @@ Funnel off. Verified 8 September: unauthenticated requests get `302`, and every
 dashboard WebSocket — including the `/api/pty` and `/api/console` terminals —
 returns `401` without a session.
 
+Since 8 September the tailnet policy also names which devices may connect: only
+your laptop and your phone, and only on the ports each needs. A device added to
+the tailnet later does **not** inherit access. Adding one means editing the
+policy deliberately, which is the point. The reasoning is in
+[ADR-0021](../docs/adr/0021-reach-the-dashboard-over-tailscale-with-nous-oauth.md).
+
 ## Step 3b · If you are ever locked out
 
 The SSH tunnel is **no longer a fallback**. A login started at
@@ -217,10 +223,28 @@ Get-ChildItem $HOME\Obsidian\real-ming
 
 Expected: `Native cron ownership.md`
 
+## Step 2b · The shortcut, now that Obsidian is installed
+
+Obsidian is installed on this laptop, so the folder-picking in Step 3 is only
+needed the first time. Afterwards this opens the vault directly:
+
+```
+obsidian://open?path=C%3A%5CUsers%5C<YOU>%5CObsidian%5Creal-ming
+```
+
+**One caveat that cost time on 8 September.** If Obsidian is already busy
+loading another vault, that link is ignored and the vault is never registered.
+Check `~/Obsidian/real-ming/.obsidian` afterwards: if that folder does not
+exist, Obsidian never opened it, whatever the window appears to show.
+
 ## Step 3 · Open it in Obsidian
 
-Obsidian → **Open folder as vault** → choose `~/Obsidian/real-ming`. Decline the
-"trust author / enable plugins" prompt; nothing here needs plugins.
+Obsidian → **Open folder as vault** → choose `~/Obsidian/real-ming`.
+
+You will **not** be asked to "trust author / enable plugins". That prompt only
+appears when a vault carries community plugin code, and this one carries none —
+only the agent's Markdown. Its absence is correct, not a step you missed. If it
+ever does appear after a future pull, decline it.
 
 You should see the single note render, with its link back to the milestone 5
 evidence file.
@@ -298,6 +322,12 @@ earns its keep.
 Unlike the Hermes dashboard, this one is **token-authenticated**. The tunnel
 alone returns `{"error":"authentication-required"}`. That is correct behaviour,
 not a fault.
+
+**Laptop only, since 8 September.** This surface is reached through an SSH
+tunnel, and the tailnet policy grants port 22 to the laptop alone — the phone
+has HTTPS and nothing else. That is deliberate: the phone was given the smallest
+grant that serves its purpose, and 8787 is not part of that purpose. Reaching it
+from the phone would mean granting SSH there, which is a decision, not a step.
 
 ## Step 1 · Open the tunnel
 
@@ -378,6 +408,9 @@ Measured on the running host, 8 September 2026:
 | Port 8787 still 401 after setting the cookie | Cookie set on the wrong origin, or the token was truncated when copied | Set it while the page itself is open on `127.0.0.1:8787`; the value is 64 characters |
 | *"This site can't be reached"* on either device | Tailscale is not connected | Open Tailscale, confirm **Connected**; the exit node should stay **None** |
 | Sent to a Nous sign-in page | Correct since 8 Sep 2026 — the dashboard now requires a login | Sign in with Nous Research; the session persists |
+| A newly added device cannot reach the dashboard | Correct since 8 Sep 2026 — the tailnet policy names permitted devices | Add it to the policy deliberately, with a test |
+| Port 8787 unreachable from the phone | By design — the phone holds no SSH grant | Use the laptop; see the note at the top of Part 4 |
+| Obsidian sits on *"Loading cache…"* | It is indexing every file in the open vault, not this one | Check which vault is open; a vault of machine-generated files can hold tens of thousands |
 
 # 📎 What this runbook does not cover
 
