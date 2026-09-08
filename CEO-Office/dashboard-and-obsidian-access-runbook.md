@@ -42,74 +42,67 @@ Expected output: `reachable`
 
 # 🖥️ Part 1 — The agent dashboard and Kanban
 
-## Step 1 · Open the tunnel
+> **Changed on 8 September 2026.** There is no tunnel and no SSH command any
+> more. The dashboard is reached at a normal HTTPS address from your laptop or
+> your phone, behind a Nous login. See
+> [ADR-0021](../docs/adr/0021-reach-the-dashboard-over-tailscale-with-nous-oauth.md).
 
-Run this and **leave the window open**. It is the tunnel; closing it closes the
-dashboard.
+## Step 1 · Make sure Tailscale is connected
 
-```powershell
-ssh -N -L 9119:127.0.0.1:9119 -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35
+On the laptop it usually already is. On the iPhone, open Tailscale and check it
+shows **Connected**; approving the iOS VPN configuration is a one-time prompt,
+not something you answer each time. Leave the exit node as **None** — this does
+not route your browsing through anything.
+
+If Tailscale is off, the address below simply will not resolve. That is the
+security boundary doing its job, not a fault.
+
+## Step 2 · Open the address
+
+**https://real-ming-malaysia.tail54f32e.ts.net/kanban**
+
+Bookmark it on both devices. No tunnel, no SSH client, no port forward, and
+your laptop does not need to be running for the phone to work.
+
+## Step 3 · Sign in with Nous Research
+
+The first visit shows **SIGN IN — Choose a sign-in method to continue to the
+Hermes Agent dashboard**, with a *Sign in with Nous Research* button and the
+footer `PUBLIC BIND · AUTH REQUIRED`. Sign in once; the session persists.
+
+This is a real login, and it is deliberate. Reaching the board now takes four
+things in order:
+
+1. a device signed into your tailnet,
+2. permitted by the tailnet policy,
+3. a successful Nous Portal login,
+4. a live dashboard session.
+
+**The dashboard itself never left loopback.** It is still bound to
+`127.0.0.1:9119`; Tailscale Serve proxies HTTPS to it, tailnet-only, with
+Funnel off. Verified 8 September: unauthenticated requests get `302`, and every
+dashboard WebSocket — including the `/api/pty` and `/api/console` terminals —
+returns `401` without a session.
+
+## Step 3b · If you are ever locked out
+
+The SSH tunnel is **no longer a fallback**. A login started at
+`127.0.0.1:9119` cannot finish, because the OAuth callback belongs to the
+tailnet address. If Serve or Tailscale is broken, recovery is to remove the
+public-URL line and restart the unit, which restores passwordless loopback
+access in seconds:
+
+```bash
+ssh -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35
 ```
 
-It prints nothing at all. That is correct — `-N` means "open the tunnel, run no
-command". Silence is success.
+then, at the host prompt:
 
-## Step 1b · Make it one command (do this once)
-
-You have no `~/.ssh/config` today, so this creates one rather than editing it.
-
-```powershell
-notepad $HOME\.ssh\config
+```bash
+sudo sed -i "/^Environment=HERMES_DASHBOARD_PUBLIC_URL=/d" /etc/systemd/system/hermes-dashboard.service && sudo systemctl daemon-reload && sudo systemctl restart hermes-dashboard && echo ROLLED_BACK
 ```
 
-Paste this in and save:
-
-```
-Host ming-dash
-    HostName 100.110.253.35
-    User azureuser
-    IdentityFile ~/.ssh/real_ming_southeastasia_ed25519
-    LocalForward 9119 127.0.0.1:9119
-```
-
-From then on, Step 1 is the whole command:
-
-```powershell
-ssh -N ming-dash
-```
-
-Verified working on 8 September 2026.
-
-If you would rather double-click, save this on the Desktop as
-`Ming Dashboard.cmd`:
-
-```
-@echo off
-start "" ssh -N ming-dash
-timeout /t 3 >nul
-start "" http://127.0.0.1:9119
-```
-
-Closing the SSH window still closes the tunnel. That has not changed.
-
-## Step 2 · Open the browser
-
-Go to **http://127.0.0.1:9119** (`localhost:9119` works too; no other hostname
-will, on purpose — see Troubleshooting).
-
-## Step 3 · There is no login
-
-You will land straight on the dashboard. That is not a misconfiguration.
-
-The dashboard mints a random session token when the gateway starts, injects it
-into the page's own HTML, and the page hands it back on every request. The
-token never leaves your tunnel, is different after every restart, and dies with
-the process. Because the server is bound to `127.0.0.1`, the only way to reach
-the page at all is through the tunnel you just opened — so possession of the
-tunnel *is* the authentication.
-
-This is also why a password would add nothing: anyone who could reach the port
-would already be inside your Azure host.
+After that, the old tunnel route works again exactly as it used to.
 
 ## Step 4 · What you are looking at
 
@@ -154,13 +147,17 @@ are Malaysia time — the gateway's `timezone` is `Asia/Kuala_Lumpur`.
 
 ## ✅ Part 1 test cases
 
+Measured on the running host and confirmed by Ming on both devices,
+8 September 2026:
+
 | Do this | Expect |
 | --- | --- |
-| Open `http://127.0.0.1:9119` with the tunnel up | Dashboard loads, no login prompt |
+| Open the address with Tailscale connected | Nous sign-in page, then the dashboard |
 | Look at Connected Platforms | `api_server` and `telegram` both green |
-| Open `/kanban` | Eight empty columns |
+| Open `/kanban` | The board |
 | Open `/cron` | `Scheduled Jobs (2)`, at 07:30 and 21:30 |
-| Close the tunnel window, reload | Browser cannot connect — correct, the tunnel is the door |
+| **Turn Tailscale off, reload** | *"This site can't be reached"* — the boundary holding |
+| Open it on the iPhone | Same sign-in, then the same board |
 
 ---
 
@@ -255,81 +252,42 @@ decision, not a step — see the Decisions table in `README.md`.
 
 # 📱 Part 3 — From your phone
 
-**Yes, but through the same kind of tunnel — and there is no way around that.**
+**Solved on 8 September 2026. There is nothing phone-specific left to do.**
 
-The dashboard answers only to `127.0.0.1:9119` and `localhost:9119`. Every other
-`Host` header, including the Tailscale name and the Tailscale IP, gets an HTTP
-400. Measured against the running host on 8 September 2026:
+Part 1 already is the phone instructions: connect Tailscale, open the same
+address, sign in with Nous. Your iPhone and your laptop have identical
+access and identical rights.
 
-| `Host` header sent | Response |
+No SSH client, no port forwarding, no key on the phone, and your laptop does
+not need to be switched on.
+
+## Why it is not an SSH tunnel
+
+It nearly was. The dashboard used to answer only to `127.0.0.1:9119`, so a
+phone would have needed an SSH client holding a tunnel open — and on iOS the
+system suspends the SSH app the moment you switch to Safari, which is the
+one moment you need the tunnel alive. It would have meant buying an app to
+get an experience that breaks when you use it.
+
+`HERMES_DASHBOARD_PUBLIC_URL` removed the need. It tells Hermes to trust the
+tailnet hostname *and* engages the login gate, while the socket stays on
+loopback. Tailscale Serve carries HTTPS to it, tailnet-only.
+
+## What keeps it private
+
+| Layer | What it stops |
 | --- | --- |
-| `127.0.0.1:9119` | 200 |
-| `localhost:9119` | 200 |
-| `real-ming-malaysia` | 400 |
-| `real-ming-malaysia.tail54f32e.ts.net` | 400 |
-| `100.110.253.35:9119` | 400 |
+| RFC 6598 address space | `100.110.253.35` is not routable from the internet |
+| MagicDNS | the name resolves only for devices on your tailnet |
+| Funnel **off** | the one switch that would publish it stays off |
+| Nous OAuth | a stolen unlocked phone still needs your Nous session |
+| WebSocket gate | `/api/pty` and `/api/console` return `401` without a session |
 
-That is deliberate, and it is the same protection described in Part 1 Step 3.
-The dashboard's entire authentication is *"you reached me over loopback"* — it
-mints a token and injects it into the page. If it also trusted a hostname, any
-web page you visited could point that name at your own loopback and read the
-token. Hermes says so in its own help text: *"Bind 127.0.0.1 + tunnel to keep
-it local."*
-
-## What works today, with no change to the server
-
-Two apps on the phone:
-
-1. **Tailscale** — sign in with the same account. The phone joins the tailnet
-   and can reach `100.110.253.35`, exactly as your laptop already does.
-2. **An SSH client that can do local port forwarding** — forward the phone's
-   `9119` to `127.0.0.1:9119` on the host, then open `http://127.0.0.1:9119` in
-   the phone's browser. The `Host` is loopback, so it is accepted.
-
-Candidates are Termius (iOS and Android), or Termux with `openssh` on Android.
-**I have not tested either on your phone.** Local port forwarding sits behind
-the paid tier in some clients, and I cannot verify that from here.
-
-Expect one nuisance on iOS: the system suspends backgrounded apps, so the
-tunnel tends to drop when you switch from the SSH app to the browser. Android
-with Termux and `autossh` holds it open more reliably.
-
-## What looks like the answer but is not
-
-**Tailscale Serve.** Two independent reasons, both checked on 8 September:
-
-- Serve is **not enabled on your tailnet** at all. The host reported
-  *"Serve is not enabled on your tailnet"* and printed an admin-console link.
-- Enabling it would still not work. Serve passes the `ts.net` hostname through
-  as the `Host` header, which the dashboard rejects with 400 — and
-  `hermes dashboard` has **no flag** to allow an additional hostname.
-
-You could put a Host-rewriting proxy in front of it. Do not. That deliberately
-disables the rebinding protection above and hands the session token to anything
-on the tailnet.
-
-## The supported way, if you want this properly — decision 3
-
-Hermes does support a non-loopback bind. It simply requires real authentication
-instead of the loopback assumption: the `--insecure` help documents that a
-public bind always demands an auth provider, and `hermes dashboard register`
-wires OAuth through Nous Portal.
-
-Choosing it changes the deployment contract, so it is yours rather than mine:
-
-- `src/runtime/control-plane-deployment-preflight.ts` pins `--host 127.0.0.1`
-  and fails the build if that changes
-- `docs/BASELINE.md` states the dashboard is loopback-only
-- It would need an ADR
-
-**Recommendation: not yet.** You already carry the agent on your phone — that is
-Telegram, and it is the interface that actually matters. The dashboard is for
-inspection. Milestone 9 asks you to judge whether it earns its keep at all;
-answer that first. If it turns out you want it in your pocket weekly, the ADR
-is worth writing then, on evidence.
+The hostname is not a secret and must never be treated as one — it is in
+public Certificate Transparency logs. Safety comes from tailnet membership
+plus the login, never from the name being hard to guess.
 
 ---
-
 # 🗂️ Part 4 — Real-Ming's own dashboard
 
 This is a **different application** from Parts 1–3. Port 9119 is Hermes's agent
@@ -411,15 +369,15 @@ Measured on the running host, 8 September 2026:
 | Browser: "can't connect" | Tunnel window was closed | Re-run Step 1 and leave it open |
 | `bind: Address already in use` | A tunnel is already open on 9119 | Use the existing window, or close it first |
 | Dashboard loads but panels stay empty | Page opened before the tunnel settled | Reload once |
-| Any hostname other than `localhost` / `127.0.0.1` fails | Deliberate: the app rejects other `Host` headers to block DNS-rebinding attacks | Use `127.0.0.1` |
+| `Invalid Host header` from some other name | Only the bound host and the configured public hostname are trusted | Use the tailnet address in Part 1 |
 | `sudo: a terminal is required` on the vault pull | `sudo` wants a password prompt | The deployment key is configured for passwordless sudo; confirm you passed `-i` with the right key |
 | `tar: command not found`, or a corrupted archive | Wrong shell for the vault pull | Use Git Bash or WSL; PowerShell cannot pipe binary between processes |
 | `The token '&&' is not a valid statement separator` | PowerShell 5.1 has no `&&` | Run the two commands separately, or use `; if ($?) { ... }` |
 | Kanban shows no board | Plugin disabled | Plugins → Kanban → Enable |
 | `{"error":"authentication-required"}` on port 8787 | Correct: Real-Ming's dashboard needs a token, the tunnel is not enough | Plant the `real_ming_session` cookie — see Part 4 |
 | Port 8787 still 401 after setting the cookie | Cookie set on the wrong origin, or the token was truncated when copied | Set it while the page itself is open on `127.0.0.1:8787`; the value is 64 characters |
-| Phone browser cannot connect to `127.0.0.1:9119` | The phone's own tunnel is not up, or the SSH app was backgrounded | Re-open the SSH client and re-establish the forward — see Part 3 |
-| Tailscale name or IP returns `400` in any browser | By design, not a fault | Reach it as `127.0.0.1` through a tunnel — see Part 3 |
+| *"This site can't be reached"* on either device | Tailscale is not connected | Open Tailscale, confirm **Connected**; the exit node should stay **None** |
+| Sent to a Nous sign-in page | Correct since 8 Sep 2026 — the dashboard now requires a login | Sign in with Nous Research; the session persists |
 
 # 📎 What this runbook does not cover
 

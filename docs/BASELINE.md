@@ -18,7 +18,12 @@ longer polls Telegram. The native Hermes gateway (v0.21.0, pinned
 `561b053f794a1781868bb032029d589c67708119`) holds the bot credential and
 allowlist; it is the single Telegram consumer with 60 native commands
 registered. The supervised Hermes dashboard is loopback-only at `127.0.0.1:9119`
-and Real-Ming remains loopback-only at `127.0.0.1:8787`. Native cron owns
+and Real-Ming remains loopback-only at `127.0.0.1:8787`. Both sockets stay on
+loopback, but since 8 September the Hermes dashboard is *reachable* from
+approved tailnet devices through Tailscale Serve behind Nous Portal OAuth, with
+Funnel off — the bind did not move, the trust boundary did, and stating only
+the bind would mislead. See
+[ADR-0021](adr/0021-reach-the-dashboard-over-tailscale-with-nous-oauth.md). Native cron owns
 scheduling with exactly two enabled Telegram-delivering jobs (07:30 and 21:30
 `Asia/Kuala_Lumpur`); the first successful unattended run fired at 21:30 on
 7 September. Nine MCP servers expose 272 tools, of which the Real-Ming
