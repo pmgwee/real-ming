@@ -10,8 +10,8 @@ import {
   type FreshnessPolicy,
   type FreshnessResult,
   type NativeKnowledgeCandidate,
-  type NativeKnowledgeRegistry,
 } from "./contracts.js";
+import type { NativeKnowledgeRegistry } from "./registry.js";
 
 export const firstSliceFreshnessPolicy: FreshnessPolicy = {
   decisionDays: null,
