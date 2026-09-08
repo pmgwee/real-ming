@@ -160,6 +160,16 @@ export async function verifyControlPlaneDeployment(
       // goes stale and the Chat tab degrades to exactly today's failure, so the
       // path is checked here to keep the coupling visible rather than implicit.
       ["chat-uses-prebuilt-tui", "Environment=HERMES_TUI_DIR=/opt/hermes-agent-561b053f/ui-tui"],
+      // The dashboard stays bound to loopback; this variable is what makes the
+      // tailnet hostname acceptable to the Host/Origin guards, and it engages
+      // Hermes's auth gate at the same time -- non-loopback public URL means an
+      // auth provider becomes mandatory, so the dashboard fails closed rather
+      // than ever serving unauthenticated over Tailscale Serve.
+      //
+      // ORIGIN ONLY. The runtime appends "/auth/callback" verbatim when it
+      // rebuilds the OAuth redirect URI, so a value carrying the callback path
+      // doubles it and every login silently fails to round-trip.
+      ["dashboard-public-url", "Environment=HERMES_DASHBOARD_PUBLIC_URL=https://real-ming-malaysia.tail54f32e.ts.net"],
     ],
     failures,
   );
