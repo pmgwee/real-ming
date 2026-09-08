@@ -330,6 +330,61 @@ is worth writing then, on evidence.
 
 ---
 
+# 🗂️ Part 4 — Real-Ming's own dashboard
+
+This is a **different application** from Parts 1–3. Port 9119 is Hermes's agent
+dashboard — sessions, Kanban, cron, MCP. Port 8787 is Real-Ming's own dashboard:
+Work Items, lifecycle, approvals. Look at both before judging whether either
+earns its keep.
+
+Unlike the Hermes dashboard, this one is **token-authenticated**. The tunnel
+alone returns `{"error":"authentication-required"}`. That is correct behaviour,
+not a fault.
+
+## Step 1 · Open the tunnel
+
+```powershell
+ssh -N -L 8787:127.0.0.1:8787 -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35
+```
+
+## Step 2 · Fetch the token
+
+Azure Portal → **Key Vaults** → `real-ming-vault` → **Secrets** →
+`real-ming-dashboard-token` → the current version → **Show Secret Value**.
+It is 64 characters.
+
+It is deliberately **not** in `/etc/real-ming/hermes.env`. The container reads
+it from Key Vault at startup, so no copy sits on the VM's disk to leak.
+
+## Step 3 · Hand the browser the token
+
+There is no login page, so the token has to be planted as a cookie. Open
+**http://127.0.0.1:8787**, press **F12**, and paste this into the Console:
+
+```javascript
+document.cookie = "real_ming_session=PASTE_TOKEN_HERE; path=/";
+location.reload();
+```
+
+The page then loads normally. `curl` users can send
+`Authorization: Bearer <token>` instead.
+
+**Never put the token in the URL.** A query string lands in browser history,
+proxy logs and the server log; a cookie does not.
+
+## ✅ Part 4 test cases
+
+Measured on the running host, 8 September 2026:
+
+| Do this | Expect |
+| --- | --- |
+| Open `http://127.0.0.1:8787` with the tunnel up, no cookie | `401 {"error":"authentication-required"}` |
+| Set the cookie, reload | `200`, `text/html` — the dashboard renders |
+| `curl` with `Authorization: Bearer <token>` | `200` |
+| Close the tunnel, reload | Browser cannot connect |
+
+---
+
 # 🧯 Troubleshooting
 
 | Symptom | Cause | Fix |
@@ -343,6 +398,8 @@ is worth writing then, on evidence.
 | `tar: command not found`, or a corrupted archive | Wrong shell for the vault pull | Use Git Bash or WSL; PowerShell cannot pipe binary between processes |
 | `The token '&&' is not a valid statement separator` | PowerShell 5.1 has no `&&` | Run the two commands separately, or use `; if ($?) { ... }` |
 | Kanban shows no board | Plugin disabled | Plugins → Kanban → Enable |
+| `{"error":"authentication-required"}` on port 8787 | Correct: Real-Ming's dashboard needs a token, the tunnel is not enough | Plant the `real_ming_session` cookie — see Part 4 |
+| Port 8787 still 401 after setting the cookie | Cookie set on the wrong origin, or the token was truncated when copied | Set it while the page itself is open on `127.0.0.1:8787`; the value is 64 characters |
 | Phone browser cannot connect to `127.0.0.1:9119` | The phone's own tunnel is not up, or the SSH app was backgrounded | Re-open the SSH client and re-establish the forward — see Part 3 |
 | Tailscale name or IP returns `400` in any browser | By design, not a fault | Reach it as `127.0.0.1` through a tunnel — see Part 3 |
 
@@ -353,9 +410,5 @@ Exposing the dashboard would publish your session history, model keys and file
 browser behind a token that regenerates on every restart. The tunnel is not a
 workaround for missing access control — it *is* the access control.
 
-Real-Ming's own dashboard is separate and equally loopback-only; the same
-pattern reaches it:
-
-```powershell
-ssh -N -L 8787:127.0.0.1:8787 -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35
-```
+Real-Ming's own dashboard is separate, equally loopback-only, and
+additionally token-authenticated. It has its own section — see Part 4.
