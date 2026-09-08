@@ -145,6 +145,49 @@ describe("native knowledge bounded runner", () => {
     }
   });
 
+  it("retries a transient source outage within the bounded run budget", async () => {
+    const fixture = await workspace();
+    const item = candidate("transient-source");
+    fixture.registry.admitCandidate(item);
+    let reads = 0;
+    try {
+      const result = await runConsolidation({
+        registry: fixture.registry,
+        isolationEligible: true,
+        operatingDate: "2026-09-09",
+        now: "2026-09-09T02:00:00.000Z",
+        generatedRoot: fixture.generatedRoot,
+        stagingRoot: fixture.stagingRoot,
+        loadCandidate: async () => item,
+        readSource: async () => {
+          reads += 1;
+          return reads === 1
+            ? { kind: "unavailable" as const, reason: "transient-source-outage" }
+            : sourceFor(item);
+        },
+        assessSupport: async () => "supported",
+        synthesize: async ({ candidates }) => candidates.map<StagedPage>((value) => ({
+          pageId: value.candidateId,
+          path: `pages/${value.candidateId}.md`,
+          content: `# ${value.candidateId}\n\n${value.claim}`,
+          sourceCandidateIds: [value.candidateId],
+          claimClass: value.claimClass,
+          sourceReference: value.sourceReference,
+          capturedAt: value.capturedAt,
+          asOf: value.asOf,
+          disposition: "supported",
+          uncertainty: "none",
+        })),
+      });
+      expect(result.kind).toBe("succeeded");
+      expect(result.retryCount).toBe(1);
+      expect(reads).toBe(2);
+    } finally {
+      fixture.registry.close();
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
   it("enforces the twelve-candidate limit and records a bounded failure", async () => {
     const fixture = await workspace();
     const values = Array.from({ length: 13 }, (_, index) => candidate(`candidate-${index}`));

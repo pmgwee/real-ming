@@ -29,6 +29,7 @@ export interface NativeKnowledgeRegistry {
   candidate(candidateId: string): NativeKnowledgeCandidateMetadata | undefined;
   claimRun(input: { readonly operatingDate: string; readonly limit: number }): LeaseClaimResult;
   assertLease(runId: string, leaseToken: string, leaseEpoch: number): LeaseCheckResult;
+  recordRunRetry(runId: string, leaseToken: string, leaseEpoch: number, failureCode: string): void;
   recordRunFailure(runId: string, leaseToken: string, leaseEpoch: number, failureCode: string): void;
   recordRunSuccess(runId: string, leaseToken: string, leaseEpoch: number, at: string): void;
   recordStagedGeneration(generation: StagedGeneration): void;
@@ -460,6 +461,25 @@ export function createNativeKnowledgeRegistry(options: {
       return { kind: "valid" };
     },
 
+    recordRunRetry(runId, leaseToken, leaseEpoch, failureCode) {
+      const timestamp = now();
+      database.exec("BEGIN IMMEDIATE;");
+      try {
+        const run = requireLease(database, timestamp, runId, leaseToken, leaseEpoch);
+        if (run === undefined) {
+          database.exec("ROLLBACK;");
+          throw new Error("native-knowledge lease fenced");
+        }
+        database.prepare(
+          "UPDATE native_knowledge_runs SET failure_code = ?, retry_count = retry_count + 1 WHERE run_id = ? AND lease_token = ? AND lease_epoch = ?",
+        ).run(failureCode, runId, leaseToken, leaseEpoch);
+        database.exec("COMMIT;");
+      } catch (error) {
+        try { database.exec("ROLLBACK;"); } catch { /* already rolled back */ }
+        throw error;
+      }
+    },
+
     recordRunFailure(runId, leaseToken, leaseEpoch, failureCode) {
       const timestamp = now();
       database.exec("BEGIN IMMEDIATE;");
@@ -470,7 +490,7 @@ export function createNativeKnowledgeRegistry(options: {
           throw new Error("native-knowledge lease fenced");
         }
         database.prepare(
-          "UPDATE native_knowledge_runs SET status = 'failed', completed_at = ?, failure_code = ?, retry_count = retry_count + 1 WHERE run_id = ? AND lease_token = ? AND lease_epoch = ?",
+          "UPDATE native_knowledge_runs SET status = 'failed', completed_at = ?, failure_code = ? WHERE run_id = ? AND lease_token = ? AND lease_epoch = ?",
         ).run(timestamp, failureCode, runId, leaseToken, leaseEpoch);
         database.exec("COMMIT;");
       } catch (error) {
@@ -487,7 +507,7 @@ export function createNativeKnowledgeRegistry(options: {
           database.exec("ROLLBACK;");
           throw new Error("native-knowledge lease fenced");
         }
-        database.prepare("UPDATE native_knowledge_runs SET status = 'succeeded', completed_at = ? WHERE run_id = ? AND lease_token = ? AND lease_epoch = ?").run(at, runId, leaseToken, leaseEpoch);
+        database.prepare("UPDATE native_knowledge_runs SET status = 'succeeded', completed_at = ?, failure_code = NULL WHERE run_id = ? AND lease_token = ? AND lease_epoch = ?").run(at, runId, leaseToken, leaseEpoch);
         database.exec("COMMIT;");
       } catch (error) {
         try { database.exec("ROLLBACK;"); } catch { /* already rolled back */ }
@@ -549,6 +569,13 @@ export function createNativeKnowledgeRegistry(options: {
           return { kind: "invalid", reason: "staged-generation-mismatch" };
         }
         const current = state(database);
+        // A forget can arrive after filesystem preparation but before this
+        // SQLite pointer transaction. The generation must not become active
+        // when its tombstone epoch is older than the current local ledger.
+        if (generation.tombstone_epoch < current.tombstone_epoch) {
+          database.exec("ROLLBACK;");
+          return { kind: "invalid", reason: "tombstone-epoch-advanced" };
+        }
         const publicationEpoch = current.publication_epoch + 1;
         database.prepare("UPDATE native_knowledge_state SET active_generation_id = ?, publication_epoch = ?, repair_state = 'healthy' WHERE id = 1").run(input.generation.generationId, publicationEpoch);
         database.prepare("UPDATE native_knowledge_generations SET status = 'active', publication_epoch = ? WHERE generation_id = ?").run(publicationEpoch, input.generation.generationId);

@@ -12,6 +12,7 @@ import {
 import { verifyEvidence } from "./evidence.js";
 import { activateGeneration, readManifest, stageGeneration } from "./publication.js";
 import { wikiRetrieve } from "./retrieval.js";
+import { isSuppressedByTombstone } from "./tombstones.js";
 import type { NativeKnowledgeRegistry } from "./registry.js";
 
 export type SourceReadResult = SourceSnapshot | { readonly kind: "unavailable"; readonly reason: string };
@@ -29,8 +30,21 @@ function elapsedMs(startedAt: number): number {
   return Date.now() - startedAt;
 }
 
-function previousPages(manifest: GenerationManifest, generationPath: string): StagedPage[] {
-  return manifest.pages.map((page) => ({
+function isRetryableFailure(reason: string): boolean {
+  // The first slice retries only an explicitly classified transient source
+  // outage. Publication, activation, isolation and model failures are not
+  // replayed under the same lease because doing so could duplicate a side
+  // effect or hide a fencing defect.
+  return reason.startsWith("source-unavailable:");
+}
+
+function previousPages(
+  manifest: GenerationManifest,
+  generationPath: string,
+  registry: NativeKnowledgeRegistry,
+): StagedPage[] {
+  return manifest.pages
+    .map((page) => ({
     pageId: page.pageId,
     path: page.path,
     content: readFileSync(join(generationPath, page.path), "utf8"),
@@ -41,7 +55,8 @@ function previousPages(manifest: GenerationManifest, generationPath: string): St
     asOf: page.asOf,
     disposition: page.disposition,
     uncertainty: page.uncertainty,
-  }));
+    }))
+    .filter((page) => !isSuppressedByTombstone(page, registry.tombstones()));
 }
 
 function mergePages(previous: readonly StagedPage[], next: readonly StagedPage[]): readonly StagedPage[] {
@@ -62,12 +77,26 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
   if (claimed.kind !== "claimed") return { kind: "failed", reason: claimed.reason, retryCount: 0 };
   const startedAt = Date.now();
   let retryCount = 0;
+  let toolCalls = 0;
+  let sourceBytes = 0;
+  let modelCalls = 0;
+
+  const recordFailure = (reason: string): import("./contracts.js").ConsolidationRunResult => {
+    try {
+      input.registry.recordRunFailure(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, reason.slice(0, 160));
+    } catch {
+      // The lease may have expired while the bounded job was failing. The
+      // return remains non-success; no stale worker may claim it completed.
+    }
+    return { kind: "failed", runId: claimed.runId, reason, retryCount };
+  };
+
+  while (true) {
   try {
+    if (elapsedMs(startedAt) > maxWallClockMs) throw new Error("wall-clock budget exceeded");
     const metadata = input.registry.listCandidates("staged");
     if (metadata.length > NATIVE_KNOWLEDGE_LIMITS.maxCandidatesPerRun) throw new Error("candidate backlog exceeds per-run limit");
     const candidates: NativeKnowledgeCandidate[] = [];
-    let sourceBytes = 0;
-    let toolCalls = 0;
     for (const item of metadata) {
       if (elapsedMs(startedAt) > maxWallClockMs) throw new Error("wall-clock budget exceeded");
       const candidate = await input.loadCandidate(item.candidateId);
@@ -100,12 +129,16 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
     }
     if (candidates.length === 0) {
       input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, input.now);
-      return { kind: "succeeded", runId: claimed.runId, retryCount: 0 };
+      return { kind: "succeeded", runId: claimed.runId, retryCount };
     }
     if (elapsedMs(startedAt) > maxWallClockMs) throw new Error("wall-clock budget exceeded before synthesis");
+    if (modelCalls >= NATIVE_KNOWLEDGE_LIMITS.maxModelCalls) throw new Error("model-call limit exceeded");
+    modelCalls += 1;
     const pages = await input.synthesize({ candidates, previous });
     if (pages.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) throw new Error("generation page limit exceeded");
-    const carried = previous === undefined || previousPath === undefined ? [] : previousPages(previous, previousPath);
+    const carried = previous === undefined || previousPath === undefined
+      ? []
+      : previousPages(previous, previousPath, input.registry);
     const complete = mergePages(carried, pages);
     if (complete.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) throw new Error("complete generation page limit exceeded");
     const generated = await stageGeneration({
@@ -115,7 +148,10 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       pages: complete,
       ...(previous === undefined ? {} : { previous }),
       sourceEpoch: 0,
-      tombstoneEpoch: input.registry.runHealth().tombstoneHeadEpoch,
+      tombstoneEpoch: Math.max(
+        input.registry.runHealth().tombstoneHeadEpoch,
+        ...input.registry.tombstones().map((tombstone) => tombstone.localEpoch),
+      ),
       now: input.now,
     });
     input.registry.recordStagedGeneration(generated);
@@ -138,12 +174,20 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
     return { kind: "succeeded", runId: claimed.runId, generationId: generated.generationId, retryCount };
   } catch (error) {
     const reason = error instanceof Error ? error.message : "native knowledge run failed";
-    try {
-      input.registry.recordRunFailure(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, reason.slice(0, 160));
-    } catch {
-      // The lease may have expired while the bounded job was failing. The
-      // return remains non-success; no stale worker may claim it completed.
+    if (
+      isRetryableFailure(reason) &&
+      retryCount < NATIVE_KNOWLEDGE_LIMITS.maxRetries &&
+      elapsedMs(startedAt) < maxWallClockMs
+    ) {
+      retryCount += 1;
+      try {
+        input.registry.recordRunRetry(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, reason.slice(0, 160));
+      } catch (retryError) {
+        return recordFailure(retryError instanceof Error ? retryError.message : "retry lease update failed");
+      }
+      continue;
     }
-    return { kind: "failed", runId: claimed.runId, reason, retryCount };
+    return recordFailure(reason);
+  }
   }
 }
