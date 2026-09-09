@@ -1,45 +1,6 @@
 # Real-Ming
 
-A private personal-operations layer built on [Hermes Agent](https://hermes-agent.nousresearch.com/docs). Hermes is the agent runtime; Real-Ming adds the integrations, governance and evidence that one operator's personal, business, academic and financial work needs.
-
-## What this solves
-
-Personal operations are spread across systems that each own part of the truth: a calendar, several mailboxes, a task database, a note vault, code repositories. An agent that can reach all of them is useful. An agent that can reach all of them *without rules* is a liability, because the same access that drafts a reply can send one, and the same access that reads a ledger can change it.
-
-Real-Ming exists for the rules, not for the reasoning. It supplies a small set of tools with deliberately narrow capability, a work-item model that survives across systems, and controls that hold whether or not the model is having a good day.
-
-It is not a second agent runtime. Building one would mean re-implementing transport, conversation, tool dispatch, scheduling and memory that Hermes already provides — and then maintaining two of everything. That decision is recorded in [ADR-0020](docs/adr/0020-run-ming-on-the-native-hermes-runtime.md) and [ADR-0002](docs/adr/0002-compose-existing-agent-systems.md).
-
-## Status
-
-**Real-Ming v1.1, Architecture Revision 6.** Single operator, private repository, not a general-purpose product and not accepting external users.
-
-Revision 6 is the design baseline: Hermes owns the messaging gateway, conversation and execution, and Real-Ming is an additive extension reached as a tool. The deployed revision is tracked separately in [docs/BASELINE.md](docs/BASELINE.md) and is allowed to lag the design; a test fails the build if the two labels drift apart.
-
-Capabilities below are labelled by evidence:
-
-| Label | Meaning |
-| --- | --- |
-| **Live** | Implemented, tested, and exercised against real accounts |
-| **Tested** | Implemented with automated tests; not exercised end to end in production |
-| **Partial** | Implemented but not wired to a production caller |
-| **Planned** | Designed and documented only |
-
-## Capabilities
-
-| Capability | Status | Notes |
-| --- | --- | --- |
-| Messaging front door | **Live** | Native Hermes gateway owns the Telegram channel. Real-Ming holds no transport code path in Revision 6. |
-| Calendar read and event creation | **Live** | Google Calendar through a provider adapter. |
-| Mail search, read, and draft | **Live** | Multiple mailboxes with explicit routing. Drafting only — see [Security and authority](#security-and-authority). |
-| Work items and lifecycle | **Tested** | One work-item model across sources; see [ADR-0011](docs/adr/0011-use-one-executive-work-lifecycle.md) and [ADR-0015](docs/adr/0015-converge-tasks-on-one-work-item-model.md). |
-| Scheduled reports | **Live** | Composed by Real-Ming, scheduled and delivered by native Hermes cron. |
-| Notion task coordination | **Tested** | Master-tasks provisioning, migration rehearsal and cutover CLIs. |
-| Backup and restore | **Tested** | Whitelist-only state backup with an isolated restore path. |
-| Private operations dashboard | **Live** | Loopback-bound HTTP read model; see [Operations](#operations). |
-| Curated-knowledge guarantees | **Partial** | Versioned publication, contradiction quarantine and cross-domain projection are built and controlled-tested but not wired to a production caller. Revision 6 makes them optional; see [ADR-0018](docs/adr/0018-compile-knowledge-into-trust-domain-vaults.md). |
-| Selective wiki consolidation | **Tested (controlled only)** | Tasks 0–8 are implemented and controlled-tested with native Hermes as the sole reasoning/memory runtime; the inactive `02:00 Asia/Kuala_Lumpur` manifest is not a cron row. No production caller, live acceptance or local mirror is active. See [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md), the [implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md) and [controlled evidence](docs/evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md). |
-| Event-driven mandatory controls | **Planned** | No runtime hook or event wiring exists in this repository today. Current deterministic guarantees come from build-time checks and from tool capability being absent rather than forbidden. |
+A private personal-operations layer built on [Hermes Agent](https://hermes-agent.nousresearch.com/docs) that working 24/7 and hosted on Azure. Hermes is the agent runtime; Real-Ming adds the integrations, governance and coordination that one operator's personal, business, academic and financial work needs.
 
 ## Architecture
 
@@ -78,6 +39,42 @@ flowchart TB
 
 Real-Ming is reached as a tool. It is never in the path of an ordinary conversation, so plain chat needs no work item, no role ceremony and no structured turn plan.
 
+## What can Real-Ming contribute?
+
+Real-Ming exists as a control plane for agent with defined operating SOP (Agent Mode/Model) , a set of workflow and tools with personalized and customized capability (Agent Skills & MCP) , a Cross-source coordination (Third-party Connectors) , and provide/ingest data as vault(personal information & projects context) of myself in day-to-day task.
+
+Everythings tracked, maintained and presented in a kanban dashboard 
+
+Example of works: Personal operations are spread across systems that each own part of the truth: a calendar, several mailboxes, a task database, a note vault, code repositories. 
+
+It is not a second agent runtime. Building one would mean re-implementing transport, conversation, tool dispatch, scheduling and memory that Hermes already provides — and then maintaining two of everything. That decision is recorded in [ADR-0020](docs/adr/0020-run-ming-on-the-native-hermes-runtime.md) and [ADR-0002](docs/adr/0002-compose-existing-agent-systems.md).
+
+### How a request flows
+
+1. A message arrives on a channel that Hermes owns.
+2. Hermes handles it natively — conversation, memory, its own tools.
+3. If the request needs one of the operator's systems, Hermes calls a Real-Ming tool.
+4. Real-Ming resolves the named account, calls the provider adapter, and records what happened.
+5. A consequential result is returned as something to approve, not something already done.
+
+Step 5 is the load-bearing one. A mail tool returns a draft reference and states that the message is waiting; it does not report success for an action nobody authorized.
+
+## Capabilities
+
+| Capability | Status | Notes |
+| --- | --- | --- |
+| Messaging front door | **Live** | Native Hermes gateway owns the Telegram channel. Real-Ming holds no transport code path in Revision 6. |
+| Calendar read and event creation | **Live** | Google Calendar through a provider adapter. |
+| Mail search, read, and draft | **Live** | Multiple mailboxes with explicit routing. Drafting only — see [Security and authority](#security-and-authority). |
+| Work items and lifecycle | **Tested** | One work-item model across sources; see [ADR-0011](docs/adr/0011-use-one-executive-work-lifecycle.md) and [ADR-0015](docs/adr/0015-converge-tasks-on-one-work-item-model.md). |
+| Scheduled reports | **Live** | Composed by Real-Ming, scheduled and delivered by native Hermes cron. |
+| Notion task coordination | **Tested** | Master-tasks provisioning, migration rehearsal and cutover CLIs. |
+| Backup and restore | **Tested** | Whitelist-only state backup with an isolated restore path. |
+| Private operations dashboard | **Live** | Loopback-bound HTTP read model; see [Operations](#operations). |
+| Curated-knowledge guarantees | **Partial** | Versioned publication, contradiction quarantine and cross-domain projection are built and controlled-tested but not wired to a production caller. Revision 6 makes them optional; see [ADR-0018](docs/adr/0018-compile-knowledge-into-trust-domain-vaults.md). |
+| Selective wiki consolidation | **Tested (controlled only)** | Tasks 0–8 are implemented and controlled-tested with native Hermes as the sole reasoning/memory runtime; the inactive `02:00 Asia/Kuala_Lumpur` manifest is not a cron row. No production caller, live acceptance or local mirror is active. See [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md), the [implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md) and [controlled evidence](docs/evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md). |
+| Event-driven mandatory controls | **Planned** | No runtime hook or event wiring exists in this repository today. Current deterministic guarantees come from build-time checks and from tool capability being absent rather than forbidden. |
+
 ### Responsibility boundary
 
 | Hermes owns | Real-Ming owns |
@@ -100,15 +97,20 @@ dependency. Its contract and evidence are in [the design spec](docs/superpowers/
 [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md) and
 [the controlled acceptance record](docs/evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md).
 
-### How a request flows
+## Status
 
-1. A message arrives on a channel that Hermes owns.
-2. Hermes handles it natively — conversation, memory, its own tools.
-3. If the request needs one of the operator's systems, Hermes calls a Real-Ming tool.
-4. Real-Ming resolves the named account, calls the provider adapter, and records what happened.
-5. A consequential result is returned as something to approve, not something already done.
+**Real-Ming v1.1, Architecture Revision 6.** Single operator, private repository, not a general-purpose product and not accepting external users.
 
-Step 5 is the load-bearing one. A mail tool returns a draft reference and states that the message is waiting; it does not report success for an action nobody authorized.
+Revision 6 is the design baseline: Hermes owns the messaging gateway, conversation and execution, and Real-Ming is an additive extension reached as a tool. The deployed revision is tracked separately in [docs/BASELINE.md](docs/BASELINE.md) and is allowed to lag the design; a test fails the build if the two labels drift apart.
+
+Capabilities below are labelled by evidence:
+
+| Label | Meaning |
+| --- | --- |
+| **Live** | Implemented, tested, and exercised against real accounts |
+| **Tested** | Implemented with automated tests; not exercised end to end in production |
+| **Partial** | Implemented but not wired to a production caller |
+| **Planned** | Designed and documented only |
 
 ## Sources of Record and account routing
 
