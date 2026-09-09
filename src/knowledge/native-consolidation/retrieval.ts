@@ -135,6 +135,10 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
       input.registry.setRepairState("needs-repair");
       return { kind: "needs-repair", reason: "publication or tombstone fence changed during retrieval" };
     }
+    if (!pageBytesMatch(active.path, page)) {
+      input.registry.setRepairState("needs-repair");
+      return { kind: "needs-repair", reason: "published page changed during retrieval" };
+    }
     if (!freshness.fresh || !pageMatches(page, content, input.query)) continue;
     results.push({
       pageId: page.pageId,
@@ -164,6 +168,13 @@ function readPage(generationPath: string, pagePath: string): string {
     throw new Error("generated page path is unsafe");
   }
   return readFileSync(target, "utf8");
+}
+
+function pageBytesMatch(generationPath: string, page: GenerationPageMetadata): boolean {
+  const target = resolve(generationPath, page.path);
+  if (!contained(generationPath, target) || !existsSync(target) || lstatSync(target).isSymbolicLink()) return false;
+  const actual = `sha256:${createHash("sha256").update(readFileSync(target)).digest("hex")}`;
+  return actual === page.sha256;
 }
 
 function manifestHashEquals(manifest: GenerationManifest, expected: string): boolean {

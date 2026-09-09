@@ -205,6 +205,32 @@ describe("native knowledge supported retrieval", () => {
     }
   });
 
+  it("verifies page bytes after the read so a mid-read mutation is not returned", async () => {
+    const fixture = await setup([page("mid-read", "Original page content.")]);
+    try {
+      const originalFence = fixture.registry.consistencyFence.bind(fixture.registry);
+      let calls = 0;
+      fixture.registry.consistencyFence = () => {
+        calls += 1;
+        if (calls === 2) {
+          writeFileSync(join(fixture.generation.immutablePath, "pages/mid-read.md"), "Mutated page content.", "utf8");
+        }
+        return originalFence();
+      };
+      const result = wikiRetrieve({
+        registry: fixture.registry,
+        generatedRoot: fixture.generatedRoot,
+        query: "Original page content",
+        now: "2026-09-09T02:05:00.000Z",
+      });
+      expect(result).toMatchObject({ kind: "needs-repair" });
+      expect(fixture.registry.runHealth().repairState).toBe("needs-repair");
+    } finally {
+      fixture.registry.close();
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
   it("rejects unsupported role and staging paths without blocking native chat", async () => {
     const fixture = await setup([page("a", "safe")]);
     try {
