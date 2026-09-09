@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import type { TombstoneHead, TombstoneHeadStore, StagedPage } from "../../src/knowledge/native-consolidation/contracts.js";
 import { createNativeKnowledgeRegistry } from "../../src/knowledge/native-consolidation/registry.js";
 import { activateGeneration, readManifest } from "../../src/knowledge/native-consolidation/publication.js";
-import { createRealMingMcpComposition } from "../../src/config/real-ming-mcp-cli.js";
+import { createRealMingMcpComposition, restrictRealMingTools } from "../../src/config/real-ming-mcp-cli.js";
 import { sha256ContentHash } from "../../src/knowledge/native-consolidation/evidence.js";
 
 function headStore(): TombstoneHeadStore {
@@ -27,6 +27,29 @@ function headStore(): TombstoneHeadStore {
 }
 
 describe("production Real-Ming MCP composition", () => {
+  it("enforces the reviewed job allowlist at the callable server boundary", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-mcp-allowlist-"));
+    const registry = createNativeKnowledgeRegistry({ statePath: join(directory, "knowledge.sqlite") });
+    const composition = createRealMingMcpComposition({
+      statePath: join(directory, "operations.sqlite"),
+      knowledgeStatePath: join(directory, "knowledge.sqlite"),
+      knowledgeGeneratedRoot: join(directory, "generated"),
+      knowledgeStagingRoot: join(directory, "staging"),
+      knowledgeRegistry: registry,
+    });
+    try {
+      const restricted = restrictRealMingTools(composition.tools, ["real_ming_knowledge_list_candidates"]);
+      expect(restricted.list().map((tool) => tool.name)).toEqual(["real_ming_knowledge_list_candidates"]);
+      expect(restricted.call("real_ming_list_work_items", {})).toMatchObject({ kind: "failed" });
+      await expect(restricted.callAsync?.("real_ming_forget_wiki_knowledge", {}) ?? Promise.resolve(undefined))
+        .resolves.toMatchObject({ kind: "failed" });
+    } finally {
+      composition.close();
+      registry.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("exposes production knowledge staging, retrieval and supported forgetting", async () => {
     const directory = mkdtempSync(join(tmpdir(), "real-ming-mcp-composition-"));
     const generatedRoot = join(directory, "vault", ".real-ming", "generated");

@@ -22,7 +22,7 @@ import type {
   StagedPage,
   TombstoneHeadStore,
 } from "../knowledge/native-consolidation/contracts.js";
-import type { CalendarAgendaClient, MailboxClient, NativeKnowledgeToolContext, RealMingTools } from "../integration/real-ming-tools.js";
+import type { CalendarAgendaClient, MailboxClient, NativeKnowledgeToolContext, RealMingToolResult, RealMingTools } from "../integration/real-ming-tools.js";
 
 /**
  * The Real-Ming extension as an MCP server, which is how native Hermes reaches
@@ -35,6 +35,30 @@ import type { CalendarAgendaClient, MailboxClient, NativeKnowledgeToolContext, R
 export interface RealMingMcpComposition {
   readonly tools: RealMingTools;
   close(): void;
+}
+
+/**
+ * Enforce a reviewed MCP surface at the composition boundary. Environment
+ * strings are only configuration; the server itself filters definitions and
+ * rejects calls so a client cannot self-attest a broader or narrower set.
+ */
+export function restrictRealMingTools(
+  tools: RealMingTools,
+  allowedNames: readonly string[],
+): RealMingTools {
+  const allowed = new Set(allowedNames);
+  const denied = (name: string): RealMingToolResult => ({
+    kind: "failed",
+    reason: `MCP operation ${name} is not permitted for this job`,
+  });
+  return {
+    list: () => tools.list().filter((tool) => allowed.has(tool.name)),
+    call: (name, args) => allowed.has(name) ? tools.call(name, args) : denied(name),
+    ...(tools.callAsync === undefined ? {} : {
+      callAsync: async (name: string, args: Record<string, unknown>) =>
+        allowed.has(name) ? await tools.callAsync?.(name, args) ?? denied(name) : denied(name),
+    }),
+  };
 }
 
 export interface RealMingMcpCompositionOptions {
@@ -296,6 +320,12 @@ function main(): void {
             }),
           }),
   });
+  const jobTools = nonEmptyEnvironment("REAL_MING_KNOWLEDGE_JOB") === "1"
+    ? restrictRealMingTools(
+        composition.tools,
+        (nonEmptyEnvironment("HERMES_MCP_TOOLS") ?? "").split(",").map((name) => name.trim()).filter(Boolean),
+      )
+    : composition.tools;
   process.once("SIGINT", () => {
     composition.close();
     process.exit(0);
@@ -311,7 +341,7 @@ function main(): void {
     process.exit(0);
   });
   serveMcpOverStdio({
-    tools: composition.tools,
+    tools: jobTools,
     input: process.stdin,
     output: process.stdout,
   });
