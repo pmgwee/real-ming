@@ -74,6 +74,9 @@ def main() -> int:
         return fail("portable pinned-Hermes interpreter is unavailable")
     probe = Path(__file__).with_name("verify-native-knowledge-isolation.py")
     env = os.environ.copy()
+    # The probe owns a disposable import/config home. Never let an interactive
+    # Hermes home (and its credentials or ACLs) influence the isolation proof.
+    env.pop("HERMES_HOME", None)
     env["HERMES_REQUIRED_COMMIT"] = PINNED_COMMIT
     completed = subprocess.run(
         [interpreter, str(probe), "--json"],

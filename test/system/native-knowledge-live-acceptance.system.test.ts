@@ -16,6 +16,7 @@ import type {
 } from "../../src/hermes/contracts.js";
 import {
   captureCandidate,
+  sha256ContentHash,
   verifyEvidence,
 } from "../../src/knowledge/native-consolidation/evidence.js";
 import {
@@ -58,6 +59,7 @@ function candidate(
   id: string,
   kind: NativeKnowledgeCandidate["kind"] = "project-artifact",
 ): NativeKnowledgeCandidate {
+  const excerpt = `Controlled source-backed claim ${id}.`;
   const claimClass =
     kind === "decision" || kind === "correction"
       ? "decision"
@@ -78,8 +80,8 @@ function candidate(
     sourceIdentity: `fixture:${id}`,
     sourceReference: `fixture:${id}`,
     sourceVersion: "v1",
-    excerpt: `Controlled source-backed claim ${id}.`,
-    contentHash: `sha256:${id}`,
+    excerpt,
+    contentHash: sha256ContentHash(excerpt),
     capturedAt: now,
     asOf: now,
     trustDomain: "Ming Creatives",

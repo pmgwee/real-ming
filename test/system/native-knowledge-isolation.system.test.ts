@@ -163,7 +163,7 @@ describe("native Hermes knowledge-job isolation hard gate", () => {
     expect(result.reason).toEqual(expect.any(String));
   }, 30_000);
 
-  it("keeps the proposed wrapper inactive unless controlled flags and a named auth profile are explicit", () => {
+  it("keeps the wrapper fail-closed until a synthetic controlled job is configured", () => {
     expect(existsSync(wrapper)).toBe(true);
     const python = resolvePython();
     if (python === undefined) {
@@ -193,11 +193,10 @@ describe("native Hermes knowledge-job isolation hard gate", () => {
       },
     );
     expect(child.error).toBeUndefined();
-    expect(child.status).toBe(0);
+    expect(child.status).not.toBe(0);
     expect(JSON.parse(String(child.stdout))).toMatchObject({
-      eligible: true,
-      mode: "controlled",
-      commit: "561b053f794a1781868bb032029d589c67708119",
+      eligible: false,
+      reason: expect.stringContaining("controlled synthetic fixture"),
     });
   }, 30_000);
 });
