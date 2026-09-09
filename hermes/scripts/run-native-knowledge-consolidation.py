@@ -24,6 +24,18 @@ PERMITTED = (
     "real_ming_stage_knowledge_generation",
     "real_ming_wiki_retrieve",
 )
+KNOWN_CREDENTIAL_NAMES = (
+    "TELEGRAM_BOT_TOKEN",
+    "NOTION_TOKEN",
+    "GOOGLE_REFRESH_TOKEN",
+    "GITHUB_TOKEN",
+    "VERCEL_TOKEN",
+    "DUITSINI_TOKEN",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "LLM_API_KEY",
+    "ZAI_API_KEY",
+)
 
 
 def fail(message: str, code: int = 78) -> int:
@@ -77,6 +89,11 @@ def main() -> int:
     # The probe owns a disposable import/config home. Never let an interactive
     # Hermes home (and its credentials or ACLs) influence the isolation proof.
     env.pop("HERMES_HOME", None)
+    # A named profile is only an admission signal for this controlled local
+    # wrapper. Do not pass interactive/provider credentials into either the
+    # pinned-runtime probe or the consolidation process.
+    for name in KNOWN_CREDENTIAL_NAMES:
+        env.pop(name, None)
     env["HERMES_REQUIRED_COMMIT"] = PINNED_COMMIT
     completed = subprocess.run(
         [interpreter, str(probe), "--json"],

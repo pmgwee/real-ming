@@ -209,6 +209,7 @@ async function runOne(
     now,
     generatedRoot: fixture.generatedRoot,
     stagingRoot: fixture.stagingRoot,
+    clock: () => now,
     loadCandidate: async (id) => values.get(id),
     readSource: async (value) => sourceFor(value),
     assessSupport: async () => "supported",
