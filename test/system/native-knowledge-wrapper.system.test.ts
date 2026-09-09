@@ -16,6 +16,19 @@ const permitted = [
 ].join(",");
 
 function runWrapper(env: NodeJS.ProcessEnv): ReturnType<typeof spawnSync> {
+  const childEnvironment = { ...process.env };
+  for (const name of [
+    "TELEGRAM_BOT_TOKEN",
+    "NOTION_TOKEN",
+    "GOOGLE_REFRESH_TOKEN",
+    "GITHUB_TOKEN",
+    "VERCEL_TOKEN",
+    "DUITSINI_TOKEN",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "LLM_API_KEY",
+    "ZAI_API_KEY",
+  ]) delete childEnvironment[name];
   return spawnSync(python, [wrapper, "--controlled"], {
     cwd: repositoryRoot,
     encoding: "utf8",
@@ -25,7 +38,7 @@ function runWrapper(env: NodeJS.ProcessEnv): ReturnType<typeof spawnSync> {
       HERMES_KNOWLEDGE_AUTH_PROFILE: "controlled-local-profile",
       REAL_MING_NETWORK_DISABLED: "1",
       REAL_MING_NO_CREDENTIALS: "1",
-      ...process.env,
+      ...childEnvironment,
       ...env,
     },
   });

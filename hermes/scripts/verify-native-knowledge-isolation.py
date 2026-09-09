@@ -50,6 +50,8 @@ KNOWN_CREDENTIAL_NAMES = {
     "DUITSINI_TOKEN",
     "OPENAI_API_KEY",
     "ANTHROPIC_API_KEY",
+    "LLM_API_KEY",
+    "ZAI_API_KEY",
 }
 MCP_PREFIX = "mcp__real_ming__"
 PINNED_SOURCE_PATHS = (
@@ -168,8 +170,10 @@ def _extract_pinned_source(root: Path, destination: Path) -> None:
 def _actual_agent_composition(scenario: str, source_root: Path) -> dict[str, Any]:
     """Register a disconnected local MCP server and initialize real AIAgent."""
     isolated = Path(tempfile.mkdtemp(prefix="real-ming-pinned-hermes-"))
-    configured_home = os.environ.get("HERMES_HOME")
-    hermes_home = Path(configured_home) if configured_home else isolated / ".hermes"
+    # Always use a disposable home. An interactive HERMES_HOME may contain
+    # credentials, mutable configuration or ACLs that are outside this proof's
+    # authority; the probe must never read or overwrite it.
+    hermes_home = isolated / ".hermes"
     import_root = hermes_home / "native-knowledge-pinned-source"
     hermes_home.mkdir(parents=True, exist_ok=True)
     marker = import_root / ".real-ming-pinned-commit"
@@ -246,8 +250,10 @@ def _actual_agent_composition(scenario: str, source_root: Path) -> dict[str, Any
         agent = run_agent.AIAgent(
             provider="custom",
             api_mode="chat_completions",
-            base_url="",
-            api_key="dummy-key",
+            # A loopback discard endpoint makes provider construction explicit
+            # without consulting a configured provider or making a request.
+            base_url="http://127.0.0.1:9/v1",
+            api_key="offline-local-deterministic-stub",
             model="offline-local",
             enabled_toolsets=enabled_toolsets,
             disabled_toolsets=["memory", "terminal", "code_execution", "browser"],
@@ -298,8 +304,7 @@ def _actual_agent_composition(scenario: str, source_root: Path) -> dict[str, Any
             os.environ.pop("HERMES_HOME", None)
         else:
             os.environ["HERMES_HOME"] = old_home
-        if configured_home is None:
-            shutil.rmtree(isolated, ignore_errors=True)
+        shutil.rmtree(isolated, ignore_errors=True)
 
 
 def _current_user() -> str | None:

@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -48,7 +48,7 @@ type IsolationProbeResult = {
   readonly reason?: string;
 };
 
-function runProbe(scenario = "valid", interpreterOverride?: string): { readonly status: number; readonly result: IsolationProbeResult } {
+function runProbe(scenario = "valid", interpreterOverride?: string, overrides: NodeJS.ProcessEnv = {}): { readonly status: number; readonly result: IsolationProbeResult } {
   expect(existsSync(probe)).toBe(true);
   const python = resolvePython(interpreterOverride);
   if (python === undefined) {
@@ -71,6 +71,19 @@ function runProbe(scenario = "valid", interpreterOverride?: string): { readonly 
       },
     };
   }
+  const childEnvironment = { ...process.env };
+  for (const name of [
+    "TELEGRAM_BOT_TOKEN",
+    "NOTION_TOKEN",
+    "GOOGLE_REFRESH_TOKEN",
+    "GITHUB_TOKEN",
+    "VERCEL_TOKEN",
+    "DUITSINI_TOKEN",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "LLM_API_KEY",
+    "ZAI_API_KEY",
+  ]) delete childEnvironment[name];
   const child = spawnSync(
     python,
     [probe, "--scenario", scenario, "--json"],
@@ -78,10 +91,11 @@ function runProbe(scenario = "valid", interpreterOverride?: string): { readonly 
       cwd: repositoryRoot,
       encoding: "utf8",
       env: {
-        ...process.env,
+        ...childEnvironment,
         HERMES_HOME: join(repositoryRoot, ".tmp", "task0-hermes-home"),
         REAL_MING_NETWORK_DISABLED: "1",
         REAL_MING_NO_CREDENTIALS: "1",
+        ...overrides,
       },
     },
   );
@@ -140,6 +154,20 @@ describe("native Hermes knowledge-job isolation hard gate", () => {
     expect(result.authMode).toBe("offline-local-deterministic-stub");
     expect(result.fallbackDetected).toBe(false);
     expect(result.eligible).toBe(true);
+  }, 30_000);
+
+  it("never writes the configured interactive Hermes home during the probe", () => {
+    const home = join(repositoryRoot, ".tmp", "task0-interactive-home-sentinel");
+    mkdirSync(home, { recursive: true });
+    const config = join(home, "config.yaml");
+    writeFileSync(config, "sentinel: untouched\n", "utf8");
+    try {
+      const { status } = runProbe("valid", undefined, { HERMES_HOME: home });
+      expect(status).toBe(0);
+      expect(readFileSync(config, "utf8")).toBe("sentinel: untouched\n");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   }, 30_000);
 
   it("fails closed when an explicit interpreter override is missing", () => {
