@@ -90,6 +90,15 @@ export function createAzureBlobTombstoneHeadStore(options: {
       const current = await readHead();
       if (current.kind !== "ok") return current;
       if (current.head.version !== input.expectedVersion) return { kind: "conflict", head: current.head };
+      const existing = current.head.entries.find((entry) => entry.tombstoneId === input.tombstone.tombstoneId);
+      if (existing !== undefined) {
+        if (existing.subject !== input.tombstone.subject || existing.localEpoch !== input.tombstone.localEpoch) {
+          return { kind: "conflict", head: current.head };
+        }
+        // Retries after an acknowledged PUT are idempotent and must not
+        // append a duplicate entry or advance the independent head again.
+        return { kind: "appended", head: current.head };
+      }
       const head: TombstoneHead = {
         epoch: current.head.epoch + 1,
         entries: [...current.head.entries, {
@@ -106,7 +115,9 @@ export function createAzureBlobTombstoneHeadStore(options: {
         "x-ms-date": now(),
         "x-ms-version": storageApiVersion,
         "content-type": "application/json",
-        "If-Match": input.expectedVersion === "v0" ? "*" : input.expectedVersion,
+        ...(input.expectedVersion === "v0"
+          ? { "If-None-Match": "*" }
+          : { "If-Match": input.expectedVersion }),
       };
       let response: Response;
       try {

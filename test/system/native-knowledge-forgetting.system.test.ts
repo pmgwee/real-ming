@@ -288,7 +288,77 @@ describe("native knowledge forgetting and restore fencing", () => {
     });
     expect(result.kind).toBe("appended");
     const put = requests.find((request) => request.method === "PUT");
-    expect(new Headers(put?.headers).get("If-Match")).toBe("*");
+    expect(new Headers(put?.headers).get("If-None-Match")).toBe("*");
+    expect(new Headers(put?.headers).get("If-Match")).toBeNull();
     expect(JSON.stringify(result)).not.toContain("opaque-test-token");
+  });
+
+  it("uses concrete ETags for updates and exposes competing creation as a conflict", async () => {
+    const requests: { url: string; init: RequestInit }[] = [];
+    let stored: TombstoneHead | undefined;
+    let createAttempts = 0;
+    const store = createAzureBlobTombstoneHeadStore({
+      accountName: "controlledaccount",
+      containerName: "protected-backups",
+      fetch: async (url, init = {}) => {
+        requests.push({ url: String(url), init });
+        if (String(url).startsWith("http://169.254.169.254/")) {
+          return new Response(JSON.stringify({ access_token: "opaque-test-token" }), { status: 200 });
+        }
+        if (init.method === "PUT") {
+          const headers = new Headers(init.headers);
+          if (headers.get("If-None-Match") === "*") {
+            createAttempts += 1;
+            if (createAttempts === 1) {
+              stored = {
+                epoch: 1,
+                entries: [{ tombstoneId: "competing", subject: "other", localEpoch: 1 }],
+                complete: true,
+                version: "v1",
+              };
+              return new Response(null, { status: 412 });
+            }
+            stored = {
+              epoch: 1,
+              entries: [{ tombstoneId: "competing", subject: "other", localEpoch: 1 }],
+              complete: true,
+              version: "v1",
+            };
+            return new Response(null, { status: 201, headers: { etag: "v1" } });
+          }
+          expect(headers.get("If-Match")).toBe("v1");
+          stored = {
+            epoch: 2,
+            entries: [
+              ...(stored?.entries ?? []),
+              { tombstoneId: "updated", subject: "updated", localEpoch: 2 },
+            ],
+            complete: true,
+            version: "v2",
+          };
+          return new Response(null, { status: 201, headers: { etag: "v2" } });
+        }
+        if (stored === undefined) return new Response(null, { status: 404 });
+        return new Response(JSON.stringify(stored), { status: 200, headers: { etag: stored.version } });
+      },
+    });
+    const competing = await store.appendIfVersion({
+      expectedVersion: "v0",
+      tombstone: {
+        tombstoneId: "attempted", subject: "attempted", aliases: [], reason: "controlled", localEpoch: 1,
+        status: "local-suppressed", createdAt: "2026-09-09T02:00:00.000Z",
+      },
+    });
+    expect(competing).toMatchObject({ kind: "conflict", head: { epoch: 1 } });
+    const updated = await store.appendIfVersion({
+      expectedVersion: "v1",
+      tombstone: {
+        tombstoneId: "updated", subject: "updated", aliases: [], reason: "controlled", localEpoch: 2,
+        status: "local-suppressed", createdAt: "2026-09-09T02:01:00.000Z",
+      },
+    });
+    expect(updated).toMatchObject({ kind: "appended", head: { epoch: 2 } });
+    expect(requests.filter(({ init }) => init.method === "PUT")).toHaveLength(2);
+    expect(JSON.stringify(updated)).not.toContain("opaque-test-token");
   });
 });
