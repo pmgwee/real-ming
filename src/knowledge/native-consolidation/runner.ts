@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -63,6 +63,7 @@ function previousPages(
     path: page.path,
     content: readFileSync(join(generationPath, page.path), "utf8"),
     sourceCandidateIds: page.sourceCandidateIds,
+    ...(page.dependencies === undefined ? {} : { dependencies: page.dependencies }),
     claimClass: page.claimClass,
     sourceReference: page.sourceReference,
     capturedAt: page.capturedAt,
@@ -162,7 +163,8 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
     }
     let previous: GenerationManifest | undefined;
     let previousPath: string | undefined;
-    const active = input.registry.activeGeneration();
+    const activeSnapshot = input.registry.consistencySnapshot();
+    const active = activeSnapshot.active;
     if (active !== undefined) {
       previous = readManifest(join(active.path, "manifest.json"));
       previousPath = active.path;
@@ -183,7 +185,7 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       : previousPages(previous, previousPath, input.registry);
     const complete = mergePages(carried, pages);
     if (complete.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) throw new Error("complete generation page limit exceeded");
-    const beforePublication = input.registry.consistencyFence();
+    const beforePublication = input.registry.consistencySnapshot().fence;
     if (!sameWorkFence(runStartFence, beforePublication)) throw new Error("publication fence changed during consolidation");
     const publicationNow = currentTimestamp(input);
     if (!Number.isFinite(Date.parse(publicationNow))) throw new Error("publication timestamp is invalid");
@@ -198,6 +200,12 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       now: publicationNow,
     });
     if (!sameWorkFence(beforePublication, input.registry.consistencyFence())) {
+      try {
+        rmSync(generated.immutablePath, { recursive: true, force: true });
+      } catch {
+        // Reconciliation will quarantine an orphan if the filesystem refuses
+        // cleanup; never turn a failed fence into a successful publication.
+      }
       throw new Error("publication fence changed after filesystem preparation");
     }
     input.registry.recordStagedGeneration(generated);

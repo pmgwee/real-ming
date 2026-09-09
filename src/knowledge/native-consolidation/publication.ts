@@ -220,6 +220,7 @@ function pageMetadata(page: StagedPage, path: string) {
     sha256: fileHash(path),
     bytes,
     sourceCandidateIds: [...page.sourceCandidateIds],
+    ...(page.dependencies === undefined ? {} : { dependencies: [...page.dependencies] }),
     claimClass: page.claimClass,
     sourceReference: page.sourceReference,
     capturedAt: page.capturedAt,
@@ -268,7 +269,8 @@ function verifyManifest(manifestPath: string): GenerationManifest {
     if (fileHash(path) !== page.sha256) throw new Error(`generation page hash mismatch: ${page.path}`);
     total += size;
   }
-  if (total !== manifest.totalBytes || total > NATIVE_KNOWLEDGE_LIMITS.maxActiveSnapshotBytes) {
+  const manifestBytes = statSync(manifestPath).size;
+  if (total !== manifest.totalBytes || total + manifestBytes > NATIVE_KNOWLEDGE_LIMITS.maxActiveSnapshotBytes) {
     throw new Error("generation byte limit or total mismatch");
   }
   return manifest;
@@ -354,6 +356,9 @@ export async function stageGeneration(input: StageGenerationRequest): Promise<St
     const manifestPath = join(temporaryPath, "manifest.json");
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
     flushFile(manifestPath);
+    if (totalBytes + statSync(manifestPath).size > NATIVE_KNOWLEDGE_LIMITS.maxActiveSnapshotBytes) {
+      throw new Error("active snapshot manifest-inclusive byte limit exceeded");
+    }
     flushDirectory(temporaryPath);
     const projectedRootBytes = generatedRootBytes(input.generatedRoot) + directoryBytes(temporaryPath);
     if (projectedRootBytes > maxGeneratedRootBytes) {

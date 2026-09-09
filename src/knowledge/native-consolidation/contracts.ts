@@ -119,6 +119,8 @@ export interface StagedPage {
   readonly path: string;
   readonly content: string;
   readonly sourceCandidateIds: readonly string[];
+  /** Secondary and derived identities that must share tombstone suppression. */
+  readonly dependencies?: readonly string[];
   readonly claimClass: ClaimClass;
   readonly sourceReference: string;
   readonly capturedAt: string;
@@ -133,6 +135,7 @@ export interface GenerationPageMetadata {
   readonly sha256: string;
   readonly bytes: number;
   readonly sourceCandidateIds: readonly string[];
+  readonly dependencies?: readonly string[];
   readonly claimClass: ClaimClass;
   readonly sourceReference: string;
   readonly capturedAt: string;
@@ -377,6 +380,11 @@ export interface NativeKnowledgeConsistencyFence {
   readonly tombstoneEpoch: number;
   readonly tombstoneHeadEpoch: number;
   readonly repairState: RepairState;
+}
+
+export interface NativeKnowledgeConsistencySnapshot {
+  readonly fence: NativeKnowledgeConsistencyFence;
+  readonly active: ActiveGeneration | undefined;
 }
 
 export interface ConsolidationRunRequest {

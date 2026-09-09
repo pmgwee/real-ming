@@ -3,17 +3,17 @@ import {
   existsSync,
   lstatSync,
   readFileSync,
+  statSync,
 } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 
 import type {
   GenerationManifest,
   NativeKnowledgeConsistencyFence,
-  NativeKnowledgeCandidateMetadata,
   WikiRetrieveRequest,
   WikiRetrieveResult,
 } from "./contracts.js";
-import { isFresh, sha256ContentHash } from "./evidence.js";
+import { isFresh } from "./evidence.js";
 import { isSuppressedByTombstone } from "./tombstones.js";
 import { readManifest } from "./publication.js";
 import type { NativeKnowledgeRegistry } from "./registry.js";
@@ -45,31 +45,6 @@ function pageMatches(page: GenerationPageMetadata, content: string, query: strin
     .includes(needle);
 }
 
-function metadataCandidate(page: GenerationPageMetadata): NativeKnowledgeCandidateMetadata {
-  return {
-    candidateId: page.sourceCandidateIds[0] ?? page.pageId,
-    fingerprint: page.sha256,
-    kind: page.claimClass === "decision" ? "decision" : page.claimClass === "project" ? "project-artifact" : "research-artifact",
-    claimClass: page.claimClass,
-    sourceIdentity: page.sourceReference,
-    sourceReference: page.sourceReference,
-    sourceVersion: page.asOf,
-    contentHash: page.sha256,
-    claimHash: page.sha256,
-    excerptHash: page.sha256,
-    capturedAt: page.capturedAt,
-    asOf: page.asOf,
-    trustDomain: "Personal",
-    sensitivity: "normal",
-    retentionClass: page.claimClass === "decision" ? "decision" : page.claimClass === "project" ? "project-90d" : "research-30d",
-    dependencies: [page.pageId, page.path, page.sourceReference, ...page.sourceCandidateIds],
-    status: "published",
-    disposition: page.disposition,
-    createdAt: page.capturedAt,
-    updatedAt: page.capturedAt,
-  };
-}
-
 /**
  * The only supported reader for the generated wiki. It never searches the
  * filesystem broadly: one registry pointer selects one verified snapshot.
@@ -89,9 +64,10 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
   if (health.repairState === "needs-repair") {
     return { kind: "needs-repair", reason: "knowledge registry needs repair" };
   }
-  const active = input.registry.activeGeneration();
+  const snapshot = input.registry.consistencySnapshot();
+  const initialFence = snapshot.fence;
+  const active = snapshot.active;
   if (active === undefined) return { kind: "wiki-unavailable", reason: "no active knowledge generation" };
-  const initialFence = input.registry.consistencyFence();
   const generationsRoot = join(resolve(input.generatedRoot), "generations");
   if (!contained(generationsRoot, active.path) || !existsSync(active.path) || lstatSync(active.path).isSymbolicLink()) {
     input.registry.setRepairState("needs-repair");
@@ -122,13 +98,17 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
   const results: Extract<WikiRetrieveResult, { readonly kind: "ok" }>['results'][number][] = [];
   for (const page of manifest.pages) {
     if (results.length >= limit) break;
-    const candidate = metadataCandidate(page);
-    if (isSuppressedByTombstone(candidate, tombstones)) continue;
+    if (isSuppressedByTombstone(page, tombstones)) continue;
     if (page.disposition !== "supported") continue;
     const freshness = isFresh({ claimClass: page.claimClass, asOf: page.asOf, now: input.now });
     let content: string;
+    let contentBytes: Buffer;
+    let contentModifiedAt = 0;
     try {
-      content = readPage(active.path, page.path);
+      const read = readPage(active.path, page.path);
+      content = read.content;
+      contentBytes = read.bytes;
+      contentModifiedAt = read.modifiedAt;
     } catch {
       input.registry.setRepairState("needs-repair");
       return { kind: "needs-repair", reason: "published page could not be read safely" };
@@ -137,7 +117,17 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
       input.registry.setRepairState("needs-repair");
       return { kind: "needs-repair", reason: "publication or tombstone fence changed during retrieval" };
     }
-    if (!pageBytesMatch(active.path, page)) {
+    // Take a second fence immediately before validating the bytes. This closes
+    // the window in which a writer can commit between the first post-read
+    // check and hashing the exact buffer that will be returned.
+    if (!sameFence(initialFence, input.registry.consistencyFence())) {
+      input.registry.setRepairState("needs-repair");
+      return { kind: "needs-repair", reason: "publication or tombstone fence changed before byte validation" };
+    }
+    const actualHash = `sha256:${createHash("sha256").update(contentBytes).digest("hex")}`;
+    const currentStat = statSafe(active.path, page.path);
+    if (currentStat === undefined || currentStat.mtimeMs !== contentModifiedAt ||
+      contentBytes.byteLength !== page.bytes || actualHash !== page.sha256) {
       input.registry.setRepairState("needs-repair");
       return { kind: "needs-repair", reason: "published page changed during retrieval" };
     }
@@ -164,19 +154,27 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
   return results.length === 0 ? { kind: "not-found", reason: "no published supported page matched" } : { kind: "ok", results };
 }
 
-function readPage(generationPath: string, pagePath: string): string {
+function readPage(generationPath: string, pagePath: string): { readonly content: string; readonly bytes: Buffer; readonly modifiedAt: number } {
   const target = resolve(generationPath, pagePath);
   if (!contained(generationPath, target) || !existsSync(target) || lstatSync(target).isSymbolicLink()) {
     throw new Error("generated page path is unsafe");
   }
-  return readFileSync(target, "utf8");
+  const before = statSync(target);
+  const bytes = readFileSync(target);
+  const after = statSync(target);
+  if (before.mtimeMs !== after.mtimeMs || before.size !== after.size) throw new Error("published page changed during read");
+  return { content: bytes.toString("utf8"), bytes, modifiedAt: after.mtimeMs };
 }
 
-function pageBytesMatch(generationPath: string, page: GenerationPageMetadata): boolean {
-  const target = resolve(generationPath, page.path);
-  if (!contained(generationPath, target) || !existsSync(target) || lstatSync(target).isSymbolicLink()) return false;
-  const actual = `sha256:${createHash("sha256").update(readFileSync(target)).digest("hex")}`;
-  return actual === page.sha256;
+function statSafe(generationPath: string, pagePath: string): { readonly mtimeMs: number; readonly size: number } | undefined {
+  const target = resolve(generationPath, pagePath);
+  if (!contained(generationPath, target) || !existsSync(target) || lstatSync(target).isSymbolicLink()) return undefined;
+  try {
+    const stat = statSync(target);
+    return { mtimeMs: stat.mtimeMs, size: stat.size };
+  } catch {
+    return undefined;
+  }
 }
 
 function manifestHashEquals(manifest: GenerationManifest, expected: string): boolean {

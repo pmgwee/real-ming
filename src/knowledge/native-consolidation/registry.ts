@@ -16,6 +16,7 @@ import {
   type LeaseClaimResult,
   type NativeKnowledgeCandidate,
   type NativeKnowledgeConsistencyFence,
+  type NativeKnowledgeConsistencySnapshot,
   type NativeKnowledgeCandidateMetadata,
   type NativeKnowledgeRunHealth,
   type RunLease,
@@ -67,6 +68,8 @@ export interface NativeKnowledgeRegistry {
   setRepairState(state: NativeKnowledgeRunHealth["repairState"]): void;
   runHealth(isolationEligible?: boolean): NativeKnowledgeRunHealth;
   consistencyFence(): NativeKnowledgeConsistencyFence;
+  /** Read the active pointer and all publication fences from one SQLite state snapshot. */
+  consistencySnapshot(): NativeKnowledgeConsistencySnapshot;
   close(): void;
 }
 
@@ -682,8 +685,12 @@ export function createNativeKnowledgeRegistry(options: {
         if (current.active_generation_id !== null) {
           database.prepare("UPDATE native_knowledge_generations SET status = 'superseded' WHERE generation_id = ? AND status = 'active'").run(current.active_generation_id);
         }
+        const includedCandidateIds = new Set(
+          input.generation.manifest.pages.flatMap((page) => page.sourceCandidateIds),
+        );
         const staged = database.prepare("SELECT candidate_id, status FROM native_knowledge_candidates WHERE status = 'staged'").all() as unknown as { candidate_id: string; status: CandidateStatus }[];
         for (const candidate of staged) {
+          if (!includedCandidateIds.has(candidate.candidate_id)) continue;
           database.prepare("UPDATE native_knowledge_candidates SET status = 'published', updated_at = ? WHERE candidate_id = ? AND status = 'staged'").run(timestamp, candidate.candidate_id);
           appendStatus(candidate.candidate_id, candidate.status, "published", "generation-activated", timestamp);
         }
@@ -908,6 +915,34 @@ export function createNativeKnowledgeRegistry(options: {
         tombstoneEpoch: current.tombstone_epoch,
         tombstoneHeadEpoch: current.tombstone_head_epoch,
         repairState: current.repair_state,
+      };
+    },
+
+    consistencySnapshot() {
+      const current = state(database);
+      const fence: NativeKnowledgeConsistencyFence = {
+        activeGenerationId: current.active_generation_id,
+        publicationEpoch: current.publication_epoch,
+        sourceEpoch: current.source_epoch,
+        tombstoneEpoch: current.tombstone_epoch,
+        tombstoneHeadEpoch: current.tombstone_head_epoch,
+        repairState: current.repair_state,
+      };
+      if (current.active_generation_id === null) return { fence, active: undefined };
+      const row = database.prepare("SELECT * FROM native_knowledge_generations WHERE generation_id = ?").get(current.active_generation_id) as unknown as GenerationRow | undefined;
+      if (row === undefined || row.publication_epoch === null) return { fence, active: undefined };
+      return {
+        fence,
+        active: {
+          generationId: row.generation_id,
+          runId: row.run_id,
+          path: row.path,
+          manifestHash: row.manifest_hash,
+          sourceEpoch: row.source_epoch,
+          tombstoneEpoch: row.tombstone_epoch,
+          publicationEpoch: row.publication_epoch,
+          createdAt: row.created_at,
+        },
       };
     },
 
