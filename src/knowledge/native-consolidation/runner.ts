@@ -147,6 +147,7 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
     if (modelCalls >= NATIVE_KNOWLEDGE_LIMITS.maxModelCalls) throw new Error("model-call limit exceeded");
     modelCalls += 1;
     const pages = await input.synthesize({ candidates, previous });
+    if (elapsedMs(startedAt) > maxWallClockMs) throw new Error("wall-clock budget exceeded after synthesis");
     if (pages.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) throw new Error("generation page limit exceeded");
     const carried = previous === undefined || previousPath === undefined
       ? []
