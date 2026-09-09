@@ -70,6 +70,11 @@ describe("native knowledge forgetting and restore fencing", () => {
       });
       expect(first.status).toBe("restore-safe");
       expect(first.verifiedHeadEpoch).toBe(1);
+      expect(registry.tombstoneOutbox()).toMatchObject([{
+        tombstoneId: first.tombstoneId,
+        status: "synced",
+        attempts: 0,
+      }]);
       const replay = await forgetWikiKnowledge({
         registry,
         headStore: remote.store,
@@ -95,6 +100,11 @@ describe("native knowledge forgetting and restore fencing", () => {
       });
       expect(pending.status).toBe("head-sync-pending");
       expect(pending.verifiedHeadEpoch).toBeNull();
+      expect(registry.tombstoneOutbox()).toMatchObject([{
+        tombstoneId: pending.tombstoneId,
+        status: "failed",
+        attempts: 1,
+      }]);
       const restore = await reconcileTombstonesAfterRestore({
         headStore: fakeHeadStore().store,
         snapshotHighestLocalEpoch: pending.localEpoch,
@@ -102,6 +112,46 @@ describe("native knowledge forgetting and restore fencing", () => {
       });
       expect(restore.kind).toBe("needs-repair");
     });
+  });
+
+  it("atomically creates the local suppression and durable outbox, and survives reopen", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-forgetting-atomic-"));
+    const statePath = join(directory, "state.sqlite");
+    const firstRegistry = createNativeKnowledgeRegistry({
+      statePath,
+      now: () => "2026-09-09T02:00:00.000Z",
+    });
+    const first = firstRegistry.appendLocalTombstone({
+      tombstoneId: "atomic-tombstone",
+      subject: "atomic-subject",
+      aliases: [],
+      reason: "controlled crash-boundary fixture",
+      requestedAt: "2026-09-09T02:00:00.000Z",
+    });
+    expect(first.status).toBe("local-suppressed");
+    expect(firstRegistry.tombstoneOutbox()).toHaveLength(1);
+    firstRegistry.close();
+    const reopened = createNativeKnowledgeRegistry({ statePath, now: () => "2026-09-09T02:01:00.000Z" });
+    try {
+      expect(reopened.tombstones()).toHaveLength(1);
+      expect(reopened.tombstoneOutbox()).toMatchObject([{
+        outboxId: "native-knowledge:outbox:atomic-tombstone",
+        tombstoneId: "atomic-tombstone",
+        status: "pending",
+      }]);
+      expect(() => reopened.updateTombstoneStatus("atomic-tombstone", "cleanup-complete")).toThrow(/transition/);
+      expect(reopened.appendLocalTombstone({
+        tombstoneId: "atomic-tombstone",
+        subject: "atomic-subject",
+        aliases: [],
+        reason: "retry",
+        requestedAt: "2026-09-09T02:02:00.000Z",
+      }).tombstoneId).toBe("atomic-tombstone");
+      expect(reopened.tombstoneOutbox()).toHaveLength(1);
+    } finally {
+      reopened.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 
   it("suppresses a derived page when any source dependency is forgotten", async () => {

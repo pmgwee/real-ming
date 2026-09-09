@@ -272,6 +272,19 @@ export interface TombstoneRecord {
   readonly createdAt: string;
 }
 
+export type TombstoneOutboxStatus = "pending" | "failed" | "synced";
+
+/** Opaque durable propagation metadata; the tombstone payload remains in the registry. */
+export interface TombstoneOutboxRecord {
+  readonly outboxId: string;
+  readonly tombstoneId: string;
+  readonly localEpoch: number;
+  readonly status: TombstoneOutboxStatus;
+  readonly attempts: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 export type ForgetResult = TombstoneRecord & {
   readonly verifiedHeadEpoch: number | null;
 };

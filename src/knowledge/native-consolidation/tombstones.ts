@@ -62,11 +62,13 @@ export async function forgetWikiKnowledge(input: ForgetRequest & {
   let remote = await input.headStore.readHead();
   if (remote.kind === "unavailable") {
     input.registry.updateTombstoneStatus(local.tombstoneId, "head-sync-pending");
+    input.registry.recordTombstoneOutboxFailure(local.tombstoneId, input.requestedAt);
     input.registry.setRepairState("head_sync_pending");
     return pendingResult(local, remote.reason);
   }
   if (!remote.head.complete) {
     input.registry.updateTombstoneStatus(local.tombstoneId, "head-sync-pending");
+    input.registry.recordTombstoneOutboxFailure(local.tombstoneId, input.requestedAt);
     input.registry.setRepairState("needs-repair");
     return pendingResult(local, "independent tombstone head is incomplete");
   }
@@ -76,6 +78,7 @@ export async function forgetWikiKnowledge(input: ForgetRequest & {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     if (headContains(remote.head, local)) {
       input.registry.setTombstoneHeadEpoch(remote.head.epoch);
+      input.registry.markTombstoneOutboxSynced(local.tombstoneId, input.requestedAt);
       const restored = input.registry.updateTombstoneStatus(local.tombstoneId, "restore-safe") ?? local;
       input.registry.setRepairState("healthy");
       return safeResult(restored, remote.head.epoch);
@@ -86,6 +89,7 @@ export async function forgetWikiKnowledge(input: ForgetRequest & {
     });
     if (appended.kind === "unavailable") {
       input.registry.updateTombstoneStatus(local.tombstoneId, "head-sync-pending");
+      input.registry.recordTombstoneOutboxFailure(local.tombstoneId, input.requestedAt);
       input.registry.setRepairState("head_sync_pending");
       return pendingResult(local, appended.reason);
     }
@@ -100,11 +104,13 @@ export async function forgetWikiKnowledge(input: ForgetRequest & {
       return pendingResult(local, "tombstone head append read-back failed");
     }
     input.registry.setTombstoneHeadEpoch(readBack.head.epoch);
+    input.registry.markTombstoneOutboxSynced(local.tombstoneId, input.requestedAt);
     const restored = input.registry.updateTombstoneStatus(local.tombstoneId, "restore-safe") ?? local;
     input.registry.setRepairState("healthy");
     return safeResult(restored, readBack.head.epoch);
   }
   input.registry.updateTombstoneStatus(local.tombstoneId, "head-sync-pending");
+  input.registry.recordTombstoneOutboxFailure(local.tombstoneId, input.requestedAt);
   input.registry.setRepairState("head_sync_pending");
   return pendingResult(local, "tombstone head version conflict");
 }
@@ -139,4 +145,3 @@ export async function reconcileTombstonesAfterRestore(input: RestoreTombstoneReq
 export function tombstoneFingerprint(tombstone: Pick<TombstoneRecord, "tombstoneId" | "subject" | "localEpoch">): string {
   return `sha256:${createHash("sha256").update(JSON.stringify(tombstone)).digest("hex")}`;
 }
-
