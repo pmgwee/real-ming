@@ -4,13 +4,17 @@ import type { NativeScheduledReportRequest } from "../operations/native-schedule
 import type { NativeCronReportClient } from "./native-cron-client.js";
 import type {
   CaptureResult,
+  ForgetRequest,
+  ForgetResult,
   NativeKnowledgeCandidate,
   NativeKnowledgeRunHealth,
   SourceSnapshot,
   WikiRetrieveRequest,
+  TombstoneHeadStore,
 } from "../knowledge/native-consolidation/contracts.js";
 import { captureCandidate } from "../knowledge/native-consolidation/evidence.js";
 import { wikiRetrieve } from "../knowledge/native-consolidation/retrieval.js";
+import { forgetWikiKnowledge } from "../knowledge/native-consolidation/tombstones.js";
 import type { NativeKnowledgeRegistry } from "../knowledge/native-consolidation/registry.js";
 
 /**
@@ -57,6 +61,7 @@ export interface NativeKnowledgeToolContext {
   readonly stageGeneration?: (
     args: Record<string, unknown>,
   ) => Promise<unknown>;
+  readonly headStore?: TombstoneHeadStore;
   readonly isolationEligible?: () => boolean;
 }
 
@@ -401,6 +406,21 @@ export function createRealMingTools(options: {
             description:
               "Read opaque native knowledge consolidation health: run, backlog, active generation, tombstone epoch, freshness/quarantine counts and repair state. It never returns source payloads or native-memory content.",
             inputSchema: { type: "object", properties: {} },
+          } satisfies RealMingToolDefinition,
+          {
+            name: "real_ming_forget_wiki_knowledge",
+            description:
+              "Suppress supported-path generated wiki knowledge and persist a durable tombstone propagation record. Explicit forgetting is separate from ordinary Hermes memory housekeeping and never edits native memory or conversation history.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                subject: { type: "string" },
+                aliases: { type: "array", items: { type: "string" } },
+                reason: { type: "string" },
+                requestedAt: { type: "string" },
+              },
+              required: ["subject", "reason", "requestedAt"],
+            },
           } satisfies RealMingToolDefinition,
         ]) ,
     ...(scheduledReports === undefined
@@ -917,7 +937,9 @@ export function createRealMingTools(options: {
       ...(typeof rawMax === "number" ? { maxResults: rawMax } : {}),
     };
     const result = wikiRetrieve({ ...request, registry: knowledge.registry, generatedRoot: knowledge.generatedRoot });
-    return { kind: "ok", value: result };
+    return result.kind === "ok"
+      ? { kind: "ok", value: result }
+      : { kind: "failed", reason: result.reason };
   };
 
   const readKnowledgeHealth = (): RealMingToolResult => {
@@ -928,6 +950,33 @@ export function createRealMingTools(options: {
       knowledge.isolationEligible?.() ?? false,
     );
     return { kind: "ok", value: health };
+  };
+
+  const forgetKnowledge = async (args: Record<string, unknown>): Promise<RealMingToolResult> => {
+    if (knowledge === undefined) return { kind: "failed", reason: "Native knowledge forgetting is not enabled." };
+    if (knowledge.headStore === undefined) return { kind: "failed", reason: "Independent tombstone head is not configured; forgetting fails closed." };
+    const subject = requiredString(args, "subject");
+    const reason = requiredString(args, "reason");
+    const requestedAt = requiredString(args, "requestedAt");
+    const aliases = args["aliases"];
+    if (subject === undefined || reason === undefined || requestedAt === undefined) {
+      return { kind: "failed", reason: "subject, reason and requestedAt are required." };
+    }
+    if (aliases !== undefined && (!Array.isArray(aliases) || !aliases.every((value) => typeof value === "string"))) {
+      return { kind: "failed", reason: "aliases must be an array of strings." };
+    }
+    const request: ForgetRequest = {
+      subject,
+      reason,
+      requestedAt,
+      ...(aliases === undefined ? {} : { aliases }),
+    };
+    const result: ForgetResult = await forgetWikiKnowledge({
+      ...request,
+      registry: knowledge.registry,
+      headStore: knowledge.headStore,
+    });
+    return { kind: "ok", value: result };
   };
 
   const tools: RealMingTools = {
@@ -1013,6 +1062,7 @@ export function createRealMingTools(options: {
         case "real_ming_capture_knowledge_candidate":
         case "real_ming_read_knowledge_source":
         case "real_ming_stage_knowledge_generation":
+        case "real_ming_forget_wiki_knowledge":
           return {
             kind: "failed",
             reason: "This knowledge tool requires the asynchronous MCP call path.",
@@ -1088,6 +1138,7 @@ export function createRealMingTools(options: {
       if (name === "real_ming_capture_knowledge_candidate") return captureKnowledge(args);
       if (name === "real_ming_read_knowledge_source") return readKnowledgeSource(args);
       if (name === "real_ming_stage_knowledge_generation") return stageKnowledge(args);
+      if (name === "real_ming_forget_wiki_knowledge") return forgetKnowledge(args);
       if (name !== "real_ming_run_scheduled_report") {
         // Everything else is synchronous; route it back through the same
         // implementation rather than a second copy that can drift.

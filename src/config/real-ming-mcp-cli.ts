@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   executionLinkStatePath,
@@ -13,6 +14,14 @@ import {
 } from "../integration/provider-read-client.js";
 import { createRealMingTools } from "../integration/real-ming-tools.js";
 import { OperationsState } from "../operations/operations-state.js";
+import { createNativeKnowledgeRegistry, type NativeKnowledgeRegistry } from "../knowledge/native-consolidation/registry.js";
+import { stageGeneration as stageNativeGeneration } from "../knowledge/native-consolidation/publication.js";
+import { createAzureBlobTombstoneHeadStore } from "../providers/azure-blob-tombstone-head-store.js";
+import type {
+  StagedPage,
+  TombstoneHeadStore,
+} from "../knowledge/native-consolidation/contracts.js";
+import type { CalendarAgendaClient, MailboxClient, NativeKnowledgeToolContext, RealMingTools } from "../integration/real-ming-tools.js";
 
 /**
  * The Real-Ming extension as an MCP server, which is how native Hermes reaches
@@ -22,36 +31,161 @@ import { OperationsState } from "../operations/operations-state.js";
  * is an append-only execution link. Everything else Hermes needs, it already
  * does better itself.
  */
-function main(): void {
-  const statePath =
-    process.env["REAL_MING_STATE_PATH"]?.trim() ||
-    join(process.cwd(), "var", "state.sqlite");
+export interface RealMingMcpComposition {
+  readonly tools: RealMingTools;
+  close(): void;
+}
+
+export interface RealMingMcpCompositionOptions {
+  readonly statePath?: string;
+  readonly knowledgeStatePath?: string;
+  readonly knowledgeGeneratedRoot?: string;
+  readonly knowledgeStagingRoot?: string;
+  readonly knowledgeRegistry?: NativeKnowledgeRegistry;
+  readonly knowledgeHeadStore?: TombstoneHeadStore;
+  readonly knowledgeReadSource?: NativeKnowledgeToolContext["readSource"];
+  readonly knowledgeIsolationEligible?: () => boolean;
+  readonly scheduledReports?: import("../integration/native-cron-client.js").NativeCronReportClient;
+  readonly calendar?: CalendarAgendaClient;
+  readonly mail?: MailboxClient;
+  readonly defaultCalendarId?: string;
+  readonly now?: () => string;
+}
+
+function nonEmptyEnvironment(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
+function requiredRecord(value: unknown, name: string): Record<string, unknown> {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`${name} must be an object`);
+  return value as Record<string, unknown>;
+}
+
+function requiredFiniteInteger(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw new Error(`${name} must be a non-negative integer`);
+  return value;
+}
+
+function requiredText(value: unknown, name: string): string {
+  if (typeof value !== "string" || value.trim().length === 0) throw new Error(`${name} is required`);
+  return value.trim();
+}
+
+function parseRun(value: unknown): import("../knowledge/native-consolidation/contracts.js").RunLease {
+  const record = requiredRecord(value, "run");
+  return {
+    runId: requiredText(record["runId"], "run.runId"),
+    leaseToken: requiredText(record["leaseToken"], "run.leaseToken"),
+    leaseEpoch: requiredFiniteInteger(record["leaseEpoch"], "run.leaseEpoch"),
+    expiresAt: requiredText(record["expiresAt"], "run.expiresAt"),
+    operatingDate: requiredText(record["operatingDate"], "run.operatingDate"),
+  };
+}
+
+function parsePage(value: unknown): StagedPage {
+  const record = requiredRecord(value, "page");
+  const sourceCandidateIds = record["sourceCandidateIds"];
+  if (!Array.isArray(sourceCandidateIds) || !sourceCandidateIds.every((item) => typeof item === "string" && item.trim().length > 0)) {
+    throw new Error("page.sourceCandidateIds must be a non-empty string array");
+  }
+  const disposition = requiredText(record["disposition"], "page.disposition") as StagedPage["disposition"];
+  if (!["supported", "unsupported", "conflicting", "unavailable", "stale", "quarantined"].includes(disposition)) throw new Error("page.disposition is invalid");
+  const uncertainty = requiredText(record["uncertainty"], "page.uncertainty") as StagedPage["uncertainty"];
+  if (uncertainty !== "none" && uncertainty !== "uncertain") throw new Error("page.uncertainty is invalid");
+  return {
+    pageId: requiredText(record["pageId"], "page.pageId"),
+    path: requiredText(record["path"], "page.path"),
+    content: typeof record["content"] === "string" ? record["content"] : (() => { throw new Error("page.content is required"); })(),
+    sourceCandidateIds,
+    claimClass: requiredText(record["claimClass"], "page.claimClass") as StagedPage["claimClass"],
+    sourceReference: requiredText(record["sourceReference"], "page.sourceReference"),
+    capturedAt: requiredText(record["capturedAt"], "page.capturedAt"),
+    asOf: requiredText(record["asOf"], "page.asOf"),
+    disposition,
+    uncertainty,
+  };
+}
+
+function knowledgeContext(options: RealMingMcpCompositionOptions, defaultNow: () => string): {
+  readonly context?: NativeKnowledgeToolContext;
+  readonly close?: () => void;
+} {
+  const statePath = options.knowledgeStatePath ?? nonEmptyEnvironment("REAL_MING_NATIVE_KNOWLEDGE_STATE_PATH");
+  const generatedRoot = options.knowledgeGeneratedRoot ?? nonEmptyEnvironment("REAL_MING_NATIVE_KNOWLEDGE_GENERATED_ROOT");
+  const stagingRoot = options.knowledgeStagingRoot ?? nonEmptyEnvironment("REAL_MING_NATIVE_KNOWLEDGE_STAGING_ROOT");
+  if (statePath === undefined || generatedRoot === undefined || stagingRoot === undefined) return {};
+  const registry = options.knowledgeRegistry ?? createNativeKnowledgeRegistry({ statePath, now: defaultNow });
+  const headStore = options.knowledgeHeadStore ?? (() => {
+    const accountName = nonEmptyEnvironment("REAL_MING_NATIVE_KNOWLEDGE_AZURE_ACCOUNT");
+    const containerName = nonEmptyEnvironment("REAL_MING_NATIVE_KNOWLEDGE_AZURE_CONTAINER");
+    return accountName === undefined || containerName === undefined
+      ? undefined
+      : createAzureBlobTombstoneHeadStore({ accountName, containerName });
+  })();
+  const context: NativeKnowledgeToolContext = {
+    registry,
+    generatedRoot: resolve(generatedRoot),
+    isolationEligible: options.knowledgeIsolationEligible ?? (() => nonEmptyEnvironment("REAL_MING_NATIVE_KNOWLEDGE_ISOLATION_ELIGIBLE") === "true"),
+    ...(options.knowledgeReadSource === undefined ? {} : { readSource: options.knowledgeReadSource }),
+    ...(headStore === undefined ? {} : { headStore }),
+    stageGeneration: async (args) => {
+      const run = parseRun(args["run"]);
+      const pagesRaw = args["pages"];
+      if (!Array.isArray(pagesRaw) || pagesRaw.length === 0) throw new Error("pages must be a non-empty array");
+      const pages = pagesRaw.map(parsePage);
+      const sourceEpoch = requiredFiniteInteger(args["sourceEpoch"], "sourceEpoch");
+      const tombstoneEpoch = requiredFiniteInteger(args["tombstoneEpoch"], "tombstoneEpoch");
+      const now = requiredText(args["now"], "now");
+      const staged = await stageNativeGeneration({ run, generatedRoot: resolve(generatedRoot), stagingRoot: resolve(stagingRoot), pages, sourceEpoch, tombstoneEpoch, now });
+      registry.recordStagedGeneration(staged);
+      return { generationId: staged.generationId, manifestHash: staged.manifestHash, immutablePath: staged.immutablePath, activated: false };
+    },
+  };
+  return {
+    context,
+    ...(options.knowledgeRegistry === undefined ? { close: () => registry.close() } : {}),
+  };
+}
+
+/** Production MCP composition used by the stdio server and controlled tests. */
+export function createRealMingMcpComposition(options: RealMingMcpCompositionOptions = {}): RealMingMcpComposition {
+  const statePath = options.statePath ?? nonEmptyEnvironment("REAL_MING_STATE_PATH") ?? join(process.cwd(), "var", "state.sqlite");
   mkdirSync(dirname(statePath), { recursive: true });
 
   const state = new OperationsState(statePath);
   const links = new SqliteExecutionLinkStore(executionLinkStatePath(statePath));
-
+  const now = options.now ?? (() => new Date().toISOString());
+  const knowledge = knowledgeContext(options, now);
   const close = (): void => {
     try {
       links.close();
     } finally {
-      state.close();
+      try {
+        state.close();
+      } finally {
+        knowledge.close?.();
+      }
     }
   };
-  process.once("SIGINT", () => {
-    close();
-    process.exit(0);
-  });
-  process.once("SIGTERM", () => {
-    close();
-    process.exit(0);
-  });
-  // Hermes closes the pipe when it shuts the server down. Exiting on that keeps
-  // no orphan holding the SQLite file open.
-  process.stdin.once("end", () => {
-    close();
-    process.exit(0);
-  });
+  return {
+    tools: createRealMingTools({
+      workItems: () => state.workItems(),
+      workItem: (id) => state.workItem(id),
+      links,
+      now,
+      ...(options.scheduledReports === undefined ? {} : { scheduledReports: options.scheduledReports }),
+      ...(options.calendar === undefined ? {} : { calendar: options.calendar }),
+      ...(options.mail === undefined ? {} : { mail: options.mail }),
+      ...(options.defaultCalendarId === undefined ? {} : { defaultCalendarId: options.defaultCalendarId }),
+      ...(knowledge.context === undefined ? {} : { knowledge: knowledge.context }),
+    }),
+    close,
+  };
+}
+
+function main(): void {
+  const statePath = nonEmptyEnvironment("REAL_MING_STATE_PATH") || join(process.cwd(), "var", "state.sqlite");
 
   const nativeCronEnabled =
     (process.env["REAL_MING_NATIVE_CRON_ENABLED"] ?? "").trim().toLowerCase() ===
@@ -83,14 +217,10 @@ function main(): void {
       ? undefined
       : { endpoint: bridgeBase, apiKey: bridgeKey };
 
-  serveMcpOverStdio({
-    tools: createRealMingTools({
-      workItems: () => state.workItems(),
-      workItem: (id) => state.workItem(id),
-      links,
-      now: () => new Date().toISOString(),
-      ...(scheduledReports === undefined ? {} : { scheduledReports }),
-      ...(bridged === undefined || calendarId === undefined
+  const composition = createRealMingMcpComposition({
+    statePath,
+    ...(scheduledReports === undefined ? {} : { scheduledReports }),
+    ...(bridged === undefined || calendarId === undefined
         ? {}
         : {
             defaultCalendarId: calendarId,
@@ -100,7 +230,7 @@ function main(): void {
               apiKey: bridged.apiKey,
             }),
           }),
-      ...(bridged === undefined || mailboxes.length === 0
+    ...(bridged === undefined || mailboxes.length === 0
         ? {}
         : {
             mail: createBridgedMailboxClient({
@@ -111,10 +241,26 @@ function main(): void {
               mailboxes,
             }),
           }),
-    }),
+  });
+  process.once("SIGINT", () => {
+    composition.close();
+    process.exit(0);
+  });
+  process.once("SIGTERM", () => {
+    composition.close();
+    process.exit(0);
+  });
+  // Hermes closes the pipe when it shuts the server down. Exiting on that keeps
+  // no orphan holding the SQLite file open.
+  process.stdin.once("end", () => {
+    composition.close();
+    process.exit(0);
+  });
+  serveMcpOverStdio({
+    tools: composition.tools,
     input: process.stdin,
     output: process.stdout,
   });
 }
 
-main();
+if (process.argv[1] !== undefined && fileURLToPath(import.meta.url) === resolve(process.argv[1])) main();
