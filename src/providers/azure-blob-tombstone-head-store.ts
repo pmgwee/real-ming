@@ -8,7 +8,9 @@ const accountNamePattern = /^[a-z0-9]{3,24}$/u;
 const containerNamePattern = /^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u;
 
 function validVersion(value: string): boolean {
-  return value === "v0" || /^v[1-9][0-9]*$/u.test(value) || /^W?\/"[^"]+"$/u.test(value);
+  // Local fixtures use vN; Azure returns an opaque quoted ETag (optionally
+  // weak, W/"..."). Preserve the token exactly for the next If-Match.
+  return value === "v0" || /^v[1-9][0-9]*$/u.test(value) || /^"[^"]+"$/u.test(value) || /^W\/"[^"]+"$/u.test(value);
 }
 
 function parseHead(value: unknown, response: Response): TombstoneHead | undefined {
@@ -129,7 +131,14 @@ export function createAzureBlobTombstoneHeadStore(options: {
         return refreshed.kind === "ok" ? { kind: "conflict", head: refreshed.head } : { kind: "unavailable", reason: "tombstone head conflict could not be read" };
       }
       if (!response.ok) return { kind: "unavailable", reason: "tombstone head append unavailable" };
-      return { kind: "appended", head };
+      // Azure's response ETag is the opaque concurrency token for the next
+      // update. Never replace it with the locally predicted epoch label: a
+      // successful PUT without a valid ETag cannot be safely followed.
+      const responseEtag = response.headers.get("etag");
+      if (responseEtag === null || !validVersion(responseEtag)) {
+        return { kind: "unavailable", reason: "tombstone head append returned invalid version" };
+      }
+      return { kind: "appended", head: { ...head, version: responseEtag } };
     },
   };
 }

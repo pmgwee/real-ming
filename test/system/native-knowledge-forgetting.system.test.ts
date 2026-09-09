@@ -390,4 +390,39 @@ describe("native knowledge forgetting and restore fencing", () => {
     expect(requests.filter(({ init }) => init.method === "PUT")).toHaveLength(2);
     expect(JSON.stringify(updated)).not.toContain("opaque-test-token");
   });
+
+  it("carries the server ETag forward after a successful conditional write", async () => {
+    let stored: TombstoneHead | undefined;
+    const serverEtag = '"opaque-etag-1"';
+    const store = createAzureBlobTombstoneHeadStore({
+      accountName: "controlledaccount",
+      containerName: "protected-backups",
+      fetch: async (url, init = {}) => {
+        if (String(url).startsWith("http://169.254.169.254/")) {
+          return new Response(JSON.stringify({ access_token: "opaque-test-token" }), { status: 200 });
+        }
+        if (init.method === "PUT") {
+          stored = {
+            epoch: 1,
+            entries: [{ tombstoneId: "etag", subject: "etag", localEpoch: 1 }],
+            complete: true,
+            // The service returns an opaque ETag that is not a synthetic vN.
+            version: "v1",
+          };
+          return new Response(null, { status: 201, headers: { etag: serverEtag } });
+        }
+        return stored === undefined
+          ? new Response(null, { status: 404 })
+          : new Response(JSON.stringify(stored), { status: 200, headers: { etag: serverEtag } });
+      },
+    });
+    const result = await store.appendIfVersion({
+      expectedVersion: "v0",
+      tombstone: {
+        tombstoneId: "etag", subject: "etag", aliases: [], reason: "controlled", localEpoch: 1,
+        status: "local-suppressed", createdAt: "2026-09-09T02:00:00.000Z",
+      },
+    });
+    expect(result).toMatchObject({ kind: "appended", head: { version: serverEtag } });
+  });
 });
