@@ -581,6 +581,50 @@ describe("native knowledge forgetting and restore fencing", () => {
     expect(JSON.stringify(updated)).not.toContain("opaque-test-token");
   });
 
+  it("reports a stale concrete ETag conflict without overwriting the newer head", async () => {
+    const puts: RequestInit[] = [];
+    let readCount = 0;
+    let stored: TombstoneHead = {
+      epoch: 1,
+      entries: [{ tombstoneId: "current", subject: "current", localEpoch: 1 }],
+      complete: true,
+      version: "v1",
+    };
+    const store = createAzureBlobTombstoneHeadStore({
+      accountName: "controlledaccount",
+      containerName: "protected-backups",
+      fetch: async (url, init = {}) => {
+        if (String(url).startsWith("http://169.254.169.254/")) {
+          return new Response(JSON.stringify({ access_token: "opaque-test-token" }), { status: 200 });
+        }
+        if (init.method === "PUT") {
+          puts.push(init);
+          const headers = new Headers(init.headers);
+          expect(headers.get("If-Match")).toBe("v1");
+          stored = {
+            epoch: 2,
+            entries: [...stored.entries, { tombstoneId: "newer", subject: "newer", localEpoch: 2 }],
+            complete: true,
+            version: "v2",
+          };
+          return new Response(null, { status: 412 });
+        }
+        readCount += 1;
+        return new Response(JSON.stringify(stored), { status: 200, headers: { etag: readCount === 1 ? "v1" : "v2" } });
+      },
+    });
+    const result = await store.appendIfVersion({
+      expectedVersion: "v1",
+      tombstone: {
+        tombstoneId: "attempted-stale", subject: "attempted-stale", aliases: [], reason: "controlled", localEpoch: 2,
+        status: "local-suppressed", createdAt: "2026-09-09T02:00:00.000Z",
+      },
+    });
+    expect(result).toMatchObject({ kind: "conflict", head: { version: "v2", epoch: 2 } });
+    expect(puts).toHaveLength(1);
+    expect(stored.entries.map((entry) => entry.tombstoneId)).toEqual(["current", "newer"]);
+  });
+
   it("carries the server ETag forward after a successful conditional write", async () => {
     let stored: TombstoneHead | undefined;
     const serverEtag = '"opaque-etag-1"';
