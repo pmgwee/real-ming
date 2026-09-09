@@ -177,6 +177,10 @@ export interface ActivationRequest {
   readonly lease: RunLease;
   readonly activePath: string;
   readonly now: string;
+  /** Snapshot fences captured immediately before filesystem preparation. */
+  readonly expectedActiveGenerationId?: string | null;
+  readonly expectedSourceEpoch?: number;
+  readonly expectedTombstoneEpoch?: number;
 }
 
 export interface ReconcileRequest {
@@ -373,6 +377,8 @@ export interface ConsolidationRunRequest {
     readonly previous: GenerationManifest | undefined;
   }) => Promise<readonly StagedPage[]>;
   readonly maxWallClockMs?: number;
+  /** Optional deterministic clock for controlled tests; production uses UTC now. */
+  readonly clock?: () => string;
 }
 
 export interface ConsolidationRunResult {

@@ -5,6 +5,7 @@ import {
   NATIVE_KNOWLEDGE_LIMITS,
   type ConsolidationRunRequest,
   type GenerationManifest,
+  type NativeKnowledgeConsistencyFence,
   type NativeKnowledgeCandidate,
   type SourceSnapshot,
   type StagedPage,
@@ -36,6 +37,15 @@ function isRetryableFailure(reason: string): boolean {
   // replayed under the same lease because doing so could duplicate a side
   // effect or hide a fencing defect.
   return reason.startsWith("source-unavailable:");
+}
+
+function sameWorkFence(left: NativeKnowledgeConsistencyFence, right: NativeKnowledgeConsistencyFence): boolean {
+  return left.activeGenerationId === right.activeGenerationId &&
+    left.publicationEpoch === right.publicationEpoch &&
+    left.sourceEpoch === right.sourceEpoch &&
+    left.tombstoneEpoch === right.tombstoneEpoch &&
+    left.tombstoneHeadEpoch === right.tombstoneHeadEpoch &&
+    left.repairState === right.repairState;
 }
 
 function previousPages(
@@ -80,6 +90,7 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
   let toolCalls = 0;
   let sourceBytes = 0;
   let modelCalls = 0;
+  const runStartFence = input.registry.consistencyFence();
 
   const recordFailure = (reason: string): import("./contracts.js").ConsolidationRunResult => {
     try {
@@ -128,7 +139,8 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       previousPath = active.path;
     }
     if (candidates.length === 0) {
-      input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, input.now);
+      if (!sameWorkFence(runStartFence, input.registry.consistencyFence())) throw new Error("publication fence changed during consolidation");
+      input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, input.clock?.() ?? input.now);
       return { kind: "succeeded", runId: claimed.runId, retryCount };
     }
     if (elapsedMs(startedAt) > maxWallClockMs) throw new Error("wall-clock budget exceeded before synthesis");
@@ -141,36 +153,44 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       : previousPages(previous, previousPath, input.registry);
     const complete = mergePages(carried, pages);
     if (complete.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) throw new Error("complete generation page limit exceeded");
+    const beforePublication = input.registry.consistencyFence();
+    if (!sameWorkFence(runStartFence, beforePublication)) throw new Error("publication fence changed during consolidation");
+    const publicationNow = input.clock?.() ?? input.now;
+    if (!Number.isFinite(Date.parse(publicationNow))) throw new Error("publication timestamp is invalid");
     const generated = await stageGeneration({
       run: claimed,
       generatedRoot: input.generatedRoot,
       stagingRoot: input.stagingRoot,
       pages: complete,
       ...(previous === undefined ? {} : { previous }),
-      sourceEpoch: 0,
-      tombstoneEpoch: Math.max(
-        input.registry.runHealth().tombstoneHeadEpoch,
-        ...input.registry.tombstones().map((tombstone) => tombstone.localEpoch),
-      ),
-      now: input.now,
+      sourceEpoch: beforePublication.sourceEpoch,
+      tombstoneEpoch: beforePublication.tombstoneEpoch,
+      now: publicationNow,
     });
+    if (!sameWorkFence(beforePublication, input.registry.consistencyFence())) {
+      throw new Error("publication fence changed after filesystem preparation");
+    }
     input.registry.recordStagedGeneration(generated);
+    const activationNow = input.clock?.() ?? publicationNow;
     const activation = activateGeneration({
       registry: input.registry,
       generation: generated,
       lease: claimed,
       activePath: input.generatedRoot,
-      now: input.now,
+      now: activationNow,
+      expectedActiveGenerationId: beforePublication.activeGenerationId,
+      expectedSourceEpoch: beforePublication.sourceEpoch,
+      expectedTombstoneEpoch: beforePublication.tombstoneEpoch,
     });
     if (activation.kind !== "activated") throw new Error(`activation:${activation.reason}`);
     const readBack = wikiRetrieve({
       registry: input.registry,
       generatedRoot: input.generatedRoot,
       query: complete[0]?.pageId ?? "generated knowledge",
-      now: input.now,
+      now: activationNow,
     });
     if (readBack.kind !== "ok") throw new Error(`retrieval-readback:${readBack.reason}`);
-    input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, input.now);
+    input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, input.clock?.() ?? activationNow);
     return { kind: "succeeded", runId: claimed.runId, generationId: generated.generationId, retryCount };
   } catch (error) {
     const reason = error instanceof Error ? error.message : "native knowledge run failed";

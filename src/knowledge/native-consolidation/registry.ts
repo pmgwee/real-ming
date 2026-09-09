@@ -622,6 +622,21 @@ export function createNativeKnowledgeRegistry(options: {
           return { kind: "invalid", reason: "staged-generation-mismatch" };
         }
         const current = state(database);
+        if (
+          input.expectedActiveGenerationId !== undefined &&
+          current.active_generation_id !== input.expectedActiveGenerationId
+        ) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "active-generation-changed" };
+        }
+        if (input.expectedSourceEpoch !== undefined && current.source_epoch !== input.expectedSourceEpoch) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "source-epoch-advanced" };
+        }
+        if (input.expectedTombstoneEpoch !== undefined && current.tombstone_epoch !== input.expectedTombstoneEpoch) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "tombstone-epoch-advanced" };
+        }
         // A forget can arrive after filesystem preparation but before this
         // SQLite pointer transaction. The generation must not become active
         // when its tombstone epoch is older than the current local ledger.

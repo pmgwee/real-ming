@@ -10,20 +10,22 @@ import type {
 } from "../../src/knowledge/native-consolidation/contracts.js";
 import { createNativeKnowledgeRegistry } from "../../src/knowledge/native-consolidation/registry.js";
 import { runConsolidation } from "../../src/knowledge/native-consolidation/runner.js";
+import { sha256ContentHash } from "../../src/knowledge/native-consolidation/evidence.js";
 import { wikiRetrieve } from "../../src/knowledge/native-consolidation/retrieval.js";
 import { nativeKnowledgeCronManifest } from "../../src/config/native-knowledge-cron-manifest.js";
 
 function candidate(id: string, asOf = "2026-09-09T01:00:00.000Z"): NativeKnowledgeCandidate {
+  const claim = `Project claim ${id} is source-backed.`;
   return {
     candidateId: id,
     kind: "project-artifact",
     claimClass: "project",
-    claim: `Project claim ${id} is source-backed.`,
+    claim,
     sourceIdentity: `project:${id}`,
     sourceReference: `fixture:${id}`,
     sourceVersion: "v1",
     excerpt: `Project claim ${id} is source-backed.`,
-    contentHash: `sha256:${id}`,
+    contentHash: sha256ContentHash(claim),
     capturedAt: "2026-09-09T01:00:00.000Z",
     asOf,
     trustDomain: "Ming Creatives",
@@ -106,10 +108,11 @@ describe("native knowledge bounded runner", () => {
             uncertainty: "none",
           }));
         },
+        clock: () => "2026-09-09T02:00:02.000Z",
       });
       expect(result.kind).toBe("succeeded");
       expect(calls).toBe(1);
-      expect(fixture.registry.runHealth().lastSuccess).toBe("2026-09-09T02:00:00.000Z");
+      expect(fixture.registry.runHealth().lastSuccess).toBe("2026-09-09T02:00:02.000Z");
       const read = wikiRetrieve({
         registry: fixture.registry,
         generatedRoot: fixture.generatedRoot,
@@ -208,6 +211,47 @@ describe("native knowledge bounded runner", () => {
       expect(result.kind).toBe("failed");
       expect(result.reason).toContain("candidate");
       expect(fixture.registry.runHealth().lastFailureCode).toContain("candidate");
+    } finally {
+      fixture.registry.close();
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("fences publication when source state changes during synthesis", async () => {
+    const fixture = await workspace();
+    const item = candidate("source-mutation");
+    const competing = candidate("source-mutation-competing");
+    fixture.registry.admitCandidate(item);
+    try {
+      const result = await runConsolidation({
+        registry: fixture.registry,
+        isolationEligible: true,
+        operatingDate: "2026-09-09",
+        now: "2026-09-09T02:00:00.000Z",
+        generatedRoot: fixture.generatedRoot,
+        stagingRoot: fixture.stagingRoot,
+        loadCandidate: async () => item,
+        readSource: async () => sourceFor(item),
+        assessSupport: async () => "supported",
+        synthesize: async () => {
+          fixture.registry.admitCandidate(competing);
+          return [{
+            pageId: item.candidateId,
+            path: `pages/${item.candidateId}.md`,
+            content: item.claim,
+            sourceCandidateIds: [item.candidateId],
+            claimClass: item.claimClass,
+            sourceReference: item.sourceReference,
+            capturedAt: item.capturedAt,
+            asOf: item.asOf,
+            disposition: "supported" as const,
+            uncertainty: "none" as const,
+          }];
+        },
+      });
+      expect(result.kind).toBe("failed");
+      expect(result.reason).toContain("publication fence changed");
+      expect(fixture.registry.activeGeneration()).toBeUndefined();
     } finally {
       fixture.registry.close();
       rmSync(fixture.directory, { recursive: true, force: true });
