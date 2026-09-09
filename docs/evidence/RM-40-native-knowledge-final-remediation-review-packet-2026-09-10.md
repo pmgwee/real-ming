@@ -15,6 +15,11 @@ recurring-job authorization, or permission to delete Task 9 code.
 - Code remediation tip before this evidence commit: `69de739815c6444e3e9ab0426c8e727c017f198d`
 - Pinned Hermes commit required by the isolation contract: `561b053f794a1781868bb032029d589c67708119`
 
+Reproducible environment: Microsoft Windows `10.0.26200`, Node `v24.15.0`,
+npm `11.12.1`, Python `3.12.14`, Vitest `4.1.11`. The discovered Python
+interpreter was
+`C:\Users\quekm\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe`.
+
 The evidence commit that adds this packet is intentionally documentation-only;
 the final branch tip is printed by the handoff and must be used to inspect the
 complete `base..tip` range. Existing reviewed history was not rewritten,
@@ -145,7 +150,7 @@ cannot spawn in this Windows sandbox.
 | Python `py_compile` for the three Hermes scripts | 0 | All scripts compiled. |
 | `npm.cmd test` | **1** | 83 files passed, 1 failed; 946 tests passed, 11 skipped. Browser test failed because Chromium headless `spawn EPERM`. |
 | `npm.cmd run check` | **1** | Same Chromium browser failure; 946 tests passed and 11 skipped before the browser failure; check did not claim a green full suite. |
-| `node ...\\npm-cli.js audit --audit-level=high` | 0 | 0 high vulnerabilities. |
+| `node C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js audit --audit-level=high` | 0 | 0 high vulnerabilities. |
 | `npm.cmd run secrets:preflight` | 0 | Secret preflight passed; names/status only, no values read or printed. |
 | `node dist/config/control-plane-deployment-preflight-cli.js` | 0 | Deployment preflight passed (does not deploy). |
 | `git diff --check 265124a940bfd126ddb89934b3392a76b0ef3380..HEAD` | 0 | No diff whitespace errors (Git ignore warning only). |
@@ -157,6 +162,23 @@ runtime head, but `actualAIAgent=false` and `containmentProof=false` because
 the pinned import raised `RuntimeError`; the isolated Python reports
 `import yaml` exit `1` with `ModuleNotFoundError`. This is intentionally a
 blocker, not fabricated isolation evidence.
+
+Exact affected-suite invocation:
+
+```text
+node_modules\\.bin\\vitest.cmd run test/system/native-knowledge-wrapper.system.test.ts test/system/native-knowledge-runner.system.test.ts test/system/native-knowledge-retrieval.system.test.ts test/system/native-knowledge-registry.system.test.ts test/system/native-knowledge-publication.system.test.ts test/system/native-knowledge-production-routing.system.test.ts test/system/native-knowledge-production-acceptance.system.test.ts test/system/native-knowledge-live-acceptance.system.test.ts test/system/native-knowledge-isolation.system.test.ts test/system/native-knowledge-forgetting.system.test.ts test/system/native-knowledge-evidence.system.test.ts test/system/native-knowledge-dashboard.system.test.ts test/system/real-ming-mcp-composition.system.test.ts test/system/control-plane-backup.system.test.ts
+```
+
+Exact pinned probe invocation (the required environment variables point only
+to the disposable source and offline profile):
+
+```text
+$env:HERMES_AGENT_SOURCE='C:\\Users\\quekm\\AppData\\Local\\Temp\\real-ming-hermes-pinned-review'
+$env:REAL_MING_NETWORK_DISABLED='1'
+$env:REAL_MING_NO_CREDENTIALS='1'
+$env:REAL_MING_HERMES_AUTH_PROFILE='offline-fake-local-no-credentials'
+& 'C:\\Users\\quekm\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\python\\python.exe' hermes/scripts/verify-native-knowledge-isolation.py --json
+```
 
 ## NKC-01 through NKC-14 disposition
 
