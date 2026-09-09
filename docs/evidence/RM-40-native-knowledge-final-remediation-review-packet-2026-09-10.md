@@ -143,8 +143,8 @@ cannot spawn in this Windows sandbox.
 | `node_modules\\.bin\\vitest.cmd run test/system/control-plane-backup.system.test.ts` | 0 | 8 deterministic backup tests passed. |
 | `node_modules\\.bin\\vitest.cmd run test/system/native-knowledge-isolation.system.test.ts` | 0 | 1 file and 10 tests passed; tests truthfully classify unavailable Python/runtime as ineligible. |
 | Python `py_compile` for the three Hermes scripts | 0 | All scripts compiled. |
-| `npm.cmd test` | **1** | 83 files passed, 1 failed; 945 tests passed, 11 skipped. Browser test failed because Chromium headless `spawn EPERM`. |
-| `npm.cmd run check` | **1** | Same Chromium browser failure; check did not claim a green full suite. |
+| `npm.cmd test` | **1** | 83 files passed, 1 failed; 946 tests passed, 11 skipped. Browser test failed because Chromium headless `spawn EPERM`. |
+| `npm.cmd run check` | **1** | Same Chromium browser failure; 946 tests passed and 11 skipped before the browser failure; check did not claim a green full suite. |
 | `node ...\\npm-cli.js audit --audit-level=high` | 0 | 0 high vulnerabilities. |
 | `npm.cmd run secrets:preflight` | 0 | Secret preflight passed; names/status only, no values read or printed. |
 | `node dist/config/control-plane-deployment-preflight-cli.js` | 0 | Deployment preflight passed (does not deploy). |
