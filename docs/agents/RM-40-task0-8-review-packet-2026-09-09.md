@@ -4,7 +4,9 @@
 **Review scope:** approved Tasks 0–8 only
 **Repository:** `C:\Users\quekm\Desktop\projects\real-me`
 **Branch:** `main`
-**HEAD:** `6830032af34bc9f954913810a5e0cdcfd9c57f25`
+**Task 0–8 implementation tip:** `6830032af34bc9f954913810a5e0cdcfd9c57f25`
+The packet itself is an additional documentation commit; verify its exact SHA
+with `git log --follow -- docs/agents/RM-40-task0-8-review-packet-2026-09-09.md`.
 **Status:** controlled/local implementation verified; not deployed, live-accepted,
 scheduled or production-wired
 
