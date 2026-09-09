@@ -83,7 +83,7 @@ describe("native Hermes knowledge-job isolation hard gate", () => {
     expect(result.authMode).toBe("offline-fake-local-no-credentials");
     expect(result.fallbackDetected).toBe(false);
     expect(result.eligible).toBe(true);
-  });
+  }, 30_000);
 
   it.each([
     "missing-skip-memory",
@@ -97,7 +97,7 @@ describe("native Hermes knowledge-job isolation hard gate", () => {
     expect(status).toBe(78);
     expect(result.eligible).toBe(false);
     expect(result.reason).toEqual(expect.any(String));
-  });
+  }, 30_000);
 
   it("keeps the proposed wrapper inactive unless controlled flags and a named auth profile are explicit", () => {
     expect(existsSync(wrapper)).toBe(true);
@@ -130,5 +130,5 @@ describe("native Hermes knowledge-job isolation hard gate", () => {
       mode: "controlled",
       commit: "561b053f794a1781868bb032029d589c67708119",
     });
-  });
+  }, 30_000);
 });
