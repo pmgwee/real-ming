@@ -32,7 +32,7 @@ Authoritative supporting documents:
 
 All commits below are local commits on `main`; none was pushed. The review base
 is handoff commit `8bcf944ba1c231c506f29b89b6e3b89dbb6ef26b` and the reviewed
-tip is `6830032af34bc9f954913810a5e0cdcfd9c57f25`.
+implementation tip is `669355afaebae0a65a85d9712c28328b49b9db7f`.
 
 | Scope | Exact commit | Files changed in that commit |
 | --- | --- | --- |
@@ -51,8 +51,8 @@ tip is `6830032af34bc9f954913810a5e0cdcfd9c57f25`.
 Reproduce the exact aggregate diff with:
 
 ```text
-git diff 8bcf944ba1c231c506f29b89b6e3b89dbb6ef26b..6830032af34bc9f954913810a5e0cdcfd9c57f25 --stat
-git diff 8bcf944ba1c231c506f29b89b6e3b89dbb6ef26b..6830032af34bc9f954913810a5e0cdcfd9c57f25
+git diff 8bcf944ba1c231c506f29b89b6e3b89dbb6ef26b..669355afaebae0a65a85d9712c28328b49b9db7f --stat
+git diff 8bcf944ba1c231c506f29b89b6e3b89dbb6ef26b..669355afaebae0a65a85d9712c28328b49b9db7f
 git show --stat --format=fuller <commit-sha>
 ```
 
