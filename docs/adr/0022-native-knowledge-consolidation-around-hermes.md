@@ -175,9 +175,9 @@ activation ineligible. Task 0 uses a fake/local model boundary with networking
 disabled and no credentials. A later authorized one-shot may mount only a
 named Hermes auth profile read-only for the dedicated job identity; it must
 not inherit the interactive Telegram, Notion, Calendar, mail, GitHub or Vercel
-credentials; the installed wrapper strips known interactive credential
-variables before launching its probe or job. No global memory restriction is
-introduced. The job may create
+credentials. The wrapper constructs the child environment from an explicit
+allowlist; it does not inherit the parent environment or rely on denylisting
+known credential names. No global memory restriction is introduced. The job may create
 its own normal session record. Evidence/output bytes, model and tool calls,
 storage growth, lease count, wall time and retries are bounded; retries share
 the wall-clock budget.

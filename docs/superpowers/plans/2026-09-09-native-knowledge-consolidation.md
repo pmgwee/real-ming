@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md` and `docs/adr/0022-native-knowledge-consolidation-around-hermes.md`
 
+> **Historical execution-plan note (10 September 2026).** Tasks 0–8 in this
+> document describe the prior controlled implementation. The final bounded
+> remediation from that review point is tracked in
+> `docs/evidence/RM-40-native-knowledge-final-remediation-review-packet-2026-09-10.md`;
+> its exact tip and gate results supersede any earlier status snapshot below.
+
 ## Global Constraints
 
 - The design baseline remains **Real-Ming v1.1 · Architecture Revision 6**; Hermes owns Telegram, conversation, native memory/profile, session history, tools, skills, plugins, MCP, cron, Kanban and the final answer.
@@ -496,7 +502,7 @@ Expected: FAIL because the isolated runner and manifest do not exist.
 
 - [ ] **Step 3: Implement the runner as a deterministic boundary.** Claim the registry lease, list only staged/unforgotten candidates, load the prior active manifest and carry forward every still-valid page, call the native Hermes synthesis operation, require source-support/freshness results, enforce the candidate/source/output/tool/model/storage limits, stage a complete snapshot, call `activate_generation`, read back through `wiki_retrieve`, then mark the run successful. Record failure reason, retry count and run ID without dumping source content. Never call provider write tools or native memory/configuration APIs.
 
-- [ ] **Step 4: Implement the wrapper with pinned controls.** Start the pinned `AIAgent` with `skip_memory=True` and the preflight-proven `tools.include` set exactly to `real_ming_knowledge_list_candidates`, `real_ming_read_knowledge_source`, `real_ming_stage_knowledge_generation` and `real_ming_wiki_retrieve`; activation remains a local deterministic runner operation. Use a dedicated profile/session directory, staging work directory and OS restrictions; expose only read-only cited sources and the staging/output roots. Treat any unsupported constructor/CLI/include option, extra callable, denied-operation failure or full-default-toolset fallback as exit `78`, not as a permissive fallback. Task 0 uses a fake/local model boundary with networking disabled and no credentials. A separately authorized one-shot may mount only a named Hermes auth profile read-only for the job identity; it must not inherit Telegram, Notion, Calendar, mail, GitHub or Vercel credentials. The wrapper strips known interactive credential variables before launching the probe or job. The wrapper's own Hermes session record is allowed; `MEMORY.md`/`USER.md` and the main interactive session are not touched.
+- [ ] **Step 4: Implement the wrapper with pinned controls.** Start the pinned `AIAgent` with `skip_memory=True` and the preflight-proven `tools.include` set exactly to `real_ming_knowledge_list_candidates`, `real_ming_read_knowledge_source`, `real_ming_stage_knowledge_generation` and `real_ming_wiki_retrieve`; activation remains a local deterministic runner operation. Use a dedicated profile/session directory, staging work directory and OS restrictions; expose only read-only cited sources and the staging/output roots. Treat any unsupported constructor/CLI/include option, extra callable, denied-operation failure or full-default-toolset fallback as exit `78`, not as a permissive fallback. Task 0 uses a fake/local model boundary with networking disabled and no credentials. A separately authorized one-shot may mount only a named Hermes auth profile read-only for the job identity; it must not inherit Telegram, Notion, Calendar, mail, GitHub or Vercel credentials. The wrapper constructs each child environment from an explicit allowlist and does not inherit the parent environment or rely on a denylist of known credential variables. The wrapper's own Hermes session record is allowed; `MEMORY.md`/`USER.md` and the main interactive session are not touched.
 
 - [ ] **Step 5: Define the native cron row without activating it.** The manifest contains one proposed `02:00` `Asia/Kuala_Lumpur` script-only job, `deliver: local`, explicit model/provider names from protected configuration, the skill names, limits and idempotency key. It does not create the row or edit the existing 07:30/21:30 report jobs.
 
