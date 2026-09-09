@@ -243,6 +243,9 @@ function readManifestUnchecked(path: string): GenerationManifest {
   ) {
     throw new Error("invalid or incomplete generation manifest");
   }
+  if (raw.pages.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) {
+    throw new Error("generation page limit exceeded");
+  }
   return raw as GenerationManifest;
 }
 
@@ -449,9 +452,16 @@ export function activateGeneration(input: ActivationRequest & {
       ],
     });
   } catch (error) {
+    // The SQLite active pointer is already committed. Never lie about that
+    // durable fact by converting a post-activation cleanup problem into a
+    // failed activation; mark repair and let reconciliation retry cleanup.
+    input.registry.setRepairState("needs-repair");
     return {
-      kind: "invalid",
-      reason: `retention-cleanup-failed:${error instanceof Error ? error.message : "unknown error"}`,
+      kind: "activated",
+      generationId: activated.generationId,
+      publicationEpoch: activated.publicationEpoch,
+      retentionCleanupPending: true,
+      retentionCleanupError: `retention-cleanup-failed:${error instanceof Error ? error.message : "unknown error"}`.slice(0, 240),
     };
   }
   return activated;

@@ -36,6 +36,8 @@ export interface NativeKnowledgeRegistry {
   recordRunFailure(runId: string, leaseToken: string, leaseEpoch: number, failureCode: string): void;
   recordRunSuccess(runId: string, leaseToken: string, leaseEpoch: number, at: string): void;
   recordStagedGeneration(generation: StagedGeneration): void;
+  /** Mark an unactivated generation as quarantined after a fenced publication. */
+  quarantineGeneration(generationId: string): void;
   generation(generationId: string): ActiveGeneration | undefined;
   generationManifestHash(generationId: string): string | undefined;
   /** Generations still held by an unfinished publication or repair. */
@@ -173,6 +175,10 @@ function bytes(value: unknown): number {
 
 function addSeconds(iso: string, seconds: number): string {
   return new Date(Date.parse(iso) + seconds * 1000).toISOString();
+}
+
+function canonicalAliases(values: readonly string[]): readonly string[] {
+  return [...new Set(values.map((value) => value.trim().toLocaleLowerCase("en-US")).filter(Boolean))].sort();
 }
 
 function mapCandidate(row: CandidateRow): NativeKnowledgeCandidateMetadata {
@@ -615,6 +621,12 @@ export function createNativeKnowledgeRegistry(options: {
       );
     },
 
+    quarantineGeneration(generationId) {
+      database.prepare(
+        "UPDATE native_knowledge_generations SET status = 'quarantined' WHERE generation_id = ? AND status IN ('staged', 'needs-repair')",
+      ).run(generationId);
+    },
+
     generation(generationId) {
       const row = database.prepare("SELECT * FROM native_knowledge_generations WHERE generation_id = ?").get(generationId) as unknown as GenerationRow | undefined;
       if (row === undefined) return undefined;
@@ -664,6 +676,10 @@ export function createNativeKnowledgeRegistry(options: {
           database.exec("ROLLBACK;");
           return { kind: "fenced", reason: "active-generation-changed" };
         }
+        if (input.expectedPublicationEpoch !== undefined && current.publication_epoch !== input.expectedPublicationEpoch) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "publication-epoch-advanced" };
+        }
         if (input.expectedSourceEpoch !== undefined && current.source_epoch !== input.expectedSourceEpoch) {
           database.exec("ROLLBACK;");
           return { kind: "fenced", reason: "source-epoch-advanced" };
@@ -671,6 +687,14 @@ export function createNativeKnowledgeRegistry(options: {
         if (input.expectedTombstoneEpoch !== undefined && current.tombstone_epoch !== input.expectedTombstoneEpoch) {
           database.exec("ROLLBACK;");
           return { kind: "fenced", reason: "tombstone-epoch-advanced" };
+        }
+        if (input.expectedTombstoneHeadEpoch !== undefined && current.tombstone_head_epoch !== input.expectedTombstoneHeadEpoch) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "tombstone-head-epoch-advanced" };
+        }
+        if (input.expectedRepairState !== undefined && current.repair_state !== input.expectedRepairState) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "repair-state-changed" };
         }
         // A forget can arrive after filesystem preparation but before this
         // SQLite pointer transaction. The generation must not become active
@@ -714,6 +738,15 @@ export function createNativeKnowledgeRegistry(options: {
       try {
         const existing = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE subject = ?").get(input.subject) as unknown as TombstoneRow | undefined;
         if (existing !== undefined) {
+          const requestedAliases = canonicalAliases(input.aliases);
+          const existingAliases = canonicalAliases(parseJson<readonly string[]>(existing.aliases_json));
+          // A repeated forget is idempotent only when it names the same full
+          // suppression identity. Silently dropping a newly supplied alias
+          // would make the operation report success while leaving content
+          // retrievable through that alias.
+          if (JSON.stringify(requestedAliases) !== JSON.stringify(existingAliases)) {
+            throw new Error("tombstone alias set conflicts with existing suppression");
+          }
           // Older state databases may contain the suppression but not the
           // outbox table row. Reconcile that omission inside this same
           // transaction so every supported forget has a durable propagation
@@ -731,7 +764,7 @@ export function createNativeKnowledgeRegistry(options: {
         const tombstone: TombstoneRecord = {
           tombstoneId: input.tombstoneId ?? `native-knowledge:tombstone:${randomUUID()}`,
           subject: input.subject,
-          aliases: [...new Set(input.aliases)].sort(),
+          aliases: [...canonicalAliases(input.aliases)],
           reason: input.reason,
           localEpoch,
           status: "local-suppressed",
@@ -919,31 +952,48 @@ export function createNativeKnowledgeRegistry(options: {
     },
 
     consistencySnapshot() {
-      const current = state(database);
-      const fence: NativeKnowledgeConsistencyFence = {
-        activeGenerationId: current.active_generation_id,
-        publicationEpoch: current.publication_epoch,
-        sourceEpoch: current.source_epoch,
-        tombstoneEpoch: current.tombstone_epoch,
-        tombstoneHeadEpoch: current.tombstone_head_epoch,
-        repairState: current.repair_state,
-      };
-      if (current.active_generation_id === null) return { fence, active: undefined };
-      const row = database.prepare("SELECT * FROM native_knowledge_generations WHERE generation_id = ?").get(current.active_generation_id) as unknown as GenerationRow | undefined;
-      if (row === undefined || row.publication_epoch === null) return { fence, active: undefined };
-      return {
-        fence,
-        active: {
-          generationId: row.generation_id,
-          runId: row.run_id,
-          path: row.path,
-          manifestHash: row.manifest_hash,
-          sourceEpoch: row.source_epoch,
-          tombstoneEpoch: row.tombstone_epoch,
-          publicationEpoch: row.publication_epoch,
-          createdAt: row.created_at,
-        },
-      };
+      // A reader must not observe the active pointer from one SQLite snapshot
+      // and its fence/generation row from another. A deferred read
+      // transaction gives both queries one coherent point-in-time view while
+      // still allowing concurrent writers to proceed after the snapshot is
+      // released.
+      database.exec("BEGIN;");
+      try {
+        const current = state(database);
+        const fence: NativeKnowledgeConsistencyFence = {
+          activeGenerationId: current.active_generation_id,
+          publicationEpoch: current.publication_epoch,
+          sourceEpoch: current.source_epoch,
+          tombstoneEpoch: current.tombstone_epoch,
+          tombstoneHeadEpoch: current.tombstone_head_epoch,
+          repairState: current.repair_state,
+        };
+        if (current.active_generation_id === null) {
+          database.exec("COMMIT;");
+          return { fence, active: undefined };
+        }
+        const row = database.prepare("SELECT * FROM native_knowledge_generations WHERE generation_id = ?").get(current.active_generation_id) as unknown as GenerationRow | undefined;
+        const snapshot = row === undefined || row.publication_epoch === null
+          ? { fence, active: undefined }
+          : {
+              fence,
+              active: {
+                generationId: row.generation_id,
+                runId: row.run_id,
+                path: row.path,
+                manifestHash: row.manifest_hash,
+                sourceEpoch: row.source_epoch,
+                tombstoneEpoch: row.tombstone_epoch,
+                publicationEpoch: row.publication_epoch,
+                createdAt: row.created_at,
+              },
+            };
+        database.exec("COMMIT;");
+        return snapshot;
+      } catch (error) {
+        try { database.exec("ROLLBACK;"); } catch { /* already rolled back */ }
+        throw error;
+      }
     },
 
     close() {

@@ -187,8 +187,11 @@ export interface ActivationRequest {
   readonly now: string;
   /** Snapshot fences captured immediately before filesystem preparation. */
   readonly expectedActiveGenerationId?: string | null;
+  readonly expectedPublicationEpoch?: number;
   readonly expectedSourceEpoch?: number;
   readonly expectedTombstoneEpoch?: number;
+  readonly expectedTombstoneHeadEpoch?: number;
+  readonly expectedRepairState?: RepairState;
   /** Optional retention bound; production defaults to the first-slice limit. */
   readonly maxRetainedGenerations?: number;
   /** Generations held by an in-progress recovery/publication operation. */
@@ -206,7 +209,14 @@ export type ReconcileResult =
   | { readonly kind: "needs-repair"; readonly reason: string; readonly quarantined: readonly string[] };
 
 export type ActivationResult =
-  | { readonly kind: "activated"; readonly generationId: string; readonly publicationEpoch: number }
+  | {
+      readonly kind: "activated";
+      readonly generationId: string;
+      readonly publicationEpoch: number;
+      /** Activation is committed; cleanup may be retried by reconciliation. */
+      readonly retentionCleanupPending?: boolean;
+      readonly retentionCleanupError?: string;
+    }
   | { readonly kind: "fenced"; readonly reason: string }
   | { readonly kind: "invalid"; readonly reason: string };
 
@@ -330,6 +340,8 @@ export interface TombstoneHeadStore {
 export interface RestoreTombstoneRequest {
   readonly snapshotHighestLocalEpoch: number;
   readonly snapshotPendingTombstoneIds: readonly string[];
+  /** Optional complete set captured in the backup for stronger coverage. */
+  readonly snapshotTombstoneIds?: readonly string[];
   /** ISO timestamp used when a newer independent entry is replayed locally. */
   readonly restoredAt?: string;
 }

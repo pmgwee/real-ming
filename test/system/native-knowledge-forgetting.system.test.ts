@@ -247,6 +247,7 @@ describe("native knowledge forgetting and restore fencing", () => {
         registry,
         snapshotHighestLocalEpoch: 1,
         snapshotPendingTombstoneIds: ["old"],
+        snapshotTombstoneIds: ["old"],
         restoredAt: "2026-09-09T02:00:00.000Z",
       });
       expect(result.kind).toBe("safe");
@@ -256,6 +257,92 @@ describe("native knowledge forgetting and restore fencing", () => {
       ]);
       expect(registry.runHealth().repairState).toBe("healthy");
       expect(registry.tombstoneOutbox().every((entry) => entry.status === "synced")).toBe(true);
+    });
+  });
+
+  it("canonicalizes aliases when verifying an independent head read-back", async () => {
+    await withRegistry(async (registry) => {
+      let head: TombstoneHead = { epoch: 0, entries: [], complete: true, version: "v0" };
+      const result = await forgetWikiKnowledge({
+        registry,
+        headStore: {
+          async readHead() { return { kind: "ok", head } as const; },
+          async appendIfVersion(input) {
+            head = {
+              epoch: 1,
+              entries: [{
+                tombstoneId: input.tombstone.tombstoneId,
+                subject: input.tombstone.subject.toLocaleUpperCase("en-US"),
+                aliases: ["Legacy Page"],
+                localEpoch: input.tombstone.localEpoch,
+              }],
+              complete: true,
+              version: "v1",
+            };
+            return { kind: "appended", head } as const;
+          },
+        },
+        subject: "alias-readback",
+        aliases: ["legacy page"],
+        reason: "canonical alias read-back",
+        requestedAt: "2026-09-09T02:00:00.000Z",
+      });
+      expect(result.status).toBe("restore-safe");
+      expect(result.verifiedHeadEpoch).toBe(1);
+    });
+  });
+
+  it("fails a repeated forget that omits or changes an existing alias set", async () => {
+    await withRegistry(async (registry) => {
+      const first = registry.appendLocalTombstone({
+        tombstoneId: "alias-set",
+        subject: "alias-set-subject",
+        aliases: ["Legacy Page"],
+        reason: "controlled alias identity",
+        requestedAt: "2026-09-09T02:00:00.000Z",
+      });
+      expect(first.aliases).toEqual(["legacy page"]);
+      expect(() => registry.appendLocalTombstone({
+        subject: "alias-set-subject",
+        aliases: [],
+        reason: "omitted aliases",
+        requestedAt: "2026-09-09T02:00:30.000Z",
+      })).toThrow(/alias set conflicts/i);
+      expect(() => registry.appendLocalTombstone({
+        subject: "alias-set-subject",
+        aliases: ["different alias"],
+        reason: "conflicting retry",
+        requestedAt: "2026-09-09T02:01:00.000Z",
+      })).toThrow(/alias set conflicts/i);
+      expect(registry.tombstones()[0]?.aliases).toEqual(["legacy page"]);
+    });
+  });
+
+  it("preserves an alias-only suppression identity through independent restore replay", async () => {
+    await withRegistry(async (registry) => {
+      const head: TombstoneHead = {
+        epoch: 1,
+        entries: [{ tombstoneId: "alias-tombstone", subject: "canonical-candidate", aliases: ["legacy-page-alias"], localEpoch: 1 }],
+        complete: true,
+        version: "v1",
+      };
+      const result = await reconcileTombstonesAfterRestore({
+        headStore: {
+          async readHead() { return { kind: "ok", head } as const; },
+          async appendIfVersion() { return { kind: "conflict", head } as const; },
+        },
+        registry,
+        snapshotHighestLocalEpoch: 0,
+        snapshotPendingTombstoneIds: [],
+        restoredAt: "2026-09-09T02:00:00.000Z",
+      });
+      expect(result.kind).toBe("safe");
+      expect(isSuppressedByTombstone({
+        pageId: "derived-page",
+        path: "pages/derived-page.md",
+        sourceReference: "fixture:derived",
+        sourceCandidateIds: ["legacy-page-alias"],
+      }, registry.tombstones())).toBe(true);
     });
   });
 
@@ -287,6 +374,108 @@ describe("native knowledge forgetting and restore fencing", () => {
       });
       expect(result.kind).toBe("needs-repair");
       expect(registry.runHealth().repairState).toBe("needs-repair");
+    });
+  });
+
+  it("fails closed when an equal-epoch head omits a tombstone present in the backup", async () => {
+    const head: TombstoneHead = {
+      epoch: 1,
+      entries: [{ tombstoneId: "other", subject: "other-subject", localEpoch: 1 }],
+      complete: true,
+      version: "v1",
+    };
+    await expect(reconcileTombstonesAfterRestore({
+      headStore: {
+        async readHead() { return { kind: "ok", head } as const; },
+        async appendIfVersion() { return { kind: "conflict", head } as const; },
+      },
+      snapshotHighestLocalEpoch: 1,
+      snapshotPendingTombstoneIds: [],
+      snapshotTombstoneIds: ["forgotten-in-backup"],
+    })).resolves.toMatchObject({ kind: "needs-repair", reason: expect.stringContaining("forgotten-in-backup") });
+  });
+
+  it("keeps restore locked when a nonzero backup epoch has no complete tombstone inventory", async () => {
+    const head: TombstoneHead = {
+      epoch: 1,
+      entries: [{ tombstoneId: "head-entry", subject: "head-entry", localEpoch: 1 }],
+      complete: true,
+      version: "v1",
+    };
+    await expect(reconcileTombstonesAfterRestore({
+      headStore: {
+        async readHead() { return { kind: "ok", head } as const; },
+        async appendIfVersion() { return { kind: "conflict", head } as const; },
+      },
+      snapshotHighestLocalEpoch: 1,
+      snapshotPendingTombstoneIds: [],
+    })).resolves.toMatchObject({ kind: "needs-repair", reason: expect.stringContaining("inventory") });
+  });
+
+  it("rejects restore when a local alias is absent from the independent head", async () => {
+    await withRegistry(async (registry) => {
+      const local = registry.appendLocalTombstone({
+        tombstoneId: "alias-missing-head",
+        subject: "alias-missing-head-subject",
+        aliases: ["legacy page"],
+        reason: "restore alias coverage",
+        requestedAt: "2026-09-09T02:00:00.000Z",
+      });
+      const head: TombstoneHead = {
+        epoch: 1,
+        entries: [{ tombstoneId: local.tombstoneId, subject: local.subject, localEpoch: 1 }],
+        complete: true,
+        version: "v1",
+      };
+      const result = await reconcileTombstonesAfterRestore({
+        headStore: {
+          async readHead() { return { kind: "ok", head } as const; },
+          async appendIfVersion() { return { kind: "conflict", head } as const; },
+        },
+        registry,
+        snapshotHighestLocalEpoch: 1,
+        snapshotPendingTombstoneIds: [local.tombstoneId],
+        snapshotTombstoneIds: [local.tombstoneId],
+        restoredAt: "2026-09-09T02:01:00.000Z",
+      });
+      expect(result.kind).toBe("needs-repair");
+      expect(registry.runHealth().repairState).toBe("needs-repair");
+    });
+  });
+
+  it("keeps restore locked when the independent head advances during reconciliation", async () => {
+    const first: TombstoneHead = {
+      epoch: 1,
+      entries: [{ tombstoneId: "first", subject: "first", localEpoch: 1 }],
+      complete: true,
+      version: "v1",
+    };
+    const advanced: TombstoneHead = {
+      epoch: 2,
+      entries: [
+        ...first.entries,
+        { tombstoneId: "second", subject: "second", localEpoch: 2 },
+      ],
+      complete: true,
+      version: "v2",
+    };
+    await withRegistry(async (registry) => {
+      let reads = 0;
+      const result = await reconcileTombstonesAfterRestore({
+        headStore: {
+          async readHead() {
+            reads += 1;
+            return { kind: "ok", head: reads === 1 ? first : advanced } as const;
+          },
+          async appendIfVersion() { return { kind: "conflict", head: advanced } as const; },
+        },
+        registry,
+        snapshotHighestLocalEpoch: 0,
+        snapshotPendingTombstoneIds: [],
+      });
+      expect(reads).toBeGreaterThanOrEqual(2);
+      expect(result.kind).toBe("needs-repair");
+      expect(result.reason).toMatch(/changed during restore/i);
     });
   });
 
@@ -425,5 +614,26 @@ describe("native knowledge forgetting and restore fencing", () => {
       },
     });
     expect(result).toMatchObject({ kind: "appended", head: { version: serverEtag } });
+  });
+
+  it("fails closed when Azure returns a malformed ETag on an existing head", async () => {
+    const store = createAzureBlobTombstoneHeadStore({
+      accountName: "controlledaccount",
+      containerName: "protected-backups",
+      fetch: async (url, init = {}) => {
+        if (String(url).startsWith("http://169.254.169.254/")) {
+          return new Response(JSON.stringify({ access_token: "opaque-test-token" }), { status: 200 });
+        }
+        if (init.method === "PUT") return new Response(null, { status: 500 });
+        return new Response(JSON.stringify({
+          epoch: 1,
+          entries: [{ tombstoneId: "existing", subject: "existing", localEpoch: 1 }],
+          complete: true,
+          version: "v1",
+        }), { status: 200, headers: { etag: "malformed-etag" } });
+      },
+    });
+    const result = await store.readHead();
+    expect(result).toEqual({ kind: "unavailable", reason: "tombstone head is invalid" });
   });
 });

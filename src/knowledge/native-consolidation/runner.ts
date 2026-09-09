@@ -8,6 +8,7 @@ import {
   type NativeKnowledgeConsistencyFence,
   type NativeKnowledgeCandidate,
   type SourceSnapshot,
+  type StagedGeneration,
   type StagedPage,
 } from "./contracts.js";
 import { sha256ContentHash, verifyEvidence } from "./evidence.js";
@@ -78,6 +79,25 @@ function mergePages(previous: readonly StagedPage[], next: readonly StagedPage[]
   const merged = new Map(previous.map((page) => [page.pageId, page]));
   for (const page of next) merged.set(page.pageId, page);
   return [...merged.values()];
+}
+
+function quarantineUnactivatedGeneration(
+  registry: NativeKnowledgeRegistry,
+  generation: StagedGeneration,
+): void {
+  // A fenced activation never committed the active pointer. Remove the
+  // immutable directory and mark its registry row quarantined so a retry or
+  // retention sweep cannot mistake the orphan for an in-progress publication.
+  try {
+    registry.quarantineGeneration(generation.generationId);
+  } catch {
+    registry.setRepairState("needs-repair");
+  }
+  try {
+    rmSync(generation.immutablePath, { recursive: true, force: true });
+  } catch {
+    registry.setRepairState("needs-repair");
+  }
 }
 
 function admittedCandidateMatches(
@@ -164,6 +184,7 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
     let previous: GenerationManifest | undefined;
     let previousPath: string | undefined;
     const activeSnapshot = input.registry.consistencySnapshot();
+    if (!sameWorkFence(runStartFence, activeSnapshot.fence)) throw new Error("publication fence changed before active snapshot");
     const active = activeSnapshot.active;
     if (active !== undefined) {
       previous = readManifest(join(active.path, "manifest.json"));
@@ -180,10 +201,39 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
     const pages = await input.synthesize({ candidates, previous });
     if (elapsedMs(startedAt) > maxWallClockMs) throw new Error("wall-clock budget exceeded after synthesis");
     if (pages.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) throw new Error("generation page limit exceeded");
+    const selectedIds = new Set(candidates.map((candidate) => candidate.candidateId));
+    const selectedById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
+    const pagesWithLineage = pages.map((page) => {
+      if (page.sourceCandidateIds.length === 0) throw new Error("synthesis page has no source candidate lineage");
+      if (page.sourceCandidateIds.some((candidateId) => !selectedIds.has(candidateId))) {
+        throw new Error(`synthesis page ${page.pageId} references an unselected candidate`);
+      }
+      // A model may omit secondary lineage from its page envelope. Add the
+      // admitted dependencies deterministically before publication so every
+      // supported suppression identity survives into the manifest. Reject
+      // malformed dependency values rather than allowing an untracked alias.
+      const dependencies = new Set<string>();
+      for (const candidateId of page.sourceCandidateIds) {
+        const admitted = selectedById.get(candidateId);
+        if (admitted === undefined) throw new Error(`synthesis page ${page.pageId} references an unselected candidate`);
+        for (const dependency of admitted.dependencies) {
+          if (dependency.trim().length === 0) throw new Error(`candidate ${candidateId} has an empty dependency`);
+          dependencies.add(dependency);
+        }
+      }
+      for (const dependency of page.dependencies ?? []) {
+        if (dependency.trim().length === 0) throw new Error(`synthesis page ${page.pageId} has an empty dependency`);
+        dependencies.add(dependency);
+      }
+      return {
+        ...page,
+        dependencies: [...dependencies].sort(),
+      };
+    });
     const carried = previous === undefined || previousPath === undefined
       ? []
       : previousPages(previous, previousPath, input.registry);
-    const complete = mergePages(carried, pages);
+    const complete = mergePages(carried, pagesWithLineage);
     if (complete.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) throw new Error("complete generation page limit exceeded");
     const beforePublication = input.registry.consistencySnapshot().fence;
     if (!sameWorkFence(runStartFence, beforePublication)) throw new Error("publication fence changed during consolidation");
@@ -200,15 +250,17 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       now: publicationNow,
     });
     if (!sameWorkFence(beforePublication, input.registry.consistencyFence())) {
-      try {
-        rmSync(generated.immutablePath, { recursive: true, force: true });
-      } catch {
-        // Reconciliation will quarantine an orphan if the filesystem refuses
-        // cleanup; never turn a failed fence into a successful publication.
-      }
+      quarantineUnactivatedGeneration(input.registry, generated);
       throw new Error("publication fence changed after filesystem preparation");
     }
-    input.registry.recordStagedGeneration(generated);
+    try {
+      input.registry.recordStagedGeneration(generated);
+    } catch (error) {
+      // The files are durable but the registry row was not. Clean the
+      // unreferenced generation before returning the real registry error.
+      try { rmSync(generated.immutablePath, { recursive: true, force: true }); } catch { input.registry.setRepairState("needs-repair"); }
+      throw error;
+    }
     const activationNow = currentTimestamp(input);
     const activation = activateGeneration({
       registry: input.registry,
@@ -217,17 +269,44 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       activePath: input.generatedRoot,
       now: activationNow,
       expectedActiveGenerationId: beforePublication.activeGenerationId,
+      expectedPublicationEpoch: beforePublication.publicationEpoch,
       expectedSourceEpoch: beforePublication.sourceEpoch,
       expectedTombstoneEpoch: beforePublication.tombstoneEpoch,
+      expectedTombstoneHeadEpoch: beforePublication.tombstoneHeadEpoch,
+      expectedRepairState: beforePublication.repairState,
+      // Keep the generation that was active when this run began available as
+      // a rollback/recovery point while retention cleanup runs. The next run
+      // will protect its then-current active generation instead, so this is a
+      // bounded one-generation rollback window rather than an archive.
+      protectedGenerationIds: beforePublication.activeGenerationId === null
+        ? []
+        : [beforePublication.activeGenerationId],
     });
-    if (activation.kind !== "activated") throw new Error(`activation:${activation.reason}`);
+    if (activation.kind !== "activated") {
+      quarantineUnactivatedGeneration(input.registry, generated);
+      throw new Error(`activation:${activation.reason}`);
+    }
     const readBack = wikiRetrieve({
       registry: input.registry,
       generatedRoot: input.generatedRoot,
       query: complete[0]?.pageId ?? "generated knowledge",
       now: activationNow,
     });
-    if (readBack.kind !== "ok") throw new Error(`retrieval-readback:${readBack.reason}`);
+    if (readBack.kind !== "ok") {
+      // The registry pointer transaction is already durable at this point.
+      // Never turn a committed activation into a misleading failed run. Keep
+      // retrieval fail-closed, mark repair, and let reconciliation retry the
+      // read/cleanup boundary.
+      input.registry.setRepairState("needs-repair");
+      input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, currentTimestamp(input));
+      return {
+        kind: "succeeded",
+        runId: claimed.runId,
+        generationId: generated.generationId,
+        retryCount,
+        reason: `activated-with-repair:${readBack.reason}`,
+      };
+    }
     input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, currentTimestamp(input));
     return { kind: "succeeded", runId: claimed.runId, generationId: generated.generationId, retryCount };
   } catch (error) {

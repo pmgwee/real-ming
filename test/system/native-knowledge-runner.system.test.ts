@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
@@ -293,6 +293,138 @@ describe("native knowledge bounded runner", () => {
       expect(result.kind).toBe("failed");
       expect(result.reason).toContain("publication fence changed");
       expect(fixture.registry.activeGeneration()).toBeUndefined();
+    } finally {
+      fixture.registry.close();
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("quarantines and removes a generation when the activation fence changes after staging", async () => {
+    const fixture = await workspace();
+    const item = candidate("post-stage-fence");
+    const competing = candidate("post-stage-fence-competing");
+    fixture.registry.admitCandidate(item);
+    try {
+      const originalRecord = fixture.registry.recordStagedGeneration.bind(fixture.registry);
+      const fencedRegistry = new Proxy(fixture.registry, {
+        get(target, property, receiver) {
+          if (property !== "recordStagedGeneration") return Reflect.get(target, property, receiver);
+          return (generation: Parameters<typeof target.recordStagedGeneration>[0]) => {
+            originalRecord(generation);
+            // Advance the authoritative source epoch after the immutable files
+            // and staged row exist, but before activation validates its fence.
+            target.admitCandidate(competing);
+          };
+        },
+      });
+      const result = await runConsolidation({
+        registry: fencedRegistry,
+        isolationEligible: true,
+        operatingDate: "2026-09-09",
+        now: "2026-09-09T02:00:00.000Z",
+        generatedRoot: fixture.generatedRoot,
+        stagingRoot: fixture.stagingRoot,
+        loadCandidate: async () => item,
+        readSource: async (value) => sourceFor(value),
+        assessSupport: async () => "supported",
+        synthesize: async ({ candidates }) => candidates.map<StagedPage>((value) => ({
+          pageId: value.candidateId,
+          path: `pages/${value.candidateId}.md`,
+          content: value.claim,
+          sourceCandidateIds: [value.candidateId],
+          claimClass: value.claimClass,
+          sourceReference: value.sourceReference,
+          capturedAt: value.capturedAt,
+          asOf: value.asOf,
+          disposition: "supported",
+          uncertainty: "none",
+        })),
+      });
+      expect(result.kind).toBe("failed");
+      expect(result.reason).toContain("source-epoch-advanced");
+      expect(fencedRegistry.inProgressGenerationIds()).toEqual([]);
+      expect(readdirSync(join(fixture.generatedRoot, "generations"))).toHaveLength(0);
+    } finally {
+      fixture.registry.close();
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps valid pages across successive generations and preserves admitted dependency lineage", async () => {
+    const fixture = await workspace();
+    const first = candidate("candidate-a");
+    const second = {
+      ...candidate("candidate-b"),
+      dependencies: ["candidate-b", "secondary-alias"],
+    };
+    fixture.registry.admitCandidate(first);
+    try {
+      const pageFor = (value: NativeKnowledgeCandidate): StagedPage => ({
+        pageId: value.candidateId,
+        path: `pages/${value.candidateId}.md`,
+        content: `# ${value.candidateId}\n\n${value.claim}`,
+        sourceCandidateIds: [value.candidateId],
+        // Deliberately omit dependencies: the runner must carry every
+        // dependency from the admitted registry metadata into the manifest.
+        claimClass: value.claimClass,
+        sourceReference: value.sourceReference,
+        capturedAt: value.capturedAt,
+        asOf: value.asOf,
+        disposition: "supported",
+        uncertainty: "none",
+      });
+      const firstRun = await runConsolidation({
+        registry: fixture.registry,
+        isolationEligible: true,
+        operatingDate: "2026-09-09",
+        now: "2026-09-09T02:00:00.000Z",
+        generatedRoot: fixture.generatedRoot,
+        stagingRoot: fixture.stagingRoot,
+        loadCandidate: async (id) => id === first.candidateId ? first : undefined,
+        readSource: async (value) => sourceFor(value),
+        assessSupport: async () => "supported",
+        synthesize: async ({ candidates }) => candidates.map(pageFor),
+        clock: () => "2026-09-09T02:00:01.000Z",
+      });
+      expect(firstRun.kind).toBe("succeeded");
+
+      fixture.registry.admitCandidate(second);
+      const secondRun = await runConsolidation({
+        registry: fixture.registry,
+        isolationEligible: true,
+        operatingDate: "2026-09-09",
+        now: "2026-09-09T02:01:00.000Z",
+        generatedRoot: fixture.generatedRoot,
+        stagingRoot: fixture.stagingRoot,
+        loadCandidate: async (id) => id === second.candidateId ? second : undefined,
+        readSource: async (value) => sourceFor(value),
+        assessSupport: async () => "supported",
+        synthesize: async ({ candidates }) => candidates.map(pageFor),
+        clock: () => "2026-09-09T02:01:01.000Z",
+      });
+      expect(secondRun.kind).toBe("succeeded");
+      const active = fixture.registry.activeGeneration();
+      expect(active).toBeDefined();
+      if (active === undefined) throw new Error("expected second generation");
+      const manifest = JSON.parse(readFileSync(join(active.path, "manifest.json"), "utf8")) as { pages: readonly { pageId: string; dependencies?: readonly string[] }[] };
+      expect(manifest.pages.map((page) => page.pageId)).toEqual([first.candidateId, second.candidateId]);
+      expect(manifest.pages.find((page) => page.pageId === second.candidateId)?.dependencies).toEqual(["candidate-b", "secondary-alias"]);
+
+      fixture.registry.appendLocalTombstone({
+        subject: first.candidateId,
+        aliases: [],
+        reason: "remove first test page",
+        requestedAt: "2026-09-09T02:02:00.000Z",
+      });
+      const read = wikiRetrieve({
+        registry: fixture.registry,
+        generatedRoot: fixture.generatedRoot,
+        query: "Project claim",
+        now: "2026-09-09T02:02:00.000Z",
+        maxResults: 10,
+      });
+      expect(read.kind).toBe("ok");
+      if (read.kind === "ok") expect(read.results.map((entry) => entry.pageId)).toEqual([second.candidateId]);
     } finally {
       fixture.registry.close();
       rmSync(fixture.directory, { recursive: true, force: true });

@@ -26,7 +26,12 @@ function parseHead(value: unknown, response: Response): TombstoneHead | undefine
   ) return undefined;
   const epoch = candidate.epoch as number;
   const etag = response.headers.get("etag");
-  const version = etag !== null && validVersion(etag) ? etag : candidate.version;
+  // An ETag is the concurrency authority for an existing blob. If the
+  // service sends one but it is malformed, falling back to a body-supplied
+  // version could make the next conditional write target an unverified
+  // revision. Fail closed instead.
+  if (etag !== null && !validVersion(etag)) return undefined;
+  const version = etag ?? candidate.version;
   if (!validVersion(version)) return undefined;
   const entries = candidate.entries.filter((entry): entry is TombstoneHead["entries"][number] =>
     typeof entry === "object" && entry !== null &&

@@ -159,6 +159,7 @@ function fakeHeadStore(options: { readonly unavailable?: boolean } = {}): {
             {
               tombstoneId: input.tombstone.tombstoneId,
               subject: input.tombstone.subject,
+              aliases: [...input.tombstone.aliases],
               localEpoch: input.tombstone.localEpoch,
             },
           ],
@@ -458,6 +459,7 @@ describe("native knowledge controlled acceptance matrix", () => {
           headStore: complete.store,
           snapshotHighestLocalEpoch: pending.localEpoch,
           snapshotPendingTombstoneIds: [pending.tombstoneId],
+          snapshotTombstoneIds: [pending.tombstoneId],
         }),
       ).toMatchObject({ kind: "safe" });
 

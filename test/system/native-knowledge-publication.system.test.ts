@@ -278,4 +278,70 @@ describe("native knowledge immutable publication", () => {
       expect(existsSync(second.immutablePath)).toBe(true);
     });
   });
+
+  it("fences activation when the independent tombstone head advances", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
+      const staged = await stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("head-fence", "head fenced content")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+      });
+      registry.recordStagedGeneration(staged);
+      registry.setTombstoneHeadEpoch(1);
+      const result = activateGeneration({
+        registry,
+        generation: staged,
+        lease,
+        activePath: generatedRoot,
+        now: "2026-09-09T02:00:01.000Z",
+        expectedTombstoneHeadEpoch: 0,
+      });
+      expect(result).toMatchObject({ kind: "fenced", reason: "tombstone-head-epoch-advanced" });
+    });
+  });
+
+  it("reports committed activation when retention cleanup fails and leaves repair state", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
+      const staged = await stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("cleanup-failure", "active content")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+      });
+      registry.recordStagedGeneration(staged);
+      const originalInProgress = registry.inProgressGenerationIds.bind(registry);
+      const failingRegistry = new Proxy(registry, {
+        get(target, property, receiver) {
+          if (property === "inProgressGenerationIds") {
+            return () => {
+              originalInProgress();
+              throw new Error("controlled cleanup interruption");
+            };
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+      const result = activateGeneration({
+        registry: failingRegistry,
+        generation: staged,
+        lease,
+        activePath: generatedRoot,
+        now: "2026-09-09T02:00:01.000Z",
+      });
+      expect(result).toMatchObject({
+        kind: "activated",
+        generationId: staged.generationId,
+        retentionCleanupPending: true,
+      });
+      expect(failingRegistry.activeGeneration()?.generationId).toBe(staged.generationId);
+      expect(failingRegistry.runHealth().repairState).toBe("needs-repair");
+    });
+  });
 });
