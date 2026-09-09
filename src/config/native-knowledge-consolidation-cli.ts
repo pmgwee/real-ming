@@ -185,9 +185,19 @@ export async function runControlledNativeKnowledgeConsolidation(): Promise<Recor
   });
   try {
     if (failureMode !== "no-op") {
-      const admitted = registry.admitCandidate(fixture.candidate);
-      if (admitted.kind !== "accepted" && admitted.kind !== "duplicate") {
-        failure(`controlled candidate admission failed: ${admitted.reason}`);
+      // Exercise the same production MCP operation exposed to the isolated
+      // Hermes job; do not bypass composition with a test-only registry write.
+      const captured = await composition.tools.callAsync!("real_ming_capture_knowledge_candidate", {
+        candidate: fixture.candidate,
+        explicit: true,
+        marked: true,
+      });
+      if (captured.kind !== "ok") {
+        failure(`controlled candidate admission failed: ${captured.reason}`);
+      }
+      const captureValue = captured.value as { readonly kind?: unknown; readonly reason?: unknown };
+      if (captureValue.kind !== "accepted") {
+        failure(`controlled candidate admission failed: ${typeof captureValue.reason === "string" ? captureValue.reason : "unknown"}`);
       }
     }
     const listed = composition.tools.call("real_ming_knowledge_list_candidates", { status: "staged" });

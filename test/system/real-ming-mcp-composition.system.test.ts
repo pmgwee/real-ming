@@ -7,6 +7,7 @@ import type { TombstoneHead, TombstoneHeadStore, StagedPage } from "../../src/kn
 import { createNativeKnowledgeRegistry } from "../../src/knowledge/native-consolidation/registry.js";
 import { activateGeneration, readManifest } from "../../src/knowledge/native-consolidation/publication.js";
 import { createRealMingMcpComposition } from "../../src/config/real-ming-mcp-cli.js";
+import { sha256ContentHash } from "../../src/knowledge/native-consolidation/evidence.js";
 
 function headStore(): TombstoneHeadStore {
   let head: TombstoneHead = { epoch: 0, entries: [], complete: true, version: "v0" };
@@ -47,6 +48,28 @@ describe("production Real-Ming MCP composition", () => {
       const names = composition.tools.list().map((tool) => tool.name);
       expect(names).toContain("real_ming_wiki_retrieve");
       expect(names).toContain("real_ming_forget_wiki_knowledge");
+      const captured = await composition.tools.callAsync!("real_ming_capture_knowledge_candidate", {
+        candidate: {
+          candidateId: "composition-candidate",
+          kind: "project-artifact",
+          claimClass: "project",
+          claim: "A cited composition fixture.",
+          sourceIdentity: "fixture:composition",
+          sourceReference: "fixture:composition",
+          sourceVersion: "v1",
+          excerpt: "A cited composition fixture.",
+          contentHash: sha256ContentHash("A cited composition fixture."),
+          capturedAt: "2026-09-09T01:00:00.000Z",
+          asOf: "2026-09-09T01:00:00.000Z",
+          trustDomain: "Ming Creatives",
+          sensitivity: "normal",
+          retentionClass: "project-90d",
+          dependencies: ["composition-candidate"],
+        },
+        explicit: true,
+        marked: true,
+      });
+      expect(captured).toMatchObject({ kind: "ok", value: { kind: "accepted" } });
       const staged = await composition.tools.callAsync!("real_ming_stage_knowledge_generation", {
         run: lease,
         sourceEpoch: 0,
