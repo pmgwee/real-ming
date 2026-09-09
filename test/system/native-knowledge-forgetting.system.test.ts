@@ -475,7 +475,7 @@ describe("native knowledge forgetting and restore fencing", () => {
       });
       expect(reads).toBeGreaterThanOrEqual(2);
       expect(result.kind).toBe("needs-repair");
-      expect(result.reason).toMatch(/changed during restore/i);
+      if (result.kind === "needs-repair") expect(result.reason).toMatch(/changed during restore/i);
     });
   });
 
