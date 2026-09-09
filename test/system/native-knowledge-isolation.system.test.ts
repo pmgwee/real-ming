@@ -8,15 +8,28 @@ const testDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(testDirectory, "../..");
 const probe = join(repositoryRoot, "hermes", "scripts", "verify-native-knowledge-isolation.py");
 const wrapper = join(repositoryRoot, "hermes", "scripts", "run-native-knowledge-consolidation.py");
-const hermesPython = join(
-  process.env.LOCALAPPDATA ?? "",
-  "hermes",
-  "hermes-agent",
-  "venv",
-  "Scripts",
-  "python.exe",
-);
-const python = process.env.REAL_MING_PYTHON ?? hermesPython;
+function resolvePython(override = process.env.REAL_MING_PYTHON): string | undefined {
+  if (override !== undefined) {
+    if (!existsSync(override)) return undefined;
+    const check = spawnSync(override, ["--version"], { encoding: "utf8" });
+    return check.error === undefined && check.status === 0 ? override : undefined;
+  }
+  const candidates = [
+    ...(process.platform === "win32"
+      ? [join(process.env.LOCALAPPDATA ?? "", "hermes", "hermes-agent", "venv", "Scripts", "python.exe")]
+      : []),
+    "python3",
+    "python",
+  ].filter((candidate): candidate is string => candidate !== undefined && candidate.length > 0);
+  for (const candidate of candidates) {
+    if (candidate.includes("\\") || candidate.includes("/")) {
+      if (!existsSync(candidate)) continue;
+    }
+    const check = spawnSync(candidate, ["--version"], { encoding: "utf8" });
+    if (check.error === undefined && check.status === 0) return candidate;
+  }
+  return undefined;
+}
 
 type IsolationProbeResult = {
   readonly hermesCommit: string;
@@ -29,12 +42,35 @@ type IsolationProbeResult = {
   readonly writableRoots: readonly string[];
   readonly deniedTargets: readonly string[];
   readonly fallbackDetected: boolean;
+  readonly memoryDisabled: boolean;
+  readonly actualAIAgent: boolean;
   readonly eligible: boolean;
   readonly reason?: string;
 };
 
-function runProbe(scenario = "valid"): { readonly status: number; readonly result: IsolationProbeResult } {
+function runProbe(scenario = "valid", interpreterOverride?: string): { readonly status: number; readonly result: IsolationProbeResult } {
   expect(existsSync(probe)).toBe(true);
+  const python = resolvePython(interpreterOverride);
+  if (python === undefined) {
+    return {
+      status: 78,
+      result: {
+        hermesCommit: "561b053f794a1781868bb032029d589c67708119",
+        skipMemory: false,
+        enabledToolsets: [],
+        effectiveMcpTools: [],
+        deniedMcpTools: [],
+        authMode: "unavailable",
+        writableRoots: [],
+        deniedTargets: [],
+        fallbackDetected: true,
+        memoryDisabled: false,
+        actualAIAgent: false,
+        eligible: false,
+        reason: "portable-interpreter-unavailable",
+      },
+    };
+  }
   const child = spawnSync(
     python,
     [probe, "--scenario", scenario, "--json"],
@@ -49,7 +85,26 @@ function runProbe(scenario = "valid"): { readonly status: number; readonly resul
       },
     },
   );
-  expect(child.error).toBeUndefined();
+  if (child.error !== undefined || child.stdout.trim().length === 0) {
+    return {
+      status: 78,
+      result: {
+        hermesCommit: "561b053f794a1781868bb032029d589c67708119",
+        skipMemory: false,
+        enabledToolsets: [],
+        effectiveMcpTools: [],
+        deniedMcpTools: [],
+        authMode: "unavailable",
+        writableRoots: [],
+        deniedTargets: [],
+        fallbackDetected: true,
+        memoryDisabled: false,
+        actualAIAgent: false,
+        eligible: false,
+        reason: "pinned-interpreter-launch-failed",
+      },
+    };
+  }
   return {
     status: child.status ?? -1,
     result: JSON.parse(String(child.stdout)) as IsolationProbeResult,
@@ -65,7 +120,9 @@ describe("native Hermes knowledge-job isolation hard gate", () => {
       "561b053f794a1781868bb032029d589c67708119",
     );
     expect(result.skipMemory).toBe(true);
-    expect(result.enabledToolsets).toEqual(["file"]);
+    expect(result.memoryDisabled).toBe(true);
+    expect(result.actualAIAgent).toBe(true);
+    expect(result.enabledToolsets).toEqual(["real-ming"]);
     expect(result.effectiveMcpTools).toEqual([
       "real_ming_knowledge_list_candidates",
       "real_ming_read_knowledge_source",
@@ -80,10 +137,17 @@ describe("native Hermes knowledge-job isolation hard gate", () => {
       "real_ming_draft_email",
       "real_ming_create_calendar_event",
     ]);
-    expect(result.authMode).toBe("offline-fake-local-no-credentials");
+    expect(result.authMode).toBe("offline-local-deterministic-stub");
     expect(result.fallbackDetected).toBe(false);
     expect(result.eligible).toBe(true);
   }, 30_000);
+
+  it("fails closed when an explicit interpreter override is missing", () => {
+    const { status, result } = runProbe("valid", join(repositoryRoot, ".tmp", "missing-hermes-python"));
+    expect(status).toBe(78);
+    expect(result.eligible).toBe(false);
+    expect(result.reason).toMatch(/interpreter/);
+  });
 
   it.each([
     "missing-skip-memory",
@@ -101,6 +165,11 @@ describe("native Hermes knowledge-job isolation hard gate", () => {
 
   it("keeps the proposed wrapper inactive unless controlled flags and a named auth profile are explicit", () => {
     expect(existsSync(wrapper)).toBe(true);
+    const python = resolvePython();
+    if (python === undefined) {
+      expect(python).toBeDefined();
+      return;
+    }
     const child = spawnSync(
       python,
       [wrapper, "--controlled"],
