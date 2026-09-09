@@ -37,6 +37,8 @@ export interface NativeKnowledgeRegistry {
   recordStagedGeneration(generation: StagedGeneration): void;
   generation(generationId: string): ActiveGeneration | undefined;
   generationManifestHash(generationId: string): string | undefined;
+  /** Generations still held by an unfinished publication or repair. */
+  inProgressGenerationIds(): readonly string[];
   activateGeneration(input: ActivationRequest): ActivationResult;
   activeGeneration(): ActiveGeneration | undefined;
   appendLocalTombstone(input: {
@@ -605,6 +607,13 @@ export function createNativeKnowledgeRegistry(options: {
     generationManifestHash(generationId) {
       const row = database.prepare("SELECT manifest_hash FROM native_knowledge_generations WHERE generation_id = ?").get(generationId) as unknown as { manifest_hash: string } | undefined;
       return row?.manifest_hash;
+    },
+
+    inProgressGenerationIds() {
+      const rows = database.prepare(
+        "SELECT generation_id FROM native_knowledge_generations WHERE status IN ('staged', 'needs-repair') ORDER BY generation_id",
+      ).all() as unknown as { generation_id: string }[];
+      return rows.map((row) => row.generation_id);
     },
 
     activateGeneration(input) {

@@ -101,6 +101,22 @@ describe("native knowledge immutable publication", () => {
     });
   });
 
+  it("cleans a failed staging attempt so a partial generation cannot accumulate", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, lease }) => {
+      await expect(stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("too-large", "x".repeat(128 * 1024 + 1))],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+      })).rejects.toThrow(/page too large/i);
+      expect(readdirSync(join(generatedRoot, "generations"))).toHaveLength(0);
+      expect(readdirSync(stagingRoot)).toHaveLength(0);
+    });
+  });
+
   it("makes activation the single pointer event and carries both complete pages forward", async () => {
     await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
       const first = await stage({
@@ -222,6 +238,44 @@ describe("native knowledge immutable publication", () => {
       // A second cleanup-triggering activation must not fail because the old
       // generation was already removed.
       expect(readdirSync(join(generatedRoot, "generations"))).toHaveLength(2);
+    });
+  });
+
+  it("preserves generations recorded as in-progress while retaining newer generations", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
+      const first = await stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("in-progress-a", "first")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+      });
+      registry.recordStagedGeneration(first);
+
+      const second = await stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("in-progress-b", "second")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:01:00.000Z",
+      });
+      registry.recordStagedGeneration(second);
+
+      expect(activateGeneration({
+        registry,
+        generation: second,
+        lease,
+        activePath: generatedRoot,
+        now: "2026-09-09T02:01:01.000Z",
+        maxRetainedGenerations: 1,
+      }).kind).toBe("activated");
+
+      expect(existsSync(first.immutablePath)).toBe(true);
+      expect(existsSync(second.immutablePath)).toBe(true);
     });
   });
 });

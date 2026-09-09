@@ -294,47 +294,50 @@ export async function stageGeneration(input: StageGenerationRequest): Promise<St
   const generationId = `native-knowledge-generation-${randomUUID()}`;
   const runFolder = join(input.stagingRoot, safeSegment(input.run.runId));
   const temporaryPath = join(runFolder, `${generationId}.tmp`);
+  const immutablePath = join(generatedGenerations, generationId);
   assertNoSymlink(runFolder, input.stagingRoot, "staging run");
   mkdirSync(temporaryPath, { recursive: true });
   assertNoSymlink(temporaryPath, input.stagingRoot, "staging generation");
 
-  const metadata = [] as ReturnType<typeof pageMetadata>[];
-  let totalBytes = 0;
-  for (const page of input.pages) {
-    assertRelativePagePath(page.path);
-    const bytes = Buffer.byteLength(page.content, "utf8");
-    if (bytes > NATIVE_KNOWLEDGE_LIMITS.maxPageBytes) throw new Error(`page too large: ${page.pageId}`);
-    const destination = join(temporaryPath, page.path);
-    assertNoSymlink(destination, temporaryPath, "page path");
-    mkdirSync(dirname(destination), { recursive: true });
-    writeFileSync(destination, page.content, { encoding: "utf8", flag: "wx" });
-    flushFile(destination);
-    metadata.push(pageMetadata(page, destination));
-    totalBytes += bytes;
-  }
+  let completed = false;
+  try {
+    const metadata = [] as ReturnType<typeof pageMetadata>[];
+    let totalBytes = 0;
+    for (const page of input.pages) {
+      assertRelativePagePath(page.path);
+      const bytes = Buffer.byteLength(page.content, "utf8");
+      if (bytes > NATIVE_KNOWLEDGE_LIMITS.maxPageBytes) throw new Error(`page too large: ${page.pageId}`);
+      const destination = join(temporaryPath, page.path);
+      assertNoSymlink(destination, temporaryPath, "page path");
+      mkdirSync(dirname(destination), { recursive: true });
+      writeFileSync(destination, page.content, { encoding: "utf8", flag: "wx" });
+      flushFile(destination);
+      metadata.push(pageMetadata(page, destination));
+      totalBytes += bytes;
+    }
 
-  const indexContent = [
+    const indexContent = [
     "# Generated knowledge",
     "",
     ...metadata.map((page) => `- [${page.pageId}](${page.path})`),
     "",
   ].join("\n");
-  const logContent = [
+    const logContent = [
     `run_id: ${input.run.runId}`,
     `created_at: ${input.now}`,
     ...metadata.map((page) => `${page.pageId} ${page.disposition} ${page.sourceReference}`),
     "",
   ].join("\n");
-  const indexPath = join(temporaryPath, "index.md");
-  const logPath = join(temporaryPath, "log.md");
-  writeFileSync(indexPath, indexContent, { encoding: "utf8", flag: "wx" });
-  writeFileSync(logPath, logContent, { encoding: "utf8", flag: "wx" });
-  flushFile(indexPath);
-  flushFile(logPath);
-  totalBytes += Buffer.byteLength(indexContent) + Buffer.byteLength(logContent);
-  if (totalBytes > NATIVE_KNOWLEDGE_LIMITS.maxActiveSnapshotBytes) throw new Error("active snapshot limit exceeded");
+    const indexPath = join(temporaryPath, "index.md");
+    const logPath = join(temporaryPath, "log.md");
+    writeFileSync(indexPath, indexContent, { encoding: "utf8", flag: "wx" });
+    writeFileSync(logPath, logContent, { encoding: "utf8", flag: "wx" });
+    flushFile(indexPath);
+    flushFile(logPath);
+    totalBytes += Buffer.byteLength(indexContent) + Buffer.byteLength(logContent);
+    if (totalBytes > NATIVE_KNOWLEDGE_LIMITS.maxActiveSnapshotBytes) throw new Error("active snapshot limit exceeded");
 
-  const manifest: GenerationManifest = {
+    const manifest: GenerationManifest = {
     schema: "real-ming.native-knowledge-generation.v1",
     generationId,
     runId: input.run.runId,
@@ -348,30 +351,52 @@ export async function stageGeneration(input: StageGenerationRequest): Promise<St
     logSha256: fileHash(logPath),
     totalBytes,
   };
-  const manifestPath = join(temporaryPath, "manifest.json");
-  writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
-  flushFile(manifestPath);
-  flushDirectory(temporaryPath);
-  const projectedRootBytes = generatedRootBytes(input.generatedRoot) + directoryBytes(temporaryPath);
-  if (projectedRootBytes > maxGeneratedRootBytes) {
-    rmSync(temporaryPath, { recursive: true, force: true });
-    throw new Error("generated-root-byte-limit-exceeded");
+    const manifestPath = join(temporaryPath, "manifest.json");
+    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
+    flushFile(manifestPath);
+    flushDirectory(temporaryPath);
+    const projectedRootBytes = generatedRootBytes(input.generatedRoot) + directoryBytes(temporaryPath);
+    if (projectedRootBytes > maxGeneratedRootBytes) {
+      throw new Error("generated-root-byte-limit-exceeded");
+    }
+    if (existsSync(immutablePath)) throw new Error("generation ID collision");
+    renameSync(temporaryPath, immutablePath);
+    flushDirectory(dirname(immutablePath));
+    // The manifest is re-read after the durable rename. The filesystem is now
+    // prepared; only the registry pointer transaction can make it eligible.
+    const verified = verifyManifest(join(immutablePath, "manifest.json"));
+    if (manifestHash(verified) !== manifestHash(manifest)) throw new Error("manifest changed during installation");
+    const result = {
+      generationId,
+      runId: input.run.runId,
+      immutablePath,
+      manifest: verified,
+      manifestHash: manifestHash(verified),
+    };
+    completed = true;
+    return result;
+  } finally {
+    // A failed stage must not leave a retry-hostile temporary tree. If the
+    // immutable rename happened but verification failed, remove that
+    // uncommitted generation as well; the registry pointer is still unchanged.
+    if (!completed) {
+      try {
+        rmSync(temporaryPath, { recursive: true, force: true });
+      } catch {
+        // Preserve the original staging failure; cleanup is best effort.
+      }
+      try {
+        rmSync(immutablePath, { recursive: true, force: true });
+      } catch {
+        // Preserve the original staging failure; cleanup is best effort.
+      }
+      try {
+        if (existsSync(runFolder) && readdirSync(runFolder).length === 0) rmSync(runFolder, { recursive: true, force: true });
+      } catch {
+        // Preserve the original staging failure; cleanup is best effort.
+      }
+    }
   }
-  const immutablePath = join(generatedGenerations, generationId);
-  if (existsSync(immutablePath)) throw new Error("generation ID collision");
-  renameSync(temporaryPath, immutablePath);
-  flushDirectory(dirname(immutablePath));
-  // The manifest is re-read after the durable rename. The filesystem is now
-  // prepared; only the registry pointer transaction can make it eligible.
-  const verified = verifyManifest(join(immutablePath, "manifest.json"));
-  if (manifestHash(verified) !== manifestHash(manifest)) throw new Error("manifest changed during installation");
-  return {
-    generationId,
-    runId: input.run.runId,
-    immutablePath,
-    manifest: verified,
-    manifestHash: manifestHash(verified),
-  };
 }
 
 export function readManifest(path: string): GenerationManifest {
@@ -405,11 +430,18 @@ export function activateGeneration(input: ActivationRequest & {
   });
   if (activated.kind !== "activated") return activated;
   try {
+    // Registry-held staged/repair generations are still part of an active
+    // publication or recovery operation. They must survive retention even
+    // when the caller did not separately enumerate them.
+    const inProgress = input.registry.inProgressGenerationIds();
     cleanupRetainedGenerations({
       generatedRoot,
       activeGenerationId: activated.generationId,
       ...(input.maxRetainedGenerations === undefined ? {} : { maxRetainedGenerations: input.maxRetainedGenerations }),
-      ...(input.protectedGenerationIds === undefined ? {} : { protectedGenerationIds: input.protectedGenerationIds }),
+      protectedGenerationIds: [
+        ...inProgress,
+        ...(input.protectedGenerationIds ?? []),
+      ],
     });
   } catch (error) {
     return {
