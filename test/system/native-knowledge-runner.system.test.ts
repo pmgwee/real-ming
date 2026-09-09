@@ -298,4 +298,35 @@ describe("native knowledge bounded runner", () => {
       rmSync(fixture.directory, { recursive: true, force: true });
     }
   });
+
+  it("rejects a loader that substitutes admitted candidate identity or lineage", async () => {
+    const fixture = await workspace();
+    const admitted = candidate("lineage-bound");
+    fixture.registry.admitCandidate(admitted);
+    try {
+      const substituted = {
+        ...admitted,
+        sourceVersion: "v2",
+        dependencies: ["lineage-bound", "unadmitted-secondary"],
+      };
+      const result = await runConsolidation({
+        registry: fixture.registry,
+        isolationEligible: true,
+        operatingDate: "2026-09-09",
+        now: "2026-09-09T02:00:00.000Z",
+        generatedRoot: fixture.generatedRoot,
+        stagingRoot: fixture.stagingRoot,
+        loadCandidate: async () => substituted,
+        readSource: async (value) => sourceFor(value),
+        assessSupport: async () => "supported",
+        synthesize: async () => [],
+      });
+      expect(result.kind).toBe("failed");
+      expect(result.reason).toMatch(/candidate.*(metadata|lineage|identity).*mismatch/i);
+      expect(fixture.registry.activeGeneration()).toBeUndefined();
+    } finally {
+      fixture.registry.close();
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
 });

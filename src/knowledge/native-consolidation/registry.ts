@@ -55,6 +55,7 @@ export interface NativeKnowledgeRegistry {
   replayIndependentTombstone(input: {
     readonly tombstoneId: string;
     readonly subject: string;
+    readonly aliases?: readonly string[];
     readonly localEpoch: number;
     readonly restoredAt: string;
   }): TombstoneRecord;
@@ -78,6 +79,8 @@ interface CandidateRow {
   source_reference: string;
   source_version: string;
   content_hash: string;
+  claim_hash: string;
+  excerpt_hash: string;
   captured_at: string;
   as_of: string;
   trust_domain: NativeKnowledgeCandidate["trustDomain"];
@@ -157,6 +160,10 @@ function digest(value: unknown): string {
   return `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 }
 
+function textDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(Buffer.from(value, "utf8")).digest("hex")}`;
+}
+
 function bytes(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), "utf8");
 }
@@ -175,6 +182,8 @@ function mapCandidate(row: CandidateRow): NativeKnowledgeCandidateMetadata {
     sourceReference: row.source_reference,
     sourceVersion: row.source_version,
     contentHash: row.content_hash,
+    claimHash: row.claim_hash,
+    excerptHash: row.excerpt_hash,
     capturedAt: row.captured_at,
     asOf: row.as_of,
     trustDomain: row.trust_domain,
@@ -259,6 +268,8 @@ function ensureSchema(database: DatabaseSync): void {
       source_reference TEXT NOT NULL,
       source_version TEXT NOT NULL,
       content_hash TEXT NOT NULL,
+      claim_hash TEXT NOT NULL DEFAULT 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+      excerpt_hash TEXT NOT NULL DEFAULT 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
       captured_at TEXT NOT NULL,
       as_of TEXT NOT NULL,
       trust_domain TEXT NOT NULL,
@@ -336,6 +347,13 @@ function ensureSchema(database: DatabaseSync): void {
   if (!columns.some((column) => column.name === "source_epoch")) {
     database.exec("ALTER TABLE native_knowledge_state ADD COLUMN source_epoch INTEGER NOT NULL DEFAULT 0");
   }
+  const candidateColumns = database.prepare("PRAGMA table_info(native_knowledge_candidates)").all() as unknown as readonly { readonly name: string }[];
+  if (!candidateColumns.some((column) => column.name === "claim_hash")) {
+    database.exec("ALTER TABLE native_knowledge_candidates ADD COLUMN claim_hash TEXT NOT NULL DEFAULT 'sha256:0000000000000000000000000000000000000000000000000000000000000000'");
+  }
+  if (!candidateColumns.some((column) => column.name === "excerpt_hash")) {
+    database.exec("ALTER TABLE native_knowledge_candidates ADD COLUMN excerpt_hash TEXT NOT NULL DEFAULT 'sha256:0000000000000000000000000000000000000000000000000000000000000000'");
+  }
 }
 
 export function createNativeKnowledgeRegistry(options: {
@@ -393,6 +411,9 @@ export function createNativeKnowledgeRegistry(options: {
         sourceReference: candidate.sourceReference,
         sourceVersion: candidate.sourceVersion,
         contentHash: candidate.contentHash,
+        claimHash: textDigest(candidate.claim),
+        excerptHash: textDigest(candidate.excerpt),
+        dependencies: [...candidate.dependencies],
         asOf: candidate.asOf,
       });
       const existingByFingerprint = database
@@ -413,10 +434,10 @@ export function createNativeKnowledgeRegistry(options: {
         database.prepare(
           `INSERT INTO native_knowledge_candidates
            (candidate_id, fingerprint, kind, claim_class, source_identity,
-            source_reference, source_version, content_hash, captured_at, as_of,
+            source_reference, source_version, content_hash, claim_hash, excerpt_hash, captured_at, as_of,
             trust_domain, sensitivity, retention_class, dependencies_json,
             status, disposition, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staged', NULL, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staged', NULL, ?, ?)`,
         ).run(
           candidate.candidateId,
           fingerprint,
@@ -426,6 +447,8 @@ export function createNativeKnowledgeRegistry(options: {
           candidate.sourceReference,
           candidate.sourceVersion,
           candidate.contentHash,
+          textDigest(candidate.claim),
+          textDigest(candidate.excerpt),
           candidate.capturedAt,
           candidate.asOf,
           candidate.trustDomain,
@@ -759,7 +782,10 @@ export function createNativeKnowledgeRegistry(options: {
       try {
         const existingById = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE tombstone_id = ?").get(input.tombstoneId) as unknown as TombstoneRow | undefined;
         if (existingById !== undefined) {
-          if (existingById.subject !== input.subject || existingById.local_epoch !== input.localEpoch) {
+          const aliases = [...new Set((input.aliases ?? []).map((value) => value.trim().toLocaleLowerCase("en-US")).filter(Boolean))].sort();
+          const existingAliases = parseJson<readonly string[]>(existingById.aliases_json);
+          if (existingById.subject !== input.subject || existingById.local_epoch !== input.localEpoch ||
+            (input.aliases !== undefined && JSON.stringify(existingAliases) !== JSON.stringify(aliases))) {
             database.exec("ROLLBACK;");
             throw new Error("independent tombstone conflicts with restored local state");
           }
@@ -794,7 +820,7 @@ export function createNativeKnowledgeRegistry(options: {
         const tombstone: TombstoneRecord = {
           tombstoneId: input.tombstoneId,
           subject: input.subject,
-          aliases: [],
+          aliases: [...new Set((input.aliases ?? []).map((value) => value.trim().toLocaleLowerCase("en-US")).filter(Boolean))].sort(),
           reason: "replayed from independent tombstone head",
           localEpoch: input.localEpoch,
           status: "restore-safe",
@@ -802,7 +828,7 @@ export function createNativeKnowledgeRegistry(options: {
         };
         database.prepare(
           "INSERT INTO native_knowledge_tombstones (tombstone_id, subject, aliases_json, reason, local_epoch, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        ).run(tombstone.tombstoneId, tombstone.subject, "[]", tombstone.reason, tombstone.localEpoch, tombstone.status, tombstone.createdAt);
+        ).run(tombstone.tombstoneId, tombstone.subject, json(tombstone.aliases), tombstone.reason, tombstone.localEpoch, tombstone.status, tombstone.createdAt);
         database.prepare(
           "INSERT INTO native_knowledge_tombstone_outbox (outbox_id, tombstone_id, local_epoch, status, attempts, created_at, updated_at) VALUES (?, ?, ?, 'synced', 0, ?, ?)",
         ).run(`native-knowledge:outbox:${tombstone.tombstoneId}`, tombstone.tombstoneId, tombstone.localEpoch, tombstone.createdAt, tombstone.createdAt);

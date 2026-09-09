@@ -113,6 +113,7 @@ function localHeadStore(): TombstoneHeadStore {
           {
             tombstoneId: input.tombstone.tombstoneId,
             subject: input.tombstone.subject,
+            aliases: [...input.tombstone.aliases],
             localEpoch: input.tombstone.localEpoch,
           },
         ],

@@ -13,7 +13,7 @@ import type {
   WikiRetrieveRequest,
   WikiRetrieveResult,
 } from "./contracts.js";
-import { isFresh } from "./evidence.js";
+import { isFresh, sha256ContentHash } from "./evidence.js";
 import { isSuppressedByTombstone } from "./tombstones.js";
 import { readManifest } from "./publication.js";
 import type { NativeKnowledgeRegistry } from "./registry.js";
@@ -55,6 +55,8 @@ function metadataCandidate(page: GenerationPageMetadata): NativeKnowledgeCandida
     sourceReference: page.sourceReference,
     sourceVersion: page.asOf,
     contentHash: page.sha256,
+    claimHash: page.sha256,
+    excerptHash: page.sha256,
     capturedAt: page.capturedAt,
     asOf: page.asOf,
     trustDomain: "Personal",

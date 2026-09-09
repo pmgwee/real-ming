@@ -24,7 +24,11 @@ function entryMatches(tombstone: TombstoneRecord, id: string): boolean {
 
 function headContains(head: TombstoneHead, tombstone: TombstoneRecord): boolean {
   return head.entries.some(
-    (entry) => entry.tombstoneId === tombstone.tombstoneId && entry.subject === tombstone.subject && entry.localEpoch >= tombstone.localEpoch,
+    (entry) => entry.tombstoneId === tombstone.tombstoneId &&
+      entry.subject === tombstone.subject &&
+      entry.localEpoch >= tombstone.localEpoch &&
+      (tombstone.aliases.length === 0 ||
+        (entry.aliases !== undefined && tombstone.aliases.every((alias) => entry.aliases?.includes(alias)))),
   );
 }
 
@@ -168,6 +172,7 @@ export async function reconcileTombstonesAfterRestore(input: RestoreTombstoneReq
           input.registry.replayIndependentTombstone({
             tombstoneId: entry.tombstoneId,
             subject: entry.subject,
+            ...(entry.aliases === undefined ? {} : { aliases: entry.aliases }),
             localEpoch: entry.localEpoch,
             restoredAt: input.restoredAt ?? new Date().toISOString(),
           });
@@ -176,6 +181,7 @@ export async function reconcileTombstonesAfterRestore(input: RestoreTombstoneReq
         input.registry.replayIndependentTombstone({
           tombstoneId: entry.tombstoneId,
           subject: entry.subject,
+          ...(entry.aliases === undefined ? {} : { aliases: entry.aliases }),
           localEpoch: entry.localEpoch,
           restoredAt: input.restoredAt ?? new Date().toISOString(),
         });

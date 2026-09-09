@@ -76,6 +76,9 @@ export interface NativeKnowledgeCandidateMetadata {
   readonly sourceReference: string;
   readonly sourceVersion: string;
   readonly contentHash: string;
+  /** Hashes bind loader prose to the admitted candidate without storing prose. */
+  readonly claimHash: string;
+  readonly excerptHash: string;
   readonly capturedAt: string;
   readonly asOf: string;
   readonly trustDomain: TrustDomain;
@@ -301,7 +304,10 @@ export type ForgetResult = TombstoneRecord & {
 
 export interface TombstoneHead {
   readonly epoch: number;
-  readonly entries: readonly Pick<TombstoneRecord, "tombstoneId" | "subject" | "localEpoch">[];
+  /** Older heads may omit aliases; a current head must carry them when present. */
+  readonly entries: readonly (Pick<TombstoneRecord, "tombstoneId" | "subject" | "localEpoch"> & {
+    readonly aliases?: readonly string[];
+  })[];
   readonly complete: boolean;
   readonly version: string;
 }

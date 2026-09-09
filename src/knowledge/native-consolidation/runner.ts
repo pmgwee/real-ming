@@ -10,7 +10,7 @@ import {
   type SourceSnapshot,
   type StagedPage,
 } from "./contracts.js";
-import { verifyEvidence } from "./evidence.js";
+import { sha256ContentHash, verifyEvidence } from "./evidence.js";
 import { activateGeneration, readManifest, stageGeneration } from "./publication.js";
 import { wikiRetrieve } from "./retrieval.js";
 import { isSuppressedByTombstone } from "./tombstones.js";
@@ -79,6 +79,28 @@ function mergePages(previous: readonly StagedPage[], next: readonly StagedPage[]
   return [...merged.values()];
 }
 
+function admittedCandidateMatches(
+  admitted: ReturnType<NativeKnowledgeRegistry["candidate"]>,
+  loaded: NativeKnowledgeCandidate,
+): boolean {
+  if (admitted === undefined) return false;
+  return admitted.candidateId === loaded.candidateId &&
+    admitted.kind === loaded.kind &&
+    admitted.claimClass === loaded.claimClass &&
+    admitted.sourceIdentity === loaded.sourceIdentity &&
+    admitted.sourceReference === loaded.sourceReference &&
+    admitted.sourceVersion === loaded.sourceVersion &&
+    admitted.contentHash === loaded.contentHash &&
+    admitted.claimHash === sha256ContentHash(loaded.claim) &&
+    admitted.excerptHash === sha256ContentHash(loaded.excerpt) &&
+    JSON.stringify(admitted.dependencies) === JSON.stringify(loaded.dependencies) &&
+    admitted.capturedAt === loaded.capturedAt &&
+    admitted.asOf === loaded.asOf &&
+    admitted.trustDomain === loaded.trustDomain &&
+    admitted.sensitivity === loaded.sensitivity &&
+    admitted.retentionClass === loaded.retentionClass;
+}
+
 /** Run one bounded native-Hermes consolidation job; no provider or native-memory writes. */
 export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Promise<import("./contracts.js").ConsolidationRunResult> {
   if (!input.isolationEligible) return { kind: "ineligible", reason: "pinned Hermes isolation preflight is not eligible", retryCount: 0 };
@@ -118,6 +140,9 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       toolCalls += 1;
       if (toolCalls > NATIVE_KNOWLEDGE_LIMITS.maxToolCalls) throw new Error("tool-call limit exceeded");
       if (candidate === undefined) throw new Error(`candidate ${item.candidateId} payload unavailable`);
+      if (!admittedCandidateMatches(input.registry.candidate(item.candidateId), candidate)) {
+        throw new Error(`candidate ${item.candidateId} metadata or lineage mismatch`);
+      }
       candidates.push(candidate);
       const source = await input.readSource(candidate);
       toolCalls += 1;

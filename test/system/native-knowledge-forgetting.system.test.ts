@@ -33,6 +33,7 @@ function fakeHeadStore(options: { unavailable?: boolean } = {}): {
           entries: [...current.entries, {
             tombstoneId: input.tombstone.tombstoneId,
             subject: input.tombstone.subject,
+            aliases: [...input.tombstone.aliases],
             localEpoch: input.tombstone.localEpoch,
           }],
           complete: true,

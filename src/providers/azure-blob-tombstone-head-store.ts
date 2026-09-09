@@ -31,7 +31,8 @@ function parseHead(value: unknown, response: Response): TombstoneHead | undefine
   const entries = candidate.entries.filter((entry): entry is TombstoneHead["entries"][number] =>
     typeof entry === "object" && entry !== null &&
     typeof entry.tombstoneId === "string" && typeof entry.subject === "string" &&
-    Number.isSafeInteger(entry.localEpoch) && entry.localEpoch >= 0,
+    Number.isSafeInteger(entry.localEpoch) && entry.localEpoch >= 0 &&
+    (entry.aliases === undefined || (Array.isArray(entry.aliases) && entry.aliases.every((alias: unknown) => typeof alias === "string"))),
   );
   if (entries.length !== candidate.entries.length) return undefined;
   return { epoch, entries, complete: true, version };
@@ -106,6 +107,7 @@ export function createAzureBlobTombstoneHeadStore(options: {
         entries: [...current.head.entries, {
           tombstoneId: input.tombstone.tombstoneId,
           subject: input.tombstone.subject,
+          aliases: [...input.tombstone.aliases],
           localEpoch: input.tombstone.localEpoch,
         }],
         complete: true,
