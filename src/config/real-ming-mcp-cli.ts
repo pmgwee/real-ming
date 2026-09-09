@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -18,6 +18,7 @@ import { createNativeKnowledgeRegistry, type NativeKnowledgeRegistry } from "../
 import { stageGeneration as stageNativeGeneration } from "../knowledge/native-consolidation/publication.js";
 import { createAzureBlobTombstoneHeadStore } from "../providers/azure-blob-tombstone-head-store.js";
 import type {
+  SourceSnapshot,
   StagedPage,
   TombstoneHeadStore,
 } from "../knowledge/native-consolidation/contracts.js";
@@ -72,6 +73,47 @@ function requiredText(value: unknown, name: string): string {
   return value.trim();
 }
 
+/**
+ * Read one bounded, explicitly configured source route. The route is a local
+ * JSON adapter in the controlled build; a provider-backed deployment may
+ * replace it at the composition boundary without changing the MCP contract.
+ */
+export function createFileKnowledgeSourceReader(
+  routePath: string,
+  now: () => string = () => new Date().toISOString(),
+): NonNullable<NativeKnowledgeToolContext["readSource"]> {
+  const route = resolve(routePath);
+  return async (args) => {
+    if (!existsSync(route)) return { kind: "unavailable", reason: "configured knowledge source route is unavailable" };
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(readFileSync(route, "utf8"));
+    } catch {
+      return { kind: "unavailable", reason: "configured knowledge source route is invalid" };
+    }
+    const records = Array.isArray(parsed) ? parsed : [parsed];
+    const sourceIdentity = requiredString(args, "sourceIdentity");
+    const sourceReference = requiredString(args, "sourceReference");
+    const sourceVersion = requiredString(args, "sourceVersion");
+    const match = records.find((value): value is SourceSnapshot => {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+      const record = value as Partial<SourceSnapshot>;
+      return typeof record.sourceIdentity === "string" && record.sourceIdentity === sourceIdentity &&
+        typeof record.sourceReference === "string" && record.sourceReference === sourceReference &&
+        (sourceVersion === undefined || record.sourceVersion === sourceVersion) &&
+        typeof record.sourceVersion === "string" && typeof record.content === "string" &&
+        typeof record.contentHash === "string" && typeof record.asOf === "string";
+    });
+    if (match === undefined) return { kind: "unavailable", reason: "configured knowledge source was not found" };
+    return { ...match, retrievedAt: match.retrievedAt ?? now() };
+  };
+}
+
+function requiredString(args: Record<string, unknown>, key: string): string | undefined {
+  const value = args[key];
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
+}
+
 function parseRun(value: unknown): import("../knowledge/native-consolidation/contracts.js").RunLease {
   const record = requiredRecord(value, "run");
   return {
@@ -123,11 +165,13 @@ function knowledgeContext(options: RealMingMcpCompositionOptions, defaultNow: ()
       ? undefined
       : createAzureBlobTombstoneHeadStore({ accountName, containerName });
   })();
+  const sourceRoute = nonEmptyEnvironment("REAL_MING_NATIVE_KNOWLEDGE_SOURCE_ROUTE");
+  const readSource = options.knowledgeReadSource ?? (sourceRoute === undefined ? undefined : createFileKnowledgeSourceReader(sourceRoute, defaultNow));
   const context: NativeKnowledgeToolContext = {
     registry,
     generatedRoot: resolve(generatedRoot),
     isolationEligible: options.knowledgeIsolationEligible ?? (() => nonEmptyEnvironment("REAL_MING_NATIVE_KNOWLEDGE_ISOLATION_ELIGIBLE") === "true"),
-    ...(options.knowledgeReadSource === undefined ? {} : { readSource: options.knowledgeReadSource }),
+    ...(readSource === undefined ? {} : { readSource }),
     ...(headStore === undefined ? {} : { headStore }),
     stageGeneration: async (args) => {
       const run = parseRun(args["run"]);
@@ -186,6 +230,16 @@ export function createRealMingMcpComposition(options: RealMingMcpCompositionOpti
 
 function main(): void {
   const statePath = nonEmptyEnvironment("REAL_MING_STATE_PATH") || join(process.cwd(), "var", "state.sqlite");
+
+  const knowledgePaths = [
+    "REAL_MING_NATIVE_KNOWLEDGE_STATE_PATH",
+    "REAL_MING_NATIVE_KNOWLEDGE_GENERATED_ROOT",
+    "REAL_MING_NATIVE_KNOWLEDGE_STAGING_ROOT",
+  ];
+  const anyKnowledgePath = knowledgePaths.some((name) => nonEmptyEnvironment(name) !== undefined);
+  if (anyKnowledgePath && nonEmptyEnvironment("REAL_MING_NATIVE_KNOWLEDGE_SOURCE_ROUTE") === undefined) {
+    throw new Error("REAL_MING_NATIVE_KNOWLEDGE_SOURCE_ROUTE is required when native knowledge is configured");
+  }
 
   const nativeCronEnabled =
     (process.env["REAL_MING_NATIVE_CRON_ENABLED"] ?? "").trim().toLowerCase() ===
