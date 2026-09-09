@@ -4,7 +4,7 @@
 **Review scope:** approved Tasks 0–8 only
 **Repository:** `C:\Users\quekm\Desktop\projects\real-me`
 **Branch:** `main`
-**Task 0–8 implementation tip:** `6830032af34bc9f954913810a5e0cdcfd9c57f25`
+**Task 0–8 implementation tip:** `669355afaebae0a65a85d9712c28328b49b9db7f`
 The packet itself is an additional documentation commit; verify its exact SHA
 with `git log --follow -- docs/agents/RM-40-task0-8-review-packet-2026-09-09.md`.
 **Status:** controlled/local implementation verified; not deployed, live-accepted,
@@ -37,6 +37,7 @@ tip is `6830032af34bc9f954913810a5e0cdcfd9c57f25`.
 | Scope | Exact commit | Files changed in that commit |
 | --- | --- | --- |
 | Task 0 — pinned isolation proof | `a20979932d390c96328f57e6e7d90794ca6f486f` | `hermes/scripts/verify-native-knowledge-isolation.py`; `test/system/native-knowledge-isolation.system.test.ts`; `docs/evidence/native-knowledge-hermes-isolation-preflight-2026-09-09.md` |
+| Task 0 — suite-load test stability | `669355afaebae0a65a85d9712c28328b49b9db7f` | `test/system/native-knowledge-isolation.system.test.ts` (30-second timeout for the real OS probe; assertions and exit-code contract unchanged) |
 | Task 1 — bounded registry | `ed07a562ce18fcf5c130efc1f1d831fc8a3b8e37` | `src/knowledge/native-consolidation/contracts.ts`; `src/knowledge/native-consolidation/registry.ts`; `test/system/native-knowledge-registry.system.test.ts` |
 | Task 2 — capture/evidence | `091f18678af34d77b10849d6d70d6f9faf67e2f0`; `f448fce105451d0a8d5f2e00a42bc71f562a5d40`; `2cd7ffea31986cad9de8695423320dbe3fef219d` | `hermes/skills/ming/knowledge-capture/SKILL.md`; `hermes/skills/ming/knowledge-consolidation/SKILL.md`; `src/knowledge/native-consolidation/evidence.ts`; `test/system/native-knowledge-evidence.system.test.ts`; `test/docs/hermes-skill-pack.test.ts` |
 | Task 3 — immutable publication | `b51b15666fec79ed607660fc7e7f2b25a53ab50d` | `src/knowledge/native-consolidation/contracts.ts`; `src/knowledge/native-consolidation/publication.ts`; `test/system/native-knowledge-publication.system.test.ts` |
@@ -55,8 +56,9 @@ git diff 8bcf944ba1c231c506f29b89b6e3b89dbb6ef26b..6830032af34bc9f954913810a5e0c
 git show --stat --format=fuller <commit-sha>
 ```
 
-The aggregate range is **50 files changed, 6,814 insertions and 62
-deletions**. Both focused commits pass `git diff <parent>..<commit> --check`.
+The aggregate range through the implementation tip remains **50 files changed,
+6,814 insertions and 62 deletions**. All focused commits pass
+`git diff <parent>..<commit> --check`.
 
 ## Task 0 isolation evidence
 
@@ -181,6 +183,10 @@ review:
 6. Task 9 stale-code deletion is intentionally pending until a replacement is
    live-verified and the rollback window is closed. Superseded documents were
    relabeled and retained.
+7. The real Windows isolation subprocess occasionally exceeded Vitest's
+   default five-second test timeout only under full-suite contention. The
+   follow-up raises that test timeout to 30 seconds; it does not relax any
+   isolation assertion, callable allowlist, filesystem denial or exit code.
 
 The CEO-facing sequence is documented in the
 [activation runbook](../../CEO-Office/native-knowledge-consolidation-activation-runbook.md):
