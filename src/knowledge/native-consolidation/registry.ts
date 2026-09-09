@@ -15,6 +15,7 @@ import {
   type LeaseCheckResult,
   type LeaseClaimResult,
   type NativeKnowledgeCandidate,
+  type NativeKnowledgeConsistencyFence,
   type NativeKnowledgeCandidateMetadata,
   type NativeKnowledgeRunHealth,
   type RunLease,
@@ -62,6 +63,7 @@ export interface NativeKnowledgeRegistry {
   setTombstoneHeadEpoch(epoch: number): void;
   setRepairState(state: NativeKnowledgeRunHealth["repairState"]): void;
   runHealth(isolationEligible?: boolean): NativeKnowledgeRunHealth;
+  consistencyFence(): NativeKnowledgeConsistencyFence;
   close(): void;
 }
 
@@ -135,6 +137,7 @@ interface StateRow {
   active_generation_id: string | null;
   publication_epoch: number;
   lease_epoch: number;
+  source_epoch: number;
   tombstone_epoch: number;
   tombstone_head_epoch: number;
   repair_state: NativeKnowledgeRunHealth["repairState"];
@@ -238,6 +241,7 @@ function ensureSchema(database: DatabaseSync): void {
       active_generation_id TEXT,
       publication_epoch INTEGER NOT NULL DEFAULT 0,
       lease_epoch INTEGER NOT NULL DEFAULT 0,
+      source_epoch INTEGER NOT NULL DEFAULT 0,
       tombstone_epoch INTEGER NOT NULL DEFAULT 0,
       tombstone_head_epoch INTEGER NOT NULL DEFAULT 0,
       repair_state TEXT NOT NULL DEFAULT 'healthy'
@@ -324,6 +328,12 @@ function ensureSchema(database: DatabaseSync): void {
       FOREIGN KEY (tombstone_id) REFERENCES native_knowledge_tombstones(tombstone_id)
     );
   `);
+  // Existing RM-40 state databases predate the source fence. SQLite has no
+  // IF NOT EXISTS form for columns, so inspect before adding the migration.
+  const columns = database.prepare("PRAGMA table_info(native_knowledge_state)").all() as readonly { readonly name: string }[];
+  if (!columns.some((column) => column.name === "source_epoch")) {
+    database.exec("ALTER TABLE native_knowledge_state ADD COLUMN source_epoch INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 export function createNativeKnowledgeRegistry(options: {
@@ -423,6 +433,7 @@ export function createNativeKnowledgeRegistry(options: {
           timestamp,
           timestamp,
         );
+        database.prepare("UPDATE native_knowledge_state SET source_epoch = source_epoch + 1 WHERE id = 1").run();
         appendStatus(candidate.candidateId, null, "staged", "admitted", timestamp);
         database.exec("COMMIT;");
       } catch (error) {
@@ -822,6 +833,18 @@ export function createNativeKnowledgeRegistry(options: {
         quarantinedCount: Number(quarantined.count),
         repairState: current.repair_state,
         isolationEligible,
+      };
+    },
+
+    consistencyFence() {
+      const current = state(database);
+      return {
+        activeGenerationId: current.active_generation_id,
+        publicationEpoch: current.publication_epoch,
+        sourceEpoch: current.source_epoch,
+        tombstoneEpoch: current.tombstone_epoch,
+        tombstoneHeadEpoch: current.tombstone_head_epoch,
+        repairState: current.repair_state,
       };
     },
 

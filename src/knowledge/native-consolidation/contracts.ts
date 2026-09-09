@@ -353,6 +353,16 @@ export interface NativeKnowledgeRunHealth {
   readonly isolationEligible: boolean;
 }
 
+/** Point-in-time registry fence used by readers and publishers. */
+export interface NativeKnowledgeConsistencyFence {
+  readonly activeGenerationId: string | null;
+  readonly publicationEpoch: number;
+  readonly sourceEpoch: number;
+  readonly tombstoneEpoch: number;
+  readonly tombstoneHeadEpoch: number;
+  readonly repairState: RepairState;
+}
+
 export interface ConsolidationRunRequest {
   readonly operatingDate: string;
   readonly now: string;

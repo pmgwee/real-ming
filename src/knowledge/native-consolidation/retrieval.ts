@@ -8,6 +8,7 @@ import { join, relative, resolve, sep } from "node:path";
 
 import type {
   GenerationManifest,
+  NativeKnowledgeConsistencyFence,
   NativeKnowledgeCandidateMetadata,
   WikiRetrieveRequest,
   WikiRetrieveResult,
@@ -19,6 +20,15 @@ import type { NativeKnowledgeRegistry } from "./registry.js";
 import type { GenerationPageMetadata } from "./contracts.js";
 
 const supportedRoles = new Set(["CEO", "COO", "CTO", "CMO", "CAO", "Personal CFO"]);
+
+function sameFence(left: NativeKnowledgeConsistencyFence, right: NativeKnowledgeConsistencyFence): boolean {
+  return left.activeGenerationId === right.activeGenerationId &&
+    left.publicationEpoch === right.publicationEpoch &&
+    left.sourceEpoch === right.sourceEpoch &&
+    left.tombstoneEpoch === right.tombstoneEpoch &&
+    left.tombstoneHeadEpoch === right.tombstoneHeadEpoch &&
+    left.repairState === right.repairState;
+}
 
 function contained(root: string, target: string): boolean {
   const rootPath = resolve(root);
@@ -50,7 +60,7 @@ function metadataCandidate(page: GenerationPageMetadata): NativeKnowledgeCandida
     trustDomain: "Personal",
     sensitivity: "normal",
     retentionClass: page.claimClass === "decision" ? "decision" : page.claimClass === "project" ? "project-90d" : "research-30d",
-    dependencies: page.sourceCandidateIds,
+    dependencies: [page.pageId, page.path, page.sourceReference, ...page.sourceCandidateIds],
     status: "published",
     disposition: page.disposition,
     createdAt: page.capturedAt,
@@ -79,6 +89,7 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
   }
   const active = input.registry.activeGeneration();
   if (active === undefined) return { kind: "wiki-unavailable", reason: "no active knowledge generation" };
+  const initialFence = input.registry.consistencyFence();
   const generationsRoot = join(resolve(input.generatedRoot), "generations");
   if (!contained(generationsRoot, active.path) || !existsSync(active.path) || lstatSync(active.path).isSymbolicLink()) {
     input.registry.setRepairState("needs-repair");
@@ -113,8 +124,18 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
     if (isSuppressedByTombstone(candidate, tombstones)) continue;
     if (page.disposition !== "supported") continue;
     const freshness = isFresh({ claimClass: page.claimClass, asOf: page.asOf, now: input.now });
-    if (!freshness.fresh || !pageMatches(page, readPage(active.path, page.path), input.query)) continue;
-    const content = readPage(active.path, page.path);
+    let content: string;
+    try {
+      content = readPage(active.path, page.path);
+    } catch {
+      input.registry.setRepairState("needs-repair");
+      return { kind: "needs-repair", reason: "published page could not be read safely" };
+    }
+    if (!sameFence(initialFence, input.registry.consistencyFence())) {
+      input.registry.setRepairState("needs-repair");
+      return { kind: "needs-repair", reason: "publication or tombstone fence changed during retrieval" };
+    }
+    if (!freshness.fresh || !pageMatches(page, content, input.query)) continue;
     results.push({
       pageId: page.pageId,
       path: page.path,
@@ -129,6 +150,10 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
         uncertainty: page.uncertainty,
       },
     });
+  }
+  if (!sameFence(initialFence, input.registry.consistencyFence())) {
+    input.registry.setRepairState("needs-repair");
+    return { kind: "needs-repair", reason: "publication or tombstone fence changed before return" };
   }
   return results.length === 0 ? { kind: "not-found", reason: "no published supported page matched" } : { kind: "ok", results };
 }

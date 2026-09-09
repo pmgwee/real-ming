@@ -116,12 +116,13 @@ export async function forgetWikiKnowledge(input: ForgetRequest & {
 }
 
 export function isSuppressedByTombstone(
-  page: Pick<StagedPage, "pageId" | "path" | "sourceCandidateIds"> | Pick<NativeKnowledgeCandidateMetadata, "candidateId">,
+  page: (Pick<StagedPage, "pageId" | "path" | "sourceCandidateIds" | "sourceReference"> & { readonly dependencies?: readonly string[] })
+    | (Pick<NativeKnowledgeCandidateMetadata, "candidateId" | "dependencies" | "sourceReference">),
   tombstones: readonly TombstoneRecord[],
 ): boolean {
   const ids = "sourceCandidateIds" in page
-    ? [page.pageId, page.path, ...page.sourceCandidateIds]
-    : [page.candidateId];
+    ? [page.pageId, page.path, page.sourceReference, ...(page.dependencies ?? []), ...page.sourceCandidateIds]
+    : [page.candidateId, page.sourceReference, ...page.dependencies];
   return tombstones.some((tombstone) => ids.some((id) => entryMatches(tombstone, id)));
 }
 
