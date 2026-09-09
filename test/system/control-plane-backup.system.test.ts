@@ -12,6 +12,7 @@ import {
   verifyControlPlaneBackup,
 } from "../../src/runtime/control-plane-backup.js";
 import { createHermesSessionStore } from "../../src/hermes/hermes-session-store.js";
+import { createNativeKnowledgeRegistry } from "../../src/knowledge/native-consolidation/registry.js";
 
 const directories: string[] = [];
 
@@ -266,5 +267,55 @@ describe("control-plane recovery sets", () => {
       destinationDirectory: destination,
     })).toThrow("sha256 mismatch");
     expect(existsSync(destination)).toBe(false);
+  });
+
+  it("automatically snapshots the production tombstone outbox and restores it", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-native-outbox-backup-"));
+    directories.push(directory);
+    const statePath = join(directory, "state.sqlite");
+    const notionLedgerPath = join(directory, "notion.sqlite");
+    sqliteFile(notionLedgerPath);
+    const registry = createNativeKnowledgeRegistry({
+      statePath,
+      now: () => "2026-09-09T02:00:00.000Z",
+    });
+    try {
+      registry.appendLocalTombstone({
+        tombstoneId: "backup-tombstone",
+        subject: "backup-subject",
+        aliases: [],
+        reason: "controlled backup fixture",
+        requestedAt: "2026-09-09T02:00:00.000Z",
+      });
+    } finally {
+      registry.close();
+    }
+
+    const backup = await backupControlPlaneState({
+      statePath,
+      notionLedgerPath,
+      destinationDirectory: join(directory, "backups"),
+      backupId: "native-outbox-auto",
+      createdAt: "2026-09-09T02:01:00.000Z",
+    });
+    expect(backup.nativeKnowledgeTombstoneOutboxPath).toBe(
+      join(backup.directory, "native-knowledge", "tombstone-outbox.json"),
+    );
+    expect(backup.manifest.files).toContainEqual(expect.objectContaining({
+      role: "native-knowledge-tombstone-outbox",
+      name: "native-knowledge/tombstone-outbox.json",
+    }));
+    const snapshot = JSON.parse(readFileSync(backup.nativeKnowledgeTombstoneOutboxPath!, "utf8")) as {
+      readonly entries: readonly { readonly tombstoneId: string; readonly status: string }[];
+    };
+    expect(snapshot.entries).toEqual([expect.objectContaining({ tombstoneId: "backup-tombstone", status: "pending" })]);
+    const restored = restoreControlPlaneBackup({
+      backupDirectory: backup.directory,
+      destinationDirectory: join(directory, "restored"),
+    });
+    expect(restored.nativeKnowledgeTombstoneOutboxPath).toBe(
+      join(restored.directory, "native-knowledge", "tombstone-outbox.json"),
+    );
+    expect(readFileSync(restored.nativeKnowledgeTombstoneOutboxPath!, "utf8")).toContain("backup-tombstone");
   });
 });

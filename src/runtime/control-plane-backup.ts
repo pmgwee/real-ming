@@ -70,6 +70,37 @@ function digest(path: string): string {
 }
 
 /**
+ * The native registry keeps the full tombstone payload in its SQLite state.
+ * This sidecar is deliberately opaque: it is a durable inventory of pending
+ * propagation work, not a second memory store. A state database without the
+ * native outbox table is left unchanged for legacy control-plane backups.
+ */
+function nativeKnowledgeOutboxSnapshot(statePath: string): readonly Record<string, unknown>[] | undefined {
+  const database = new DatabaseSync(statePath, { readOnly: true });
+  try {
+    const table = database.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'native_knowledge_tombstone_outbox'",
+    ).get() as { readonly name: string } | undefined;
+    if (table === undefined) return undefined;
+    const rows = database.prepare(
+      `SELECT outbox_id, tombstone_id, local_epoch, status, attempts, created_at, updated_at
+       FROM native_knowledge_tombstone_outbox ORDER BY local_epoch, outbox_id`,
+    ).all() as readonly Record<string, unknown>[];
+    return rows.map((row) => ({
+      outboxId: row.outbox_id,
+      tombstoneId: row.tombstone_id,
+      localEpoch: row.local_epoch,
+      status: row.status,
+      attempts: row.attempts,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  } finally {
+    database.close();
+  }
+}
+
+/**
  * Durable Hermes files that are safe to copy into a recovery set. This is a
  * deliberately closed list: auth.json, .env, config, caches, logs and OAuth
  * material remain outside the backup boundary even when they live below the
@@ -536,6 +567,8 @@ export async function backupControlPlaneState(options: {
   readonly hermesNativeStateDirectory?: string;
   /** Optional native Obsidian/LLM-Wiki vault directory. */
   readonly hermesVaultPath?: string;
+  /** Optional native registry database; auto-detected from statePath when omitted. */
+  readonly nativeKnowledgeStatePath?: string;
   /** Optional opaque local tombstone sync outbox. */
   readonly nativeKnowledgeTombstoneOutboxPath?: string;
   readonly destinationDirectory: string;
@@ -587,7 +620,7 @@ export async function backupControlPlaneState(options: {
   const hermesVaultPath = options.hermesVaultPath === undefined
     ? undefined
     : join(directory, "hermes-vault");
-  const nativeKnowledgeTombstoneOutboxPath = options.nativeKnowledgeTombstoneOutboxPath === undefined
+  let nativeKnowledgeTombstoneOutboxPath = options.nativeKnowledgeTombstoneOutboxPath === undefined
     ? undefined
     : join(directory, "native-knowledge", "tombstone-outbox.json");
   const manifestPath = join(directory, "manifest.json");
@@ -640,6 +673,19 @@ export async function backupControlPlaneState(options: {
     if (nativeKnowledgeTombstoneOutboxPath !== undefined && options.nativeKnowledgeTombstoneOutboxPath !== undefined) {
       mkdirSync(dirname(nativeKnowledgeTombstoneOutboxPath), { recursive: true });
       copyFileSync(options.nativeKnowledgeTombstoneOutboxPath, nativeKnowledgeTombstoneOutboxPath);
+    }
+    if (nativeKnowledgeTombstoneOutboxPath === undefined) {
+      const nativeStatePath = options.nativeKnowledgeStatePath ?? options.statePath;
+      const snapshot = nativeKnowledgeOutboxSnapshot(nativeStatePath);
+      if (snapshot !== undefined) {
+        nativeKnowledgeTombstoneOutboxPath = join(directory, "native-knowledge", "tombstone-outbox.json");
+        mkdirSync(dirname(nativeKnowledgeTombstoneOutboxPath), { recursive: true });
+        writeFileSync(
+          nativeKnowledgeTombstoneOutboxPath,
+          `${JSON.stringify({ schema: "real-ming.native-knowledge-tombstone-outbox.v1", entries: snapshot }, null, 2)}\n`,
+          { encoding: "utf8", flag: "wx" },
+        );
+      }
     }
     const manifest: ControlPlaneBackupManifest = {
       backupId: options.backupId,
@@ -755,6 +801,7 @@ export async function backupAndUploadControlPlaneState(options: {
   readonly hermesStatePath?: string;
   readonly hermesNativeStateDirectory?: string;
   readonly hermesVaultPath?: string;
+  readonly nativeKnowledgeStatePath?: string;
   readonly nativeKnowledgeTombstoneOutboxPath?: string;
   readonly destinationDirectory: string;
   readonly backupId: string;
