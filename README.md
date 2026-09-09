@@ -1,6 +1,6 @@
 # Real-Ming
 
-A private personal-operations layer built on [Hermes Agent](https://hermes-agent.nousresearch.com/docs) that working 24/7 and hosted on Azure. Hermes is the agent runtime; Real-Ming adds the integrations, governance and coordination that one operator's personal, business, academic and financial work needs.
+A private personal-operations layer built on [Hermes Agent](https://hermes-agent.nousresearch.com/docs) that working 24/7 and hosted on Azure VM with Azure Key Vault. Hermes is the agent runtime; Real-Ming adds the integrations, governance and coordination that one operator's personal, business, academic and financial work needs.
 
 ## Architecture
 
