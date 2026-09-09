@@ -104,6 +104,63 @@ function nativeKnowledgeOutboxSnapshot(statePath: string): readonly Record<strin
 }
 
 /**
+ * Generation rows contain absolute paths because the live registry is local to
+ * its vault. A verified restore copies that vault under a new root, so rebase
+ * only the known `.real-ming/generated/generations/<id>` suffix. Any row that
+ * cannot be proven to match is left untouched and the restored registry is
+ * repair-locked rather than pointed at an inferred path.
+ */
+function rebaseNativeKnowledgeGenerationPaths(statePath: string, restoredVaultPath: string): void {
+  const database = new DatabaseSync(statePath);
+  try {
+    const table = database.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'native_knowledge_generations'",
+    ).get() as { readonly name: string } | undefined;
+    if (table === undefined) return;
+    const rows = database.prepare(
+      "SELECT generation_id, path FROM native_knowledge_generations",
+    ).all() as unknown as readonly { readonly generation_id: string; readonly path: string }[];
+    database.exec("BEGIN IMMEDIATE;");
+    try {
+      let unprovable = false;
+      for (const row of rows) {
+        const normalized = typeof row.path === "string" ? row.path.replaceAll("\\", "/") : "";
+        const match = normalized.match(/\/\.real-ming\/generated\/generations\/([^/]+)$/u);
+        if (
+          match === null ||
+          !/^[A-Za-z0-9._-]+$/u.test(row.generation_id) ||
+          match[1] !== row.generation_id
+        ) {
+          unprovable = true;
+          continue;
+        }
+        const rebased = join(
+          resolve(restoredVaultPath),
+          ".real-ming",
+          "generated",
+          "generations",
+          row.generation_id,
+        );
+        database.prepare(
+          "UPDATE native_knowledge_generations SET path = ? WHERE generation_id = ?",
+        ).run(rebased, row.generation_id);
+      }
+      if (unprovable) {
+        database.prepare(
+          "UPDATE native_knowledge_state SET repair_state = 'needs-repair' WHERE id = 1",
+        ).run();
+      }
+      database.exec("COMMIT;");
+    } catch (error) {
+      try { database.exec("ROLLBACK;"); } catch { /* already rolled back */ }
+      throw error;
+    }
+  } finally {
+    database.close();
+  }
+}
+
+/**
  * Durable Hermes files that are safe to copy into a recovery set. This is a
  * deliberately closed list: auth.json, .env, config, caches, logs and OAuth
  * material remain outside the backup boundary even when they live below the
@@ -535,6 +592,14 @@ export function restoreControlPlaneBackup(options: {
     )
       ? containedPath(directory, "native-knowledge/state.sqlite")
       : undefined;
+    const restoredVaultPath = verification.manifest.directories?.some(
+      (entry) => entry.name === "hermes-vault",
+    ) === true
+      ? containedPath(directory, "hermes-vault")
+      : undefined;
+    if (restoredNativeKnowledgeState !== undefined && restoredVaultPath !== undefined) {
+      rebaseNativeKnowledgeGenerationPaths(restoredNativeKnowledgeState, restoredVaultPath);
+    }
     const sqliteRoles = new Set([
       "operations-state",
       "notion-write-ledger",
