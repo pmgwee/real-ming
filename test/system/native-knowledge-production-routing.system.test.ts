@@ -57,4 +57,25 @@ describe("native knowledge production source routing", () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("fails closed when a source version is omitted", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-source-route-version-"));
+    const source = "version-bound source bytes\n";
+    const routePath = join(directory, "sources.json");
+    writeFileSync(routePath, JSON.stringify({
+      sourceIdentity: "project:route",
+      sourceReference: "route:source",
+      sourceVersion: "v1",
+      content: source,
+      contentHash: sha256ContentHash(source),
+      asOf: "2026-09-09T00:00:00.000Z",
+    }), "utf8");
+    try {
+      const reader = (await import("../../src/config/real-ming-mcp-cli.js")).createFileKnowledgeSourceReader(routePath);
+      await expect(reader({ sourceIdentity: "project:route", sourceReference: "route:source" }))
+        .resolves.toMatchObject({ kind: "unavailable" });
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });

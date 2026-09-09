@@ -1,5 +1,3 @@
-import { spawnSync } from "node:child_process";
-import { DatabaseSync } from "node:sqlite";
 import {
   existsSync,
   mkdirSync,
@@ -7,8 +5,8 @@ import {
   readFileSync,
   rmSync,
 } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
@@ -29,8 +27,6 @@ import {
 } from "../../src/runtime/control-plane-backup.js";
 import { sha256ContentHash } from "../../src/knowledge/native-consolidation/evidence.js";
 
-const repositoryRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
-const wrapper = join(repositoryRoot, "hermes", "scripts", "run-native-knowledge-consolidation.py");
 const candidateId = "native-knowledge-controlled-candidate";
 const sourceBytes = "Controlled native knowledge exact source bytes.\n";
 const now = "2026-09-09T02:00:00.000Z";
@@ -41,21 +37,6 @@ const permitted = [
   "real_ming_wiki_retrieve",
 ].join(",");
 
-function resolvePython(): string {
-  const candidates = [
-    process.env.LOCALAPPDATA === undefined
-      ? undefined
-      : join(process.env.LOCALAPPDATA, "hermes", "hermes-agent", "venv", "Scripts", "python.exe"),
-    "python3",
-    "python",
-  ].filter((value): value is string => value !== undefined);
-  for (const candidate of candidates) {
-    if ((candidate.includes("\\") || candidate.includes("/")) && !existsSync(candidate)) continue;
-    const result = spawnSync(candidate, ["--version"], { encoding: "utf8" });
-    if (result.error === undefined && result.status === 0) return candidate;
-  }
-  throw new Error("portable Hermes Python interpreter is unavailable");
-}
 
 function sqliteFile(path: string): void {
   const database = new DatabaseSync(path);
@@ -81,6 +62,7 @@ function localHeadStore(): { readonly store: TombstoneHeadStore; head(): Tombsto
           entries: [...current.entries, {
             tombstoneId: input.tombstone.tombstoneId,
             subject: input.tombstone.subject,
+            aliases: [...input.tombstone.aliases],
             localEpoch: input.tombstone.localEpoch,
           }],
           complete: true,
@@ -93,51 +75,47 @@ function localHeadStore(): { readonly store: TombstoneHeadStore; head(): Tombsto
 }
 
 function controlledEnvironment(directory: string): NodeJS.ProcessEnv {
-  const environment = { ...process.env };
-  for (const name of [
-    "TELEGRAM_BOT_TOKEN",
-    "NOTION_TOKEN",
-    "GOOGLE_REFRESH_TOKEN",
-    "GITHUB_TOKEN",
-    "VERCEL_TOKEN",
-    "DUITSINI_TOKEN",
-    "OPENAI_API_KEY",
-    "ANTHROPIC_API_KEY",
-    "LLM_API_KEY",
-    "ZAI_API_KEY",
-  ]) delete environment[name];
-  const python = resolvePython();
+  // Keep the offline adapter hermetic.  Do not copy the parent environment
+  // and then attempt to guess every future credential name; only inherited
+  // process primitives needed by local path resolution are retained.
+  const environment: NodeJS.ProcessEnv = {};
+  for (const name of ["PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR"]) {
+    const value = process.env[name];
+    if (value !== undefined) environment[name] = value;
+  }
   return {
     ...environment,
     HERMES_SKIP_MEMORY: "1",
+    HERMES_REQUIRED_COMMIT: "561b053f794a1781868bb032029d589c67708119",
     HERMES_MCP_TOOLS: permitted,
     HERMES_KNOWLEDGE_AUTH_PROFILE: "controlled-local-profile",
     REAL_MING_NETWORK_DISABLED: "1",
     REAL_MING_NO_CREDENTIALS: "1",
     REAL_MING_KNOWLEDGE_CONTROLLED_FIXTURE: "1",
-    REAL_MING_NATIVE_KNOWLEDGE_ISOLATION_ELIGIBLE: "true",
     REAL_MING_NATIVE_KNOWLEDGE_STATE_PATH: join(directory, "native-knowledge.sqlite"),
     REAL_MING_NATIVE_KNOWLEDGE_GENERATED_ROOT: join(directory, "vault", ".real-ming", "generated"),
     REAL_MING_NATIVE_KNOWLEDGE_STAGING_ROOT: join(directory, "vault", ".real-ming", "staging"),
     REAL_MING_STATE_PATH: join(directory, "operations.sqlite"),
     REAL_MING_KNOWLEDGE_NOW: now,
-    REAL_MING_PYTHON: python,
     HERMES_HOME: join(directory, "interactive-home"),
   };
 }
 
-function runWrapper(directory: string): { readonly status: number | null; readonly payload: Record<string, unknown> } {
-  const result = spawnSync(resolvePython(), [wrapper, "--controlled"], {
-    cwd: repositoryRoot,
-    encoding: "utf8",
-    env: controlledEnvironment(directory),
-    timeout: 120_000,
-  });
-  if (result.error !== undefined) throw result.error;
-  return {
-    status: result.status,
-    payload: JSON.parse(String(result.stdout)) as Record<string, unknown>,
-  };
+async function runOfflineFixture(directory: string): Promise<Record<string, unknown>> {
+  const previousEnvironment = { ...process.env };
+  const previousArguments = [...process.argv];
+  Object.assign(process.env, controlledEnvironment(directory));
+  process.argv = [...previousArguments, "--controlled"];
+  try {
+    const module = await import("../../src/config/native-knowledge-consolidation-cli.js");
+    return await module.runControlledNativeKnowledgeConsolidation();
+  } finally {
+    process.argv = previousArguments;
+    for (const name of Object.keys(process.env)) {
+      if (!(name in previousEnvironment)) delete process.env[name];
+    }
+    Object.assign(process.env, previousEnvironment);
+  }
 }
 
 function composition(
@@ -152,13 +130,12 @@ function composition(
     knowledgeStagingRoot: join(directory, "vault", ".real-ming", "staging"),
     knowledgeRegistry: registry,
     knowledgeHeadStore: headStore,
-    knowledgeIsolationEligible: () => true,
     now: () => now,
   });
 }
 
-describe("native knowledge production-path controlled acceptance", () => {
-  it("runs the wrapper, publishes through MCP, forgets atomically, and restores without resurrection", async () => {
+describe("native knowledge offline controlled acceptance", () => {
+  it("runs the explicitly named offline adapter through production MCP, forgets atomically, and restores without resurrection", async () => {
     const directory = mkdtempSync(join(tmpdir(), "real-ming-native-production-acceptance-"));
     const statePath = join(directory, "native-knowledge.sqlite");
     const generatedRoot = join(directory, "vault", ".real-ming", "generated");
@@ -168,14 +145,8 @@ describe("native knowledge production-path controlled acceptance", () => {
     let registry: NativeKnowledgeRegistry | undefined;
     let activeComposition: ReturnType<typeof composition> | undefined;
     try {
-      const wrapperRun = runWrapper(directory);
-      expect(wrapperRun.status).toBe(0);
-      expect(wrapperRun.payload).toMatchObject({
-        eligible: true,
-        executed: true,
-        activated: true,
-        pinnedCommit: "561b053f794a1781868bb032029d589c67708119",
-      });
+      const offlineRun = await runOfflineFixture(directory);
+      expect(offlineRun).toMatchObject({ eligible: true, executed: true, activated: true, runtime: "offline-fixture" });
 
       registry = createNativeKnowledgeRegistry({ statePath, now: () => now });
       const metadata = registry.candidate(candidateId);

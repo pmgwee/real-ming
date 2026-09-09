@@ -377,7 +377,7 @@ export function createRealMingTools(options: {
                 sourceReference: { type: "string" },
                 sourceVersion: { type: "string" },
               },
-              required: ["sourceIdentity", "sourceReference"],
+              required: ["sourceIdentity", "sourceReference", "sourceVersion"],
             },
           } satisfies RealMingToolDefinition,
           {
@@ -911,7 +911,8 @@ export function createRealMingTools(options: {
     if (knowledge?.readSource === undefined) return { kind: "failed", reason: "No bounded knowledge source route is configured." };
     const sourceIdentity = requiredString(args, "sourceIdentity");
     const sourceReference = requiredString(args, "sourceReference");
-    if (sourceIdentity === undefined || sourceReference === undefined) return { kind: "failed", reason: "sourceIdentity and sourceReference are required." };
+    const sourceVersion = requiredString(args, "sourceVersion");
+    if (sourceIdentity === undefined || sourceReference === undefined || sourceVersion === undefined) return { kind: "failed", reason: "sourceIdentity, sourceReference and sourceVersion are required." };
     const result = await knowledge.readSource(args);
     return "kind" in result && result.kind === "unavailable"
       ? { kind: "failed", reason: result.reason }
@@ -920,7 +921,14 @@ export function createRealMingTools(options: {
 
   const stageKnowledge = async (args: Record<string, unknown>): Promise<RealMingToolResult> => {
     if (knowledge?.stageGeneration === undefined) return { kind: "failed", reason: "Native knowledge staging is not enabled." };
-    return { kind: "ok", value: await knowledge.stageGeneration(args) };
+    try {
+      return { kind: "ok", value: await knowledge.stageGeneration(args) };
+    } catch (error) {
+      // Validation and filesystem failures are tool results, not dropped MCP
+      // responses. Keep the boundary deterministic and bounded for both the
+      // direct composition seam and the stdio handler.
+      return { kind: "failed", reason: error instanceof Error ? error.message.slice(0, 240) : "Native knowledge staging failed." };
+    }
   };
 
   const retrieveKnowledge = (args: Record<string, unknown>): RealMingToolResult => {
@@ -971,12 +979,16 @@ export function createRealMingTools(options: {
       requestedAt,
       ...(aliases === undefined ? {} : { aliases }),
     };
-    const result: ForgetResult = await forgetWikiKnowledge({
-      ...request,
-      registry: knowledge.registry,
-      headStore: knowledge.headStore,
-    });
-    return { kind: "ok", value: result };
+    try {
+      const result: ForgetResult = await forgetWikiKnowledge({
+        ...request,
+        registry: knowledge.registry,
+        headStore: knowledge.headStore,
+      });
+      return { kind: "ok", value: result };
+    } catch (error) {
+      return { kind: "failed", reason: error instanceof Error ? error.message.slice(0, 240) : "Native knowledge forgetting failed." };
+    }
   };
 
   const tools: RealMingTools = {

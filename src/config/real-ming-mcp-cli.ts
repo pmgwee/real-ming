@@ -18,6 +18,7 @@ import { createNativeKnowledgeRegistry, type NativeKnowledgeRegistry } from "../
 import { stageGeneration as stageNativeGeneration } from "../knowledge/native-consolidation/publication.js";
 import { createAzureBlobTombstoneHeadStore } from "../providers/azure-blob-tombstone-head-store.js";
 import type {
+  NativeKnowledgeCandidate,
   SourceSnapshot,
   StagedPage,
   TombstoneHeadStore,
@@ -68,6 +69,8 @@ export interface RealMingMcpCompositionOptions {
   readonly knowledgeStagingRoot?: string;
   readonly knowledgeRegistry?: NativeKnowledgeRegistry;
   readonly knowledgeHeadStore?: TombstoneHeadStore;
+  /** Candidates admitted by the configured production route at startup. */
+  readonly knowledgeCandidates?: readonly NativeKnowledgeCandidate[];
   readonly knowledgeReadSource?: NativeKnowledgeToolContext["readSource"];
   readonly knowledgeIsolationEligible?: () => boolean;
   readonly scheduledReports?: import("../integration/native-cron-client.js").NativeCronReportClient;
@@ -119,6 +122,9 @@ export function createFileKnowledgeSourceReader(
     const sourceIdentity = requiredString(args, "sourceIdentity");
     const sourceReference = requiredString(args, "sourceReference");
     const sourceVersion = requiredString(args, "sourceVersion");
+    if (sourceIdentity === undefined || sourceReference === undefined || sourceVersion === undefined) {
+      return { kind: "unavailable", reason: "sourceIdentity, sourceReference and sourceVersion are required" };
+    }
     const match = records.find((value): value is SourceSnapshot => {
       if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
       const record = value as Partial<SourceSnapshot>;
@@ -138,6 +144,32 @@ function requiredString(args: Record<string, unknown>, key: string): string | un
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
+function configuredKnowledgeCandidates(): readonly NativeKnowledgeCandidate[] | undefined {
+  const route = nonEmptyEnvironment("REAL_MING_NATIVE_KNOWLEDGE_CANDIDATES_ROUTE");
+  if (route === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(readFileSync(resolve(route), "utf8"));
+  } catch {
+    throw new Error("REAL_MING_NATIVE_KNOWLEDGE_CANDIDATES_ROUTE is unavailable or invalid");
+  }
+  const values = Array.isArray(parsed)
+    ? parsed
+    : typeof parsed === "object" && parsed !== null && Array.isArray((parsed as Record<string, unknown>)["candidates"])
+      ? (parsed as Record<string, unknown>)["candidates"] as unknown[]
+      : undefined;
+  if (values === undefined) throw new Error("configured knowledge candidates must be an array");
+  return values.map((value, index) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error(`configured knowledge candidate ${index} is invalid`);
+    const candidate = value as Partial<NativeKnowledgeCandidate>;
+    const required = ["candidateId", "kind", "claimClass", "claim", "sourceIdentity", "sourceReference", "sourceVersion", "excerpt", "contentHash", "capturedAt", "asOf", "trustDomain", "sensitivity", "retentionClass"] as const;
+    if (!required.every((key) => typeof candidate[key] === "string" && candidate[key]!.trim().length > 0) || !Array.isArray(candidate.dependencies) || !candidate.dependencies.every((item) => typeof item === "string" && item.trim().length > 0)) {
+      throw new Error(`configured knowledge candidate ${index} is missing required fields`);
+    }
+    return candidate as NativeKnowledgeCandidate;
+  });
+}
+
 function parseRun(value: unknown): import("../knowledge/native-consolidation/contracts.js").RunLease {
   const record = requiredRecord(value, "run");
   return {
@@ -152,18 +184,23 @@ function parseRun(value: unknown): import("../knowledge/native-consolidation/con
 function parsePage(value: unknown): StagedPage {
   const record = requiredRecord(value, "page");
   const sourceCandidateIds = record["sourceCandidateIds"];
-  if (!Array.isArray(sourceCandidateIds) || !sourceCandidateIds.every((item) => typeof item === "string" && item.trim().length > 0)) {
+  if (!Array.isArray(sourceCandidateIds) || sourceCandidateIds.length === 0 || !sourceCandidateIds.every((item) => typeof item === "string" && item.trim().length > 0)) {
     throw new Error("page.sourceCandidateIds must be a non-empty string array");
   }
   const disposition = requiredText(record["disposition"], "page.disposition") as StagedPage["disposition"];
   if (!["supported", "unsupported", "conflicting", "unavailable", "stale", "quarantined"].includes(disposition)) throw new Error("page.disposition is invalid");
   const uncertainty = requiredText(record["uncertainty"], "page.uncertainty") as StagedPage["uncertainty"];
   if (uncertainty !== "none" && uncertainty !== "uncertain") throw new Error("page.uncertainty is invalid");
+  const dependenciesRaw = record["dependencies"];
+  if (dependenciesRaw !== undefined && (!Array.isArray(dependenciesRaw) || !dependenciesRaw.every((item) => typeof item === "string" && item.trim().length > 0))) {
+    throw new Error("page.dependencies must be a string array when supplied");
+  }
   return {
     pageId: requiredText(record["pageId"], "page.pageId"),
     path: requiredText(record["path"], "page.path"),
     content: typeof record["content"] === "string" ? record["content"] : (() => { throw new Error("page.content is required"); })(),
     sourceCandidateIds,
+    ...(dependenciesRaw === undefined ? {} : { dependencies: (dependenciesRaw as string[]).map((item) => item.trim()) }),
     claimClass: requiredText(record["claimClass"], "page.claimClass") as StagedPage["claimClass"],
     sourceReference: requiredText(record["sourceReference"], "page.sourceReference"),
     capturedAt: requiredText(record["capturedAt"], "page.capturedAt"),
@@ -210,6 +247,15 @@ function knowledgeContext(options: RealMingMcpCompositionOptions, defaultNow: ()
       return { generationId: staged.generationId, manifestHash: staged.manifestHash, immutablePath: staged.immutablePath, activated: false };
     },
   };
+  // The production candidate route is an explicit, bounded admission input.
+  // Admission remains the registry's own production operation; this avoids
+  // granting the isolated Hermes job the separate capture mutation while
+  // ensuring list_candidates returns only candidates actually admitted in
+  // this state database. Re-running is idempotent via admitCandidate().
+  for (const candidate of options.knowledgeCandidates ?? []) {
+    const admitted = registry.admitCandidate(candidate);
+    if (admitted.kind === "denied") throw new Error(`configured knowledge candidate was rejected: ${admitted.reason}`);
+  }
   return {
     context,
     ...(options.knowledgeRegistry === undefined ? { close: () => registry.close() } : {}),
@@ -290,6 +336,7 @@ function main(): void {
     .split(",")
     .map((mailbox) => mailbox.trim())
     .filter((mailbox) => mailbox.length > 0);
+  const configuredCandidates = configuredKnowledgeCandidates();
   const bridged =
     bridgeKey === undefined || bridgeKey.length === 0
       ? undefined
@@ -297,6 +344,7 @@ function main(): void {
 
   const composition = createRealMingMcpComposition({
     statePath,
+    ...(configuredCandidates === undefined ? {} : { knowledgeCandidates: configuredCandidates }),
     ...(scheduledReports === undefined ? {} : { scheduledReports }),
     ...(bridged === undefined || calendarId === undefined
         ? {}

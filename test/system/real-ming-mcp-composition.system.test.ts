@@ -17,7 +17,7 @@ function headStore(): TombstoneHeadStore {
       if (input.expectedVersion !== head.version) return { kind: "conflict", head } as const;
       head = {
         epoch: head.epoch + 1,
-        entries: [...head.entries, { tombstoneId: input.tombstone.tombstoneId, subject: input.tombstone.subject, localEpoch: input.tombstone.localEpoch }],
+        entries: [...head.entries, { tombstoneId: input.tombstone.tombstoneId, subject: input.tombstone.subject, aliases: [...input.tombstone.aliases], localEpoch: input.tombstone.localEpoch }],
         complete: true,
         version: `v${head.epoch + 1}`,
       };
@@ -71,6 +71,25 @@ describe("production Real-Ming MCP composition", () => {
       const names = composition.tools.list().map((tool) => tool.name);
       expect(names).toContain("real_ming_wiki_retrieve");
       expect(names).toContain("real_ming_forget_wiki_knowledge");
+      const emptyLineage = await composition.tools.callAsync!("real_ming_stage_knowledge_generation", {
+        run: lease,
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+        pages: [{
+          pageId: "empty-lineage",
+          path: "pages/empty-lineage.md",
+          content: "# Invalid",
+          sourceCandidateIds: [],
+          claimClass: "project",
+          sourceReference: "fixture:composition",
+          capturedAt: "2026-09-09T01:00:00.000Z",
+          asOf: "2026-09-09T01:00:00.000Z",
+          disposition: "supported",
+          uncertainty: "none",
+        }],
+      });
+      expect(emptyLineage).toMatchObject({ kind: "failed" });
       const captured = await composition.tools.callAsync!("real_ming_capture_knowledge_candidate", {
         candidate: {
           candidateId: "composition-candidate",
