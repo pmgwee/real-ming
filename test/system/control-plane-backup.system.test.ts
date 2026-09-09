@@ -318,4 +318,61 @@ describe("control-plane recovery sets", () => {
     );
     expect(readFileSync(restored.nativeKnowledgeTombstoneOutboxPath!, "utf8")).toContain("backup-tombstone");
   });
+
+  it("backs up a separate native registry database with its outbox for forgetting recovery", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-native-registry-backup-"));
+    directories.push(directory);
+    const statePath = join(directory, "state.sqlite");
+    const notionLedgerPath = join(directory, "notion.sqlite");
+    const nativeKnowledgeStatePath = join(directory, "native-knowledge.sqlite");
+    sqliteFile(statePath);
+    sqliteFile(notionLedgerPath);
+    const registry = createNativeKnowledgeRegistry({
+      statePath: nativeKnowledgeStatePath,
+      now: () => "2026-09-09T02:00:00.000Z",
+    });
+    try {
+      registry.appendLocalTombstone({
+        tombstoneId: "separate-registry-tombstone",
+        subject: "separate-registry-subject",
+        aliases: [],
+        reason: "controlled separate-state fixture",
+        requestedAt: "2026-09-09T02:00:00.000Z",
+      });
+    } finally {
+      registry.close();
+    }
+    const backup = await backupControlPlaneState({
+      statePath,
+      notionLedgerPath,
+      nativeKnowledgeStatePath,
+      destinationDirectory: join(directory, "backups"),
+      backupId: "native-registry-state",
+      createdAt: "2026-09-09T02:01:00.000Z",
+    });
+    expect(backup.nativeKnowledgeStatePath).toBe(
+      join(backup.directory, "native-knowledge", "state.sqlite"),
+    );
+    expect(backup.manifest.files).toContainEqual(expect.objectContaining({
+      role: "native-knowledge-state",
+      name: "native-knowledge/state.sqlite",
+    }));
+    const restored = restoreControlPlaneBackup({
+      backupDirectory: backup.directory,
+      destinationDirectory: join(directory, "restored"),
+    });
+    expect(restored.nativeKnowledgeStatePath).toBe(
+      join(restored.directory, "native-knowledge", "state.sqlite"),
+    );
+    const reopened = createNativeKnowledgeRegistry({
+      statePath: restored.nativeKnowledgeStatePath!,
+      now: () => "2026-09-09T02:02:00.000Z",
+    });
+    try {
+      expect(reopened.tombstones()).toMatchObject([{ tombstoneId: "separate-registry-tombstone" }]);
+      expect(reopened.tombstoneOutbox()).toMatchObject([{ tombstoneId: "separate-registry-tombstone" }]);
+    } finally {
+      reopened.close();
+    }
+  });
 });
