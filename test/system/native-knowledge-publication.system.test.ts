@@ -10,6 +10,7 @@ import {
 import type { RunLease, StagedPage } from "../../src/knowledge/native-consolidation/contracts.js";
 import {
   activateGeneration,
+  generatedRootBytes,
   readManifest,
   reconcileGenerations,
   stageGeneration,
@@ -133,6 +134,94 @@ describe("native knowledge immutable publication", () => {
       expect(result.kind).toBe("healthy");
       expect(result.quarantined).toContain("orphan");
       expect(registry.activeGeneration()).toBeUndefined();
+    });
+  });
+
+  it("rejects a one-byte-over generated-root budget without installing a generation", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
+      await expect(stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("budget", "budgeted content")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+        maxGeneratedRootBytes: 1,
+      })).rejects.toThrow(/generated-root-byte-limit/i);
+      expect(readdirSync(join(generatedRoot, "generations"))).toHaveLength(0);
+      expect(registry.activeGeneration()).toBeUndefined();
+    });
+  });
+
+  it("accepts a generation exactly at the configured generated-root byte limit", async () => {
+    await withWorkspace(async ({ directory, generatedRoot, stagingRoot, registry, lease }) => {
+      const scratchGenerated = join(directory, "scratch", "generated");
+      const scratchStaging = join(directory, "scratch", "staging");
+      mkdirSync(scratchGenerated, { recursive: true });
+      mkdirSync(scratchStaging, { recursive: true });
+      const scratch = await stage({
+        run: lease,
+        generatedRoot: scratchGenerated,
+        stagingRoot: scratchStaging,
+        pages: [page("exact", "exactly bounded")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+        maxGeneratedRootBytes: 64 * 1024,
+      });
+      const exactBudget = generatedRootBytes(scratchGenerated);
+      rmSync(scratch.immutablePath, { recursive: true, force: true });
+      const actual = await stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("exact", "exactly bounded")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+        maxGeneratedRootBytes: exactBudget,
+      });
+      expect(generatedRootBytes(generatedRoot)).toBe(exactBudget);
+      registry.recordStagedGeneration(actual);
+    });
+  });
+
+  it("retains the active and protected rollback generations and is idempotent", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
+      const installed: string[] = [];
+      for (const id of ["one", "two", "three", "four"]) {
+        const staged = await stage({
+          run: lease,
+          generatedRoot,
+          stagingRoot,
+          pages: [page(id, `content ${id}`)],
+          sourceEpoch: 0,
+          tombstoneEpoch: 0,
+          now: `2026-09-09T02:00:0${installed.length}.000Z`,
+        });
+        registry.recordStagedGeneration(staged);
+        const activated = activateGeneration({
+          registry,
+          generation: staged,
+          lease,
+          activePath: generatedRoot,
+          now: `2026-09-09T02:00:1${installed.length}.000Z`,
+          maxRetainedGenerations: 2,
+          protectedGenerationIds: installed.slice(0, 1),
+        });
+        expect(activated.kind).toBe("activated");
+        installed.push(staged.generationId);
+      }
+      const directories = readdirSync(join(generatedRoot, "generations"));
+      expect(directories).toHaveLength(2);
+      const active = registry.activeGeneration();
+      expect(active).toBeDefined();
+      expect(directories).toContain(active?.generationId);
+      expect(directories).toContain(installed[0]);
+      // A second cleanup-triggering activation must not fail because the old
+      // generation was already removed.
+      expect(readdirSync(join(generatedRoot, "generations"))).toHaveLength(2);
     });
   });
 });

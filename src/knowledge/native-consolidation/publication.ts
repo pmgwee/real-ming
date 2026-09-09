@@ -11,6 +11,7 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  rmSync,
   renameSync,
   statSync,
   writeFileSync,
@@ -52,6 +53,106 @@ function assertRegularDirectory(path: string, label: string): void {
   if (entry.isSymbolicLink() || !entry.isDirectory()) {
     throw new Error(`${label} must be a regular directory`);
   }
+}
+
+function boundedPositiveLimit(value: number | undefined, fallback: number, maximum: number, label: string): number {
+  const limit = value ?? fallback;
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > maximum) {
+    throw new Error(`${label} must be a positive integer no greater than ${maximum}`);
+  }
+  return limit;
+}
+
+function directoryBytes(path: string): number {
+  let total = 0;
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    const child = join(path, entry.name);
+    if (entry.isSymbolicLink()) throw new Error(`directory contains a symlink: ${child}`);
+    if (entry.isDirectory()) {
+      total += directoryBytes(child);
+      continue;
+    }
+    if (!entry.isFile()) throw new Error(`directory contains a non-regular entry: ${child}`);
+    total += statSync(child).size;
+  }
+  return total;
+}
+
+/** Return bytes occupied by the generated root, rejecting symlink escapes. */
+export function generatedRootBytes(root: string): number {
+  assertRegularDirectory(root, "generated root");
+  assertNoSymlink(root, root, "generated root");
+  return directoryBytes(root);
+}
+
+export interface RetainedGenerationCleanupResult {
+  readonly removedGenerationIds: readonly string[];
+  readonly retainedGenerationIds: readonly string[];
+  readonly bytes: number;
+}
+
+/**
+ * Delete only valid, superseded generations outside the retention set. Active,
+ * protected and malformed/incomplete directories are always left untouched.
+ * Re-running after an interrupted cleanup is safe because missing candidates
+ * are simply skipped.
+ */
+export function cleanupRetainedGenerations(input: {
+  readonly generatedRoot: string;
+  readonly activeGenerationId?: string | null;
+  readonly maxRetainedGenerations?: number;
+  readonly protectedGenerationIds?: readonly string[];
+}): RetainedGenerationCleanupResult {
+  const root = resolve(input.generatedRoot);
+  const generationsRoot = join(root, "generations");
+  assertRegularDirectory(root, "generated root");
+  assertRegularDirectory(generationsRoot, "generated generations root");
+  const maxRetained = boundedPositiveLimit(
+    input.maxRetainedGenerations,
+    NATIVE_KNOWLEDGE_LIMITS.maxRetainedGenerations,
+    NATIVE_KNOWLEDGE_LIMITS.maxRetainedGenerations,
+    "maxRetainedGenerations",
+  );
+  const protectedIds = new Set(input.protectedGenerationIds ?? []);
+  if (input.activeGenerationId !== undefined && input.activeGenerationId !== null) {
+    protectedIds.add(input.activeGenerationId);
+  }
+  const valid: { readonly id: string; readonly path: string; readonly createdAt: string }[] = [];
+  for (const entry of readdirSync(generationsRoot, { withFileTypes: true })) {
+    const path = join(generationsRoot, entry.name);
+    if (entry.isSymbolicLink() || !entry.isDirectory() || entry.name.includes(".")) continue;
+    assertNoSymlink(path, generationsRoot, "generation directory");
+    try {
+      const manifest = readManifest(join(path, "manifest.json"));
+      if (!Number.isFinite(Date.parse(manifest.createdAt))) continue;
+      valid.push({ id: manifest.generationId, path, createdAt: manifest.createdAt });
+    } catch {
+      // Malformed, partial and quarantined generations are evidence for
+      // reconciliation, not retention candidates. Never delete them here.
+    }
+  }
+  valid.sort((left, right) => {
+    const byDate = Date.parse(right.createdAt) - Date.parse(left.createdAt);
+    return byDate !== 0 ? byDate : right.id.localeCompare(left.id);
+  });
+  const keep = new Set(protectedIds);
+  for (const generation of valid) {
+    if (keep.has(generation.id)) continue;
+    if (keep.size >= maxRetained) break;
+    keep.add(generation.id);
+  }
+  const removed: string[] = [];
+  for (const generation of valid) {
+    if (keep.has(generation.id)) continue;
+    if (!existsSync(generation.path)) continue;
+    rmSync(generation.path, { recursive: true, force: false });
+    removed.push(generation.id);
+  }
+  return {
+    removedGenerationIds: removed,
+    retainedGenerationIds: valid.filter((generation) => keep.has(generation.id)).map((generation) => generation.id),
+    bytes: generatedRootBytes(root),
+  };
 }
 
 function assertNoSymlink(path: string, root: string, label: string): void {
@@ -176,6 +277,12 @@ function verifyManifest(manifestPath: string): GenerationManifest {
 export async function stageGeneration(input: StageGenerationRequest): Promise<StagedGeneration> {
   assertRegularDirectory(input.generatedRoot, "generated root");
   assertRegularDirectory(input.stagingRoot, "staging root");
+  const maxGeneratedRootBytes = boundedPositiveLimit(
+    input.maxGeneratedRootBytes,
+    NATIVE_KNOWLEDGE_LIMITS.maxGeneratedRootBytes,
+    NATIVE_KNOWLEDGE_LIMITS.maxGeneratedRootBytes,
+    "maxGeneratedRootBytes",
+  );
   const generatedGenerations = join(input.generatedRoot, "generations");
   assertRegularDirectory(generatedGenerations, "generated generations root");
   if (statSync(input.generatedRoot).dev !== statSync(input.stagingRoot).dev) {
@@ -245,6 +352,11 @@ export async function stageGeneration(input: StageGenerationRequest): Promise<St
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n", { encoding: "utf8", flag: "wx" });
   flushFile(manifestPath);
   flushDirectory(temporaryPath);
+  const projectedRootBytes = generatedRootBytes(input.generatedRoot) + directoryBytes(temporaryPath);
+  if (projectedRootBytes > maxGeneratedRootBytes) {
+    rmSync(temporaryPath, { recursive: true, force: true });
+    throw new Error("generated-root-byte-limit-exceeded");
+  }
   const immutablePath = join(generatedGenerations, generationId);
   if (existsSync(immutablePath)) throw new Error("generation ID collision");
   renameSync(temporaryPath, immutablePath);
@@ -287,10 +399,25 @@ export function activateGeneration(input: ActivationRequest & {
   ) {
     return { kind: "invalid", reason: "generation manifest identity mismatch" };
   }
-  return input.registry.activateGeneration({
+  const activated = input.registry.activateGeneration({
     ...input,
     generation: { ...input.generation, manifest },
   });
+  if (activated.kind !== "activated") return activated;
+  try {
+    cleanupRetainedGenerations({
+      generatedRoot,
+      activeGenerationId: activated.generationId,
+      ...(input.maxRetainedGenerations === undefined ? {} : { maxRetainedGenerations: input.maxRetainedGenerations }),
+      ...(input.protectedGenerationIds === undefined ? {} : { protectedGenerationIds: input.protectedGenerationIds }),
+    });
+  } catch (error) {
+    return {
+      kind: "invalid",
+      reason: `retention-cleanup-failed:${error instanceof Error ? error.message : "unknown error"}`,
+    };
+  }
+  return activated;
 }
 
 export function reconcileGenerations(input: ReconcileRequest & {

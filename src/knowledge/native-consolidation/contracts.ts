@@ -170,6 +170,8 @@ export interface StageGenerationRequest {
   readonly sourceEpoch: number;
   readonly tombstoneEpoch: number;
   readonly now: string;
+  /** Optional lower test/deployment budget; production defaults are bounded. */
+  readonly maxGeneratedRootBytes?: number;
 }
 
 export interface ActivationRequest {
@@ -181,6 +183,10 @@ export interface ActivationRequest {
   readonly expectedActiveGenerationId?: string | null;
   readonly expectedSourceEpoch?: number;
   readonly expectedTombstoneEpoch?: number;
+  /** Optional retention bound; production defaults to the first-slice limit. */
+  readonly maxRetainedGenerations?: number;
+  /** Generations held by an in-progress recovery/publication operation. */
+  readonly protectedGenerationIds?: readonly string[];
 }
 
 export interface ReconcileRequest {
