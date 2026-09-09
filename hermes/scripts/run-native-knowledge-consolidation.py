@@ -2,18 +2,21 @@
 """Fail-closed launcher for the bounded native knowledge consolidation job.
 
 The wrapper is intentionally a small process boundary. It proves the exact
-pinned Hermes isolation contract first, then invokes the compiled production
-consolidation entry point. It never enables recurrence, contacts a provider or
-inherits interactive credentials. ``--controlled`` is the only supported mode
+pinned Hermes isolation contract first, then invokes the Hermes-driven job
+entry point. It never enables recurrence, contacts a provider or inherits
+interactive credentials. ``--controlled`` is an offline/local invocation
 until a separately approved one-shot deployment supplies an equivalent
 integration.
 """
 
 from __future__ import annotations
 
+import atexit
 import json
 import os
+import shutil
 import subprocess
+import tempfile
 import sys
 from pathlib import Path
 
@@ -24,22 +27,41 @@ PERMITTED = (
     "real_ming_stage_knowledge_generation",
     "real_ming_wiki_retrieve",
 )
-KNOWN_CREDENTIAL_NAMES = (
-    "TELEGRAM_BOT_TOKEN",
-    "NOTION_TOKEN",
-    "GOOGLE_REFRESH_TOKEN",
-    "GITHUB_TOKEN",
-    "VERCEL_TOKEN",
-    "DUITSINI_TOKEN",
-    "OPENAI_API_KEY",
-    "ANTHROPIC_API_KEY",
-    "LLM_API_KEY",
-    "ZAI_API_KEY",
+# This is an allowlist, not a denylist. Values are copied only when they are
+# needed to locate the executable or the bounded local fixture roots. In
+# particular, the parent environment is never passed wholesale to Hermes.
+SAFE_ENV_NAMES = (
+    "PATH",
+    "PATHEXT",
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "LOCALAPPDATA",
+    "HERMES_AGENT_SOURCE",
+    "HERMES_REQUIRED_COMMIT",
+    "HERMES_MCP_TOOLS",
+    "HERMES_SKIP_MEMORY",
+    "HERMES_KNOWLEDGE_AUTH_PROFILE",
+    "REAL_MING_PYTHON",
+    "REAL_MING_NETWORK_DISABLED",
+    "REAL_MING_NO_CREDENTIALS",
+    "REAL_MING_NATIVE_KNOWLEDGE_STATE_PATH",
+    "REAL_MING_NATIVE_KNOWLEDGE_GENERATED_ROOT",
+    "REAL_MING_NATIVE_KNOWLEDGE_STAGING_ROOT",
+    "REAL_MING_NATIVE_KNOWLEDGE_SOURCE_ROUTE",
+    "REAL_MING_NATIVE_KNOWLEDGE_CANDIDATES_ROUTE",
+    "REAL_MING_NATIVE_KNOWLEDGE_ISOLATION_ELIGIBLE",
+    "REAL_MING_STATE_PATH",
+    "REAL_MING_KNOWLEDGE_NOW",
+    "REAL_MING_KNOWLEDGE_WRAPPER_TIMEOUT_SECONDS",
 )
 
 
 def fail(message: str, code: int = 78) -> int:
-    print(json.dumps({"eligible": False, "reason": message}, sort_keys=True))
+    print(json.dumps({"eligible": False, "executed": False, "activated": False, "reason": message}, sort_keys=True))
     return code
 
 
@@ -54,9 +76,9 @@ def resolve_pinned_python() -> str | None:
         candidates.append(str(Path(local_app_data) / "hermes" / "hermes-agent" / "venv" / "Scripts" / "python.exe"))
     candidates.extend(["python3", "python"])
     for candidate in candidates:
-        if ("\\" in candidate or "/" in candidate) and not Path(candidate).exists():
-            continue
         try:
+            if ("\\" in candidate or "/" in candidate) and not Path(candidate).exists():
+                continue
             check = subprocess.run(
                 [candidate, "--version"],
                 check=False,
@@ -71,6 +93,24 @@ def resolve_pinned_python() -> str | None:
     return None
 
 
+def isolated_environment() -> dict[str, str]:
+    """Build the child environment from an explicit safe allowlist."""
+    child: dict[str, str] = {}
+    for name in SAFE_ENV_NAMES:
+        value = os.environ.get(name)
+        if value is not None and value != "":
+            child[name] = value
+    # The job receives a disposable Hermes home, never the interactive home.
+    hermes_home = Path(tempfile.mkdtemp(prefix="real-ming-native-hermes-home-"))
+    atexit.register(shutil.rmtree, hermes_home, True)
+    child["HERMES_HOME"] = str(hermes_home)
+    child["HERMES_REQUIRED_COMMIT"] = PINNED_COMMIT
+    child["REAL_MING_NETWORK_DISABLED"] = "1"
+    child["REAL_MING_NO_CREDENTIALS"] = "1"
+    child["REAL_MING_KNOWLEDGE_JOB"] = "1"
+    return child
+
+
 def main() -> int:
     if "--controlled" not in sys.argv:
         return fail("live launch is not enabled by this wrapper; use an approved one-shot integration", 78)
@@ -81,20 +121,21 @@ def main() -> int:
         return fail("effective MCP callable set is not exactly the four permitted operations")
     if not os.environ.get("HERMES_KNOWLEDGE_AUTH_PROFILE"):
         return fail("named knowledge auth profile is required; interactive credentials are not inherited")
+    required_paths = (
+        "REAL_MING_NATIVE_KNOWLEDGE_STATE_PATH",
+        "REAL_MING_NATIVE_KNOWLEDGE_GENERATED_ROOT",
+        "REAL_MING_NATIVE_KNOWLEDGE_STAGING_ROOT",
+        "REAL_MING_NATIVE_KNOWLEDGE_SOURCE_ROUTE",
+        "REAL_MING_NATIVE_KNOWLEDGE_CANDIDATES_ROUTE",
+    )
+    missing_paths = [name for name in required_paths if not os.environ.get(name, "").strip()]
+    if missing_paths:
+        return fail(f"required native knowledge route is missing: {missing_paths[0]}")
     interpreter = resolve_pinned_python()
     if interpreter is None:
         return fail("portable pinned-Hermes interpreter is unavailable")
     probe = Path(__file__).with_name("verify-native-knowledge-isolation.py")
-    env = os.environ.copy()
-    # The probe owns a disposable import/config home. Never let an interactive
-    # Hermes home (and its credentials or ACLs) influence the isolation proof.
-    env.pop("HERMES_HOME", None)
-    # A named profile is only an admission signal for this controlled local
-    # wrapper. Do not pass interactive/provider credentials into either the
-    # pinned-runtime probe or the consolidation process.
-    for name in KNOWN_CREDENTIAL_NAMES:
-        env.pop(name, None)
-    env["HERMES_REQUIRED_COMMIT"] = PINNED_COMMIT
+    env = isolated_environment()
     completed = subprocess.run(
         [interpreter, str(probe), "--json"],
         check=False,
@@ -114,14 +155,23 @@ def main() -> int:
         payload = json.loads(completed.stdout)
     except json.JSONDecodeError:
         return fail("pinned isolation preflight did not return JSON", 78)
-    if payload.get("effectiveMcpTools") != list(PERMITTED) or not payload.get("eligible"):
+    if (
+        payload.get("effectiveMcpTools") != list(PERMITTED)
+        or not payload.get("eligible")
+        or payload.get("runtimeHeadMatchesPinned") is not True
+        or payload.get("actualAIAgent") is not True
+        or payload.get("containmentProof") is not True
+    ):
         return fail("preflight did not prove the exact callable set", 78)
-    entrypoint = Path(__file__).parents[2] / "dist" / "config" / "native-knowledge-consolidation-cli.js"
+    # Carry only the verified boolean into the child. The Node composition
+    # never treats a caller-provided self-attestation as sufficient on its own.
+    env["REAL_MING_NATIVE_KNOWLEDGE_ISOLATION_ELIGIBLE"] = "true"
+    entrypoint = Path(__file__).with_name("run-native-knowledge-hermes-job.py")
     if not entrypoint.is_file():
-        return fail("compiled consolidation entry point is unavailable; run the repository build first")
+        return fail("Hermes-driven consolidation entry point is unavailable")
     try:
         job = subprocess.run(
-            ["node", str(entrypoint), "--controlled"],
+            [interpreter, str(entrypoint), "--controlled"],
             check=False,
             capture_output=True,
             text=True,
@@ -134,12 +184,17 @@ def main() -> int:
         job_payload = json.loads(job.stdout)
     except json.JSONDecodeError:
         return fail("native knowledge consolidation did not return JSON", 1)
-    if job.returncode != 0 or not job_payload.get("executed"):
+    if (
+        job.returncode != 0
+        or not job_payload.get("executed")
+        or job_payload.get("runtime") != "native-hermes"
+        or job_payload.get("hermesExecuted") is not True
+    ):
         reason = job_payload.get("reason", "native knowledge consolidation failed")
         return fail(str(reason), job.returncode if job.returncode != 0 else 1)
     print(json.dumps({
         "eligible": True,
-        "mode": "controlled",
+        "mode": "controlled-native-hermes",
         "commit": PINNED_COMMIT,
         **job_payload,
     }, sort_keys=True))

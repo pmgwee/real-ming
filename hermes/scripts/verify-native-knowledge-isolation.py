@@ -17,6 +17,7 @@ import json
 import os
 import re
 import shutil
+import socket
 import subprocess
 import sys
 import tarfile
@@ -54,17 +55,6 @@ KNOWN_CREDENTIAL_NAMES = {
     "ZAI_API_KEY",
 }
 MCP_PREFIX = "mcp__real_ming__"
-PINNED_SOURCE_PATHS = (
-    "run_agent.py",
-    "model_tools.py",
-    "toolsets.py",
-    "hermes_constants.py",
-    "utils.py",
-    "agent",
-    "tools",
-    "hermes_cli",
-    "providers",
-)
 
 
 def _run(*args: str, cwd: Path | None = None, input_bytes: bytes | None = None) -> subprocess.CompletedProcess[Any]:
@@ -138,7 +128,12 @@ def _source_contract(root: Path | None) -> dict[str, Any]:
         for marker in ("tools.include", "include_active = isinstance(include_raw", "if include_active:")
     )
     return {
-        "available": commit.returncode == 0 and bool(agent_init) and bool(agent_entry) and bool(mcp_tool),
+        # Merely retaining the object is not enough: a checkout at another
+        # revision may silently import a different AIAgent boundary.  The
+        # isolation contract therefore requires the running source checkout's
+        # HEAD to be the approved commit, not just an object reachable from it.
+        "available": commit.returncode == 0 and head.returncode == 0 and head.stdout.strip() == REQUIRED_COMMIT and bool(agent_init) and bool(agent_entry) and bool(mcp_tool),
+        "runtimeHeadMatchesPinned": head.returncode == 0 and head.stdout.strip() == REQUIRED_COMMIT,
         "runtimeHead": head.stdout.strip() if head.returncode == 0 else None,
         "commitObject": commit.returncode == 0,
         "constructorSkipMemory": constructor,
@@ -151,7 +146,10 @@ def _source_contract(root: Path | None) -> dict[str, Any]:
 def _extract_pinned_source(root: Path, destination: Path) -> None:
     """Extract only the exact pinned git tree into a disposable directory."""
     archive = subprocess.run(
-        ["git", "-C", str(root), "archive", REQUIRED_COMMIT, "--", *PINNED_SOURCE_PATHS],
+        # Archive the complete commit tree. Importing a selected subset while
+        # falling through to a different checkout for dependencies could make
+        # the AIAgent appear pinned while executing mixed-revision code.
+        ["git", "-C", str(root), "archive", REQUIRED_COMMIT],
         capture_output=True,
         check=False,
     )
@@ -161,15 +159,27 @@ def _extract_pinned_source(root: Path, destination: Path) -> None:
     base = destination.resolve()
     with tarfile.open(fileobj=io.BytesIO(archive.stdout), mode="r:") as bundle:
         for member in bundle.getmembers():
+            # A symlink in the imported runtime could redirect a later module
+            # write outside the disposable tree.  The pinned source contract
+            # therefore rejects links instead of relying on tarfile's
+            # extraction semantics.
+            if member.issym() or member.islnk():
+                raise RuntimeError("pinned archive contains unsupported symbolic link")
             target = (destination / member.name).resolve()
             if target != base and base not in target.parents:
                 raise RuntimeError("pinned archive path escapes disposable import root")
         bundle.extractall(destination)
 
 
-def _actual_agent_composition(scenario: str, source_root: Path) -> dict[str, Any]:
+def _actual_agent_composition(
+    scenario: str,
+    source_root: Path,
+    boundary_root: Path | None = None,
+) -> dict[str, Any]:
     """Register a disconnected local MCP server and initialize real AIAgent."""
-    isolated = Path(tempfile.mkdtemp(prefix="real-ming-pinned-hermes-"))
+    owns_isolated = boundary_root is None
+    isolated = boundary_root if boundary_root is not None else Path(tempfile.mkdtemp(prefix="real-ming-pinned-hermes-"))
+    isolated.mkdir(parents=True, exist_ok=True)
     # Always use a disposable home. An interactive HERMES_HOME may contain
     # credentials, mutable configuration or ACLs that are outside this proof's
     # authority; the probe must never read or overwrite it.
@@ -197,10 +207,10 @@ def _actual_agent_composition(scenario: str, source_root: Path) -> dict[str, Any
     old_home = os.environ.get("HERMES_HOME")
     os.environ["HERMES_HOME"] = str(hermes_home)
     sys.path.insert(0, str(import_root))
-    # Modules outside the pinned composition slice (for example optional
-    # provider adapters) are resolved from the installed checkout, while the
-    # AIAgent, model-tools and MCP modules above are guaranteed to be the
-    # extracted commit object at index 0.
+    # The complete extracted tree is first on sys.path, so every imported
+    # Hermes module comes from the exact reviewed commit. The source checkout
+    # remains available only for native dependencies that are intentionally
+    # external to the repository tree (and is itself HEAD-validated).
     sys.path.insert(1, str(source_root))
     os.chdir(import_root)
     try:
@@ -304,13 +314,25 @@ def _actual_agent_composition(scenario: str, source_root: Path) -> dict[str, Any
             os.environ.pop("HERMES_HOME", None)
         else:
             os.environ["HERMES_HOME"] = old_home
-        shutil.rmtree(isolated, ignore_errors=True)
+        if owns_isolated:
+            shutil.rmtree(isolated, ignore_errors=True)
 
 
 def _current_user() -> str | None:
     result = _run("whoami") if os.name == "nt" else None
     user = result.stdout.strip() if result and result.returncode == 0 and isinstance(result.stdout, str) else None
     return user or None
+
+
+def _deny_network() -> None:
+    """Make network access fail closed inside the actual AIAgent child."""
+    def denied(*_args: Any, **_kwargs: Any) -> Any:
+        raise OSError("network disabled for controlled native knowledge probe")
+
+    socket.socket.connect = denied  # type: ignore[method-assign]
+    socket.socket.connect_ex = denied  # type: ignore[method-assign]
+    socket.create_connection = denied  # type: ignore[assignment]
+    socket.getaddrinfo = denied  # type: ignore[assignment]
 
 
 def _set_read_only(path: Path, user: str | None) -> tuple[bool, str]:
@@ -341,35 +363,186 @@ def _reset_permissions(path: Path) -> None:
             pass
 
 
-def _exercise_os_containment(scenario: str) -> tuple[bool, list[str], list[str], str, str | None]:
+def _exercise_os_containment(
+    scenario: str,
+    boundary_root: Path | None = None,
+    writable_roots: list[Path] | None = None,
+    denied_targets: list[Path] | None = None,
+) -> tuple[bool, list[str], list[str], str, str | None]:
+    """Run the write, traversal and symlink checks inside one OS boundary.
+
+    When ``boundary_root`` is supplied, the checks run against the same
+    disposable roots used by the real AIAgent child rather than a disconnected
+    permission fixture.
+    """
     if os.name != "nt" and hasattr(os, "geteuid") and os.geteuid() == 0:
         return False, [], [], "root-unverifiable", "os-containment-requires-unprivileged-identity"
-    base = Path(tempfile.mkdtemp(prefix="real-ming-task0-"))
-    writable = [base / "staging", base / "job-session"]
-    denied = [base / name for name in ("native-memory", "profile", "config", "skills", "plugins", "cron", "credentials", "unrelated")]
+    owns_base = boundary_root is None
+    base = boundary_root if boundary_root is not None else Path(tempfile.mkdtemp(prefix="real-ming-task0-"))
+    writable = writable_roots if writable_roots is not None else [base / "staging", base / "job-session"]
+    denied = denied_targets if denied_targets is not None else [base / name for name in ("native-memory", "profile", "config", "skills", "plugins", "cron", "credentials", "unrelated")]
     user = _current_user()
     mode = "windows-acl" if os.name == "nt" else "posix-mode"
+    writable_text = [str(path) for path in writable]
+    denied_text = [str(path) for path in denied]
+
+    def confined_write(root: Path, relative_name: str, content: str) -> None:
+        if "\u0000" in relative_name:
+            raise OSError("path contains NUL")
+        target = (root / relative_name).resolve(strict=False)
+        root_resolved = root.resolve()
+        if target != root_resolved and root_resolved not in target.parents:
+            raise OSError("path escapes approved root")
+        cursor = root_resolved
+        for component in Path(relative_name).parts[:-1]:
+            cursor = cursor / component
+            if cursor.is_symlink():
+                raise OSError("symlink component is not permitted")
+        if target.exists() and target.is_symlink():
+            raise OSError("symlink target is not permitted")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, encoding="utf-8")
+
     try:
         for path in writable + denied:
             path.mkdir(parents=True, exist_ok=True)
         for path in denied:
             ok, mode = _set_read_only(path, user)
             if not ok:
-                return False, [str(path) for path in writable], [str(path) for path in denied], mode, "os-policy-setup-failed"
+                return False, writable_text, denied_text, mode, "os-policy-setup-failed"
         if scenario == "os-escape":
-            return False, [str(base.parent)], [str(path) for path in denied], mode, "writable-root-escape"
+            return False, [str(base.parent)], denied_text, mode, "writable-root-escape"
         for path in writable:
-            (path / "write-sentinel").write_text("ok", encoding="utf-8")
+            confined_write(path, "write-sentinel", "ok")
         for path in denied:
             try:
                 (path / "write-sentinel").write_text("must-not-write", encoding="utf-8")
             except (OSError, PermissionError):
                 continue
-            return False, [str(path) for path in writable], [str(path) for path in denied], mode, f"write-allowed:{path.name}"
-        return True, [str(path) for path in writable], [str(path) for path in denied], mode, None
+            return False, writable_text, denied_text, mode, f"write-allowed:{path.name}"
+        # Traversal and symlink escapes must be rejected by the same confined
+        # path rule used for the job roots, even when the host temporary parent
+        # itself is writable by the test identity.
+        try:
+            confined_write(writable[0], os.path.join("..", "unrelated", "traversal"), "must-not-write")
+            return False, writable_text, denied_text, mode, "traversal-allowed"
+        except OSError:
+            pass
+        symlink = writable[0] / "link"
+        try:
+            symlink.symlink_to(denied[0], target_is_directory=True)
+        except (OSError, NotImplementedError):
+            return False, writable_text, denied_text, mode, "symlink-creation-unavailable"
+        try:
+            confined_write(writable[0], "link/escaped", "must-not-write")
+            return False, writable_text, denied_text, mode, "symlink-escape-allowed"
+        except OSError:
+            pass
+        return True, writable_text, denied_text, mode, None
     finally:
-        _reset_permissions(base)
-        shutil.rmtree(base, ignore_errors=True)
+        if owns_base:
+            _reset_permissions(base)
+            shutil.rmtree(base, ignore_errors=True)
+
+
+def _run_agent_child(scenario: str, source_root: Path) -> dict[str, Any]:
+    """Exercise AIAgent and the OS write boundary in a disposable child.
+
+    A parent-process chmod check is not sufficient evidence for the process
+    that will run the job. This child imports the exact pinned AIAgent,
+    composes the MCP server, and performs the write/traversal probes under the
+    same disposable identity the wrapper will use.
+    """
+    child_env = {
+        name: value
+        for name, value in os.environ.items()
+        if name in {"PATH", "PATHEXT", "SYSTEMROOT", "WINDIR", "COMSPEC", "TEMP", "TMP", "TMPDIR", "LOCALAPPDATA", "HERMES_AGENT_SOURCE", "REAL_MING_NETWORK_DISABLED", "REAL_MING_NO_CREDENTIALS"}
+    }
+    child_env["REAL_MING_NETWORK_DISABLED"] = "1"
+    child_env["REAL_MING_NO_CREDENTIALS"] = "1"
+    completed = subprocess.run(
+        [sys.executable, str(Path(__file__).resolve()), "--agent-child", "--scenario", scenario, "--source-root", str(source_root)],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        env=child_env,
+        check=False,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise RuntimeError("pinned AIAgent child boundary failed")
+    lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    if not lines:
+        raise RuntimeError("pinned AIAgent child returned no report")
+    try:
+        report = json.loads(lines[-1])
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("pinned AIAgent child returned invalid report") from exc
+    if not isinstance(report, dict):
+        raise RuntimeError("pinned AIAgent child report is not an object")
+    return report
+
+
+def _agent_child_main(scenario: str, source_root: str) -> int:
+    boundary_root: Path | None = None
+    boundary_created = False
+    try:
+        _deny_network()
+        if os.name != "nt" and hasattr(os, "geteuid") and os.geteuid() == 0:
+            raise RuntimeError("os-containment-requires-unprivileged-identity")
+        boundary_root = Path(tempfile.mkdtemp(prefix="real-ming-task0-boundary-"))
+        boundary_created = True
+        boundary_job_root = boundary_root / "job-session"
+        boundary_staging_root = boundary_root / "staging"
+        denied = [boundary_root / name for name in ("native-memory", "profile", "config", "skills", "plugins", "cron", "credentials", "unrelated")]
+        for path in [boundary_job_root, boundary_staging_root, *denied]:
+            path.mkdir(parents=True, exist_ok=True)
+        user = _current_user()
+        containment_mode = "windows-acl" if os.name == "nt" else "posix-mode"
+        for path in denied:
+            ok, containment_mode = _set_read_only(path, user)
+            if not ok:
+                raise RuntimeError("os-policy-setup-failed")
+        # The real AIAgent is initialized with its disposable home inside the
+        # writable job-session root while the protected paths are already
+        # restricted by the host ACL/mode.
+        composition = _actual_agent_composition(scenario, Path(source_root).resolve(), boundary_job_root)
+        os_ok, writable, denied_targets, _mode, os_reason = _exercise_os_containment(
+            scenario,
+            boundary_root=boundary_root,
+            writable_roots=[boundary_staging_root, boundary_job_root],
+            denied_targets=denied,
+        )
+        # Also prove the actual agent home stayed inside the approved root and
+        # did not write any protected sibling.
+        if not str((boundary_job_root / ".hermes").resolve()).startswith(str(boundary_job_root.resolve())):
+            os_ok = False
+            os_reason = "agent-home-escaped-job-session"
+        if any(path.exists() for path in denied):
+            # Existing protected directories are expected; only unexpected
+            # files below them indicate a write through the real boundary.
+            for path in denied:
+                if any(path.iterdir()):
+                    os_ok = False
+                    os_reason = f"agent-wrote-protected:{path.name}"
+                    break
+        composition.update({
+            "writableRoots": [str(boundary_staging_root), str(boundary_job_root)],
+            "deniedTargets": [str(path) for path in denied],
+            "containmentMode": containment_mode,
+            "containmentProof": bool(os_ok),
+            "actualProcessBoundary": True,
+            "containmentReason": os_reason,
+        })
+        print(json.dumps(composition, sort_keys=True))
+        return 0 if os_ok else 78
+    except Exception as exc:  # noqa: BLE001 - only type crosses the boundary
+        print(json.dumps({"actualAIAgent": False, "containmentProof": False, "actualProcessBoundary": True, "reason": f"child-composition-failed:{type(exc).__name__}"}, sort_keys=True))
+        return 78
+    finally:
+        if boundary_created and boundary_root is not None:
+            _reset_permissions(boundary_root)
+            shutil.rmtree(boundary_root, ignore_errors=True)
 
 
 def _probe(scenario: str, source_override: str | None) -> dict[str, Any]:
@@ -395,9 +568,11 @@ def _probe(scenario: str, source_override: str | None) -> dict[str, Any]:
     }
     if not source["available"] or not source["commitObject"]:
         reasons.append("pinned-source-unavailable")
+    if not source.get("runtimeHeadMatchesPinned", False):
+        reasons.append("pinned-runtime-head-mismatch")
     elif source_root is not None:
         try:
-            composition = _actual_agent_composition(scenario, source_root)
+            composition = _run_agent_child(scenario, source_root)
         except Exception as exc:  # noqa: BLE001 - report a redacted type only
             reasons.append(f"actual-aiaagent-composition-failed:{type(exc).__name__}")
     else:
@@ -416,12 +591,18 @@ def _probe(scenario: str, source_override: str | None) -> dict[str, Any]:
             reasons.append("invalid-include-not-rejected")
     if not auth_ok:
         reasons.append("authentication-not-separated")
-    os_ok, writable, denied_targets, containment_mode, os_reason = _exercise_os_containment(scenario)
+    os_ok = bool(composition.get("containmentProof"))
+    writable = composition.get("writableRoots", []) if isinstance(composition.get("writableRoots", []), list) else []
+    denied_targets = composition.get("deniedTargets", []) if isinstance(composition.get("deniedTargets", []), list) else []
+    containment_mode = composition.get("containmentMode", "unavailable")
+    if composition.get("actualProcessBoundary") is not True:
+        reasons.append("actual-process-boundary-unproven")
     if not os_ok:
-        reasons.append(os_reason or "os-containment-failed")
+        reasons.append(str(composition.get("containmentReason") or "os-containment-failed"))
     return {
         "hermesCommit": REQUIRED_COMMIT,
         "runtimeHead": source["runtimeHead"],
+        "runtimeHeadMatchesPinned": source.get("runtimeHeadMatchesPinned", False),
         "sourceMode": source["sourceMode"],
         "sourceRoot": str(source_root) if source_root else None,
         "sourceContract": {
@@ -444,6 +625,8 @@ def _probe(scenario: str, source_override: str | None) -> dict[str, Any]:
         "writableRoots": writable,
         "deniedTargets": denied_targets,
         "containmentMode": containment_mode,
+        "containmentProof": os_ok,
+        "actualProcessBoundary": composition.get("actualProcessBoundary", False),
         "fallbackDetected": effective != PERMITTED_TOOLS,
         "agentLaunch": {
             "mode": "actual-pinned-aiaagent" if composition.get("actualAIAgent") else "unavailable",
@@ -463,7 +646,13 @@ def main() -> int:
     parser.add_argument("--scenario", default="valid")
     parser.add_argument("--source-root")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--agent-child", action="store_true")
     args = parser.parse_args()
+    if args.agent_child:
+        if args.source_root is None:
+            print(json.dumps({"actualAIAgent": False, "containmentProof": False, "reason": "source-root-required"}, sort_keys=True))
+            return 78
+        return _agent_child_main(args.scenario, args.source_root)
     result = _probe(args.scenario, args.source_root)
     print(json.dumps(result, indent=0 if args.json else 2, sort_keys=True))
     return 0 if result["eligible"] else 78
