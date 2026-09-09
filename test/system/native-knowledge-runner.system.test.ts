@@ -51,7 +51,7 @@ async function workspace() {
   const directory = mkdtempSync(join(tmpdir(), "real-ming-runner-"));
   const registry = createNativeKnowledgeRegistry({
     statePath: join(directory, "state.sqlite"),
-    now: () => "2026-09-09T02:00:00.000Z",
+    now: () => new Date().toISOString(),
   });
   return {
     directory,
@@ -120,6 +120,47 @@ describe("native knowledge bounded runner", () => {
         now: "2026-09-09T02:01:00.000Z",
       });
       expect(read.kind).toBe("ok");
+    } finally {
+      fixture.registry.close();
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("takes the publication timestamp at the final boundary when the request timestamp is stale", async () => {
+    const fixture = await workspace();
+    const item = candidate("fresh-publication-clock");
+    fixture.registry.admitCandidate(item);
+    try {
+      const result = await runConsolidation({
+        registry: fixture.registry,
+        isolationEligible: true,
+        operatingDate: "2026-09-09",
+        // Deliberately stale request metadata must not become the publication time.
+        now: "2020-01-01T00:00:00.000Z",
+        generatedRoot: fixture.generatedRoot,
+        stagingRoot: fixture.stagingRoot,
+        loadCandidate: async () => item,
+        readSource: async () => sourceFor(item),
+        assessSupport: async () => "supported",
+        synthesize: async ({ candidates }) => candidates.map<StagedPage>((value) => ({
+          pageId: value.candidateId,
+          path: `pages/${value.candidateId}.md`,
+          content: value.claim,
+          sourceCandidateIds: [value.candidateId],
+          claimClass: value.claimClass,
+          sourceReference: value.sourceReference,
+          capturedAt: value.capturedAt,
+          asOf: value.asOf,
+          disposition: "supported",
+          uncertainty: "none",
+        })),
+      });
+      expect(result.kind).toBe("succeeded");
+      const active = fixture.registry.activeGeneration();
+      expect(active).toBeDefined();
+      if (active === undefined) return;
+      expect(Date.parse(active.createdAt)).toBeGreaterThan(Date.parse("2026-01-01T00:00:00.000Z"));
+      expect(active.createdAt).not.toBe("2020-01-01T00:00:00.000Z");
     } finally {
       fixture.registry.close();
       rmSync(fixture.directory, { recursive: true, force: true });
