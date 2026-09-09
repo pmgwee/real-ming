@@ -197,6 +197,69 @@ describe("native knowledge forgetting and restore fencing", () => {
     })).resolves.toMatchObject({ kind: "needs-repair" });
   });
 
+  it("replays newer independent tombstones before reopening a restored registry", async () => {
+    await withRegistry(async (registry) => {
+      const head: TombstoneHead = {
+        epoch: 2,
+        entries: [
+          { tombstoneId: "old", subject: "old-subject", localEpoch: 1 },
+          { tombstoneId: "new", subject: "new-subject", localEpoch: 2 },
+        ],
+        complete: true,
+        version: "v2",
+      };
+      const store: TombstoneHeadStore = {
+        async readHead() { return { kind: "ok", head } as const; },
+        async appendIfVersion() { return { kind: "conflict", head } as const; },
+      };
+      const result = await reconcileTombstonesAfterRestore({
+        headStore: store,
+        registry,
+        snapshotHighestLocalEpoch: 1,
+        snapshotPendingTombstoneIds: ["old"],
+        restoredAt: "2026-09-09T02:00:00.000Z",
+      });
+      expect(result.kind).toBe("safe");
+      expect(registry.tombstones()).toMatchObject([
+        { tombstoneId: "old", subject: "old-subject", localEpoch: 1 },
+        { tombstoneId: "new", subject: "new-subject", localEpoch: 2, status: "restore-safe" },
+      ]);
+      expect(registry.runHealth().repairState).toBe("healthy");
+      expect(registry.tombstoneOutbox().every((entry) => entry.status === "synced")).toBe(true);
+    });
+  });
+
+  it("keeps retrieval repair-locked when the independent head has an epoch gap", async () => {
+    await withRegistry(async (registry) => {
+      const store: TombstoneHeadStore = {
+        async readHead() {
+          return {
+            kind: "ok",
+            head: {
+              epoch: 3,
+              entries: [
+                { tombstoneId: "t1", subject: "one", localEpoch: 1 },
+                { tombstoneId: "t3", subject: "three", localEpoch: 3 },
+              ],
+              complete: true,
+              version: "v3",
+            },
+          } as const;
+        },
+        async appendIfVersion() { return { kind: "unavailable", reason: "not-used" } as const; },
+      };
+      const result = await reconcileTombstonesAfterRestore({
+        headStore: store,
+        registry,
+        snapshotHighestLocalEpoch: 1,
+        snapshotPendingTombstoneIds: [],
+        restoredAt: "2026-09-09T02:00:00.000Z",
+      });
+      expect(result.kind).toBe("needs-repair");
+      expect(registry.runHealth().repairState).toBe("needs-repair");
+    });
+  });
+
   it("uses a conditional Azure Blob head without returning credential material", async () => {
     const requests: RequestInit[] = [];
     const store = createAzureBlobTombstoneHeadStore({

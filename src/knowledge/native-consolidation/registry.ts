@@ -49,6 +49,12 @@ export interface NativeKnowledgeRegistry {
   tombstoneOutbox(): readonly TombstoneOutboxRecord[];
   markTombstoneOutboxSynced(tombstoneId: string, at?: string): void;
   recordTombstoneOutboxFailure(tombstoneId: string, at?: string): void;
+  replayIndependentTombstone(input: {
+    readonly tombstoneId: string;
+    readonly subject: string;
+    readonly localEpoch: number;
+    readonly restoredAt: string;
+  }): TombstoneRecord;
   updateTombstoneStatus(
     tombstoneId: string,
     status: TombstoneRecord["status"],
@@ -708,6 +714,67 @@ export function createNativeKnowledgeRegistry(options: {
          SET status = 'failed', attempts = attempts + 1, updated_at = ?
          WHERE tombstone_id = ? AND status <> 'synced'`,
       ).run(at, tombstoneId);
+    },
+
+    replayIndependentTombstone(input) {
+      if (!Number.isSafeInteger(input.localEpoch) || input.localEpoch < 1) {
+        throw new Error("independent tombstone epoch is invalid");
+      }
+      database.exec("BEGIN IMMEDIATE;");
+      try {
+        const existingById = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE tombstone_id = ?").get(input.tombstoneId) as unknown as TombstoneRow | undefined;
+        if (existingById !== undefined) {
+          if (existingById.subject !== input.subject || existingById.local_epoch !== input.localEpoch) {
+            database.exec("ROLLBACK;");
+            throw new Error("independent tombstone conflicts with restored local state");
+          }
+          database.prepare(
+            "UPDATE native_knowledge_state SET tombstone_epoch = CASE WHEN tombstone_epoch > ? THEN tombstone_epoch ELSE ? END, tombstone_head_epoch = CASE WHEN tombstone_head_epoch > ? THEN tombstone_head_epoch ELSE ? END WHERE id = 1",
+          ).run(input.localEpoch, input.localEpoch, input.localEpoch, input.localEpoch);
+          database.prepare(
+            `INSERT OR IGNORE INTO native_knowledge_tombstone_outbox
+             (outbox_id, tombstone_id, local_epoch, status, attempts, created_at, updated_at)
+             VALUES (?, ?, ?, 'synced', 0, ?, ?)`,
+          ).run(`native-knowledge:outbox:${input.tombstoneId}`, input.tombstoneId, input.localEpoch, existingById.created_at, input.restoredAt);
+          database.prepare(
+            "UPDATE native_knowledge_tombstone_outbox SET status = 'synced', updated_at = ? WHERE tombstone_id = ?",
+          ).run(input.restoredAt, input.tombstoneId);
+          if (existingById.status === "local-suppressed" || existingById.status === "head-sync-pending") {
+            database.prepare("UPDATE native_knowledge_tombstones SET status = 'restore-safe' WHERE tombstone_id = ?").run(input.tombstoneId);
+          }
+          database.exec("COMMIT;");
+          const updated = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE tombstone_id = ?").get(input.tombstoneId) as unknown as TombstoneRow;
+          return mapTombstone(updated);
+        }
+        const existingBySubject = database.prepare("SELECT tombstone_id FROM native_knowledge_tombstones WHERE subject = ?").get(input.subject) as unknown as { tombstone_id: string } | undefined;
+        if (existingBySubject !== undefined) {
+          database.exec("ROLLBACK;");
+          throw new Error("independent tombstone subject conflicts with restored local state");
+        }
+        const tombstone: TombstoneRecord = {
+          tombstoneId: input.tombstoneId,
+          subject: input.subject,
+          aliases: [],
+          reason: "replayed from independent tombstone head",
+          localEpoch: input.localEpoch,
+          status: "restore-safe",
+          createdAt: input.restoredAt,
+        };
+        database.prepare(
+          "INSERT INTO native_knowledge_tombstones (tombstone_id, subject, aliases_json, reason, local_epoch, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ).run(tombstone.tombstoneId, tombstone.subject, "[]", tombstone.reason, tombstone.localEpoch, tombstone.status, tombstone.createdAt);
+        database.prepare(
+          "INSERT INTO native_knowledge_tombstone_outbox (outbox_id, tombstone_id, local_epoch, status, attempts, created_at, updated_at) VALUES (?, ?, ?, 'synced', 0, ?, ?)",
+        ).run(`native-knowledge:outbox:${tombstone.tombstoneId}`, tombstone.tombstoneId, tombstone.localEpoch, tombstone.createdAt, tombstone.createdAt);
+        database.prepare(
+          "UPDATE native_knowledge_state SET tombstone_epoch = CASE WHEN tombstone_epoch > ? THEN tombstone_epoch ELSE ? END, tombstone_head_epoch = CASE WHEN tombstone_head_epoch > ? THEN tombstone_head_epoch ELSE ? END WHERE id = 1",
+        ).run(input.localEpoch, input.localEpoch, input.localEpoch, input.localEpoch);
+        database.exec("COMMIT;");
+        return tombstone;
+      } catch (error) {
+        try { database.exec("ROLLBACK;"); } catch { /* already rolled back */ }
+        throw error;
+      }
     },
 
     updateTombstoneStatus(tombstoneId, status) {

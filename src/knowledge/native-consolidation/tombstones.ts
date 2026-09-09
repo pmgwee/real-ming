@@ -127,10 +127,26 @@ export function isSuppressedByTombstone(
 
 export async function reconcileTombstonesAfterRestore(input: RestoreTombstoneRequest & {
   readonly headStore: TombstoneHeadStore;
+  /** Registry is required by the production restore path; omitted only for legacy read-only checks. */
+  readonly registry?: NativeKnowledgeRegistry;
 }): Promise<RestoreTombstoneResult> {
+  input.registry?.setRepairState("needs-repair");
   const remote = await input.headStore.readHead();
   if (remote.kind === "unavailable") return { kind: "needs-repair", reason: remote.reason };
   if (!remote.head.complete) return { kind: "needs-repair", reason: "independent tombstone head is incomplete", head: remote.head };
+  const epochs = remote.head.entries.map((entry) => entry.localEpoch);
+  const uniqueEpochs = new Set(epochs);
+  if (
+    remote.head.epoch === 0
+      ? remote.head.entries.length !== 0
+      : remote.head.entries.length === 0 ||
+        uniqueEpochs.size !== epochs.length ||
+        Math.max(...epochs) !== remote.head.epoch ||
+        epochs.some((epoch) => !Number.isSafeInteger(epoch) || epoch < 1) ||
+        Array.from({ length: remote.head.epoch }, (_, index) => index + 1).some((epoch) => !uniqueEpochs.has(epoch))
+  ) {
+    return { kind: "needs-repair", reason: "independent tombstone head has an unprovable epoch sequence", head: remote.head };
+  }
   if (remote.head.epoch < input.snapshotHighestLocalEpoch) {
     return { kind: "needs-repair", reason: "remote tombstone head does not cover snapshot epoch", head: remote.head };
   }
@@ -138,6 +154,41 @@ export async function reconcileTombstonesAfterRestore(input: RestoreTombstoneReq
   const missing = input.snapshotPendingTombstoneIds.find((id) => !entryIds.has(id));
   if (missing !== undefined) {
     return { kind: "needs-repair", reason: `remote tombstone head is missing ${missing}`, head: remote.head };
+  }
+  if (input.registry !== undefined) {
+    const localTombstones = new Map(input.registry.tombstones().map((tombstone) => [tombstone.tombstoneId, tombstone]));
+    try {
+      for (const entry of remote.head.entries) {
+        const local = localTombstones.get(entry.tombstoneId);
+        if (local !== undefined) {
+          if (local.subject !== entry.subject || local.localEpoch !== entry.localEpoch) {
+            throw new Error(`independent tombstone ${entry.tombstoneId} conflicts with restored state`);
+          }
+          input.registry.replayIndependentTombstone({
+            tombstoneId: entry.tombstoneId,
+            subject: entry.subject,
+            localEpoch: entry.localEpoch,
+            restoredAt: input.restoredAt ?? new Date().toISOString(),
+          });
+          continue;
+        }
+        input.registry.replayIndependentTombstone({
+          tombstoneId: entry.tombstoneId,
+          subject: entry.subject,
+          localEpoch: entry.localEpoch,
+          restoredAt: input.restoredAt ?? new Date().toISOString(),
+        });
+      }
+      input.registry.setTombstoneHeadEpoch(remote.head.epoch);
+      input.registry.setRepairState("healthy");
+    } catch (error) {
+      input.registry.setRepairState("needs-repair");
+      return {
+        kind: "needs-repair",
+        reason: error instanceof Error ? `restore tombstone replay failed: ${error.message}` : "restore tombstone replay failed",
+        head: remote.head,
+      };
+    }
   }
   return { kind: "safe", head: remote.head };
 }

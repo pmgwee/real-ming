@@ -311,6 +311,8 @@ export interface TombstoneHeadStore {
 export interface RestoreTombstoneRequest {
   readonly snapshotHighestLocalEpoch: number;
   readonly snapshotPendingTombstoneIds: readonly string[];
+  /** ISO timestamp used when a newer independent entry is replayed locally. */
+  readonly restoredAt?: string;
 }
 
 export type RestoreTombstoneResult =
