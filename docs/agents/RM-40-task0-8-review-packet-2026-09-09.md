@@ -1,4 +1,9 @@
-# RM-40 native knowledge consolidation — Task 0–8 review packet
+# RM-40 native knowledge consolidation — superseded Task 0–8 review packet
+
+> Historical snapshot retained for audit. This packet predates the bounded
+> remediation branch and must not be used as the current implementation
+> artifact. See the current remediation packet in
+> `docs/evidence/RM-40-native-knowledge-remediation-review-packet-2026-09-09.md`.
 
 **Review date:** 9 September 2026 (Asia/Kuala_Lumpur)
 **Review scope:** approved Tasks 0–8 only
@@ -7,7 +12,7 @@
 **Task 0–8 implementation tip:** `6830032af34bc9f954913810a5e0cdcfd9c57f25`
 The packet itself is an additional documentation commit; verify its exact SHA
 with `git log --follow -- docs/agents/RM-40-task0-8-review-packet-2026-09-09.md`.
-**Status:** controlled/local implementation verified; not deployed, live-accepted,
+**Status (historical snapshot):** controlled/local implementation reported; superseded by the remediation branch; not deployed, live-accepted,
 scheduled or production-wired
 
 ## Instructions for the reviewing agent

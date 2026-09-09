@@ -81,6 +81,23 @@ findings are resolved as follows:
    recurrence disabled → authorized one-shot → evidence review → separate
    approval to enable one recurring row.
 
+## Bounded remediation status (9 September 2026)
+
+The corrective work is being performed locally on
+`fix/rm40-native-knowledge-remediation`, branched from the independently
+reviewed implementation tip
+`669355afaebae0a65a85d9712c28328b49b9db7f`. It closes the confirmed blockers
+without changing the architecture: exact source-byte hashes, transactional
+local forget/outbox state, backup coverage, replay-before-retrieval restore,
+conditional tombstone-head creation, dependency-complete retrieval fences,
+current publication fencing, production MCP composition, real pinned-Hermes
+isolation, a functional wrapper, bounded retention/cleanup, and repository
+verification fixes. A synthetic production-path acceptance test exercises the
+wrapper and MCP composition end to end. The exact commit range, RED/GREEN
+records, gate results and any environment limitations are maintained in the
+current remediation review packet; this status does not imply deployment,
+provider verification, live acceptance or recurring-job activation.
+
 ## Proposed first-slice defaults (not yet activation approval)
 
 | Decision | Proposed first slice | Boundary |
@@ -161,7 +178,7 @@ production launch. Evidence: [Task 0 preflight](../../evidence/native-knowledge-
 - Consumes: pinned Hermes checkout/version, a disposable profile, temporary staging/source roots, and the existing `real-ming` MCP registration.
 - Produces: `IsolationProbeResult { hermesCommit, skipMemory, enabledToolsets, effectiveMcpTools, deniedMcpTools, authMode, writableRoots, deniedTargets, fallbackDetected, eligible }`; nonzero exit when `eligible` is false.
 
-- [ ] **Step 1: Write the failing compatibility test.** Construct a disposable job configuration that requires `skip_memory=True`, the pinned file toolset, and a `real-ming` MCP server `tools.include` set exactly to `real_ming_knowledge_list_candidates`, `real_ming_read_knowledge_source`, `real_ming_stage_knowledge_generation` and `real_ming_wiki_retrieve`. Do not treat an `enabled_toolsets` value such as `real-ming` as an operation filter; if the pinned runtime requires an additional MCP toolset identifier, it must still resolve to this exact callable set. Assert that a missing constructor/CLI flag, an unsupported include filter, an effective callable outside that four-name set, or a resolved full default toolset returns `eligible: false`. The test uses a fake/local model boundary, disabled networking and no credentials.
+- [ ] **Step 1: Write the failing compatibility test.** Construct a disposable job configuration that requires `skip_memory=True`, `enabled_toolsets=["real-ming"]`, and a `real-ming` MCP server `tools.include` set exactly to `real_ming_knowledge_list_candidates`, `real_ming_read_knowledge_source`, `real_ming_stage_knowledge_generation` and `real_ming_wiki_retrieve`. Do not treat `enabled_toolsets` as an operation filter; the pinned runtime must still resolve the exact four callable names. Assert that a missing constructor/CLI flag, an unsupported include filter, an effective callable outside that four-name set, or a resolved full default toolset returns `eligible: false`. The test uses a fake/local model boundary, disabled networking and no credentials.
 
 ```ts
 expect(probe({
@@ -479,7 +496,7 @@ Expected: FAIL because the isolated runner and manifest do not exist.
 
 - [ ] **Step 3: Implement the runner as a deterministic boundary.** Claim the registry lease, list only staged/unforgotten candidates, load the prior active manifest and carry forward every still-valid page, call the native Hermes synthesis operation, require source-support/freshness results, enforce the candidate/source/output/tool/model/storage limits, stage a complete snapshot, call `activate_generation`, read back through `wiki_retrieve`, then mark the run successful. Record failure reason, retry count and run ID without dumping source content. Never call provider write tools or native memory/configuration APIs.
 
-- [ ] **Step 4: Implement the wrapper with pinned controls.** Start the pinned `AIAgent` with `skip_memory=True` and the preflight-proven `tools.include` set exactly to `real_ming_knowledge_list_candidates`, `real_ming_read_knowledge_source`, `real_ming_stage_knowledge_generation` and `real_ming_wiki_retrieve`; activation remains a local deterministic runner operation. Use a dedicated profile/session directory, staging work directory and OS restrictions; expose only read-only cited sources and the staging/output roots. Treat any unsupported constructor/CLI/include option, extra callable, denied-operation failure or full-default-toolset fallback as exit `78`, not as a permissive fallback. Task 0 uses a fake/local model boundary with networking disabled and no credentials. A separately authorized one-shot may mount only a named Hermes auth profile read-only for the job identity; it must not inherit Telegram, Notion, Calendar, mail, GitHub or Vercel credentials. The wrapper's own Hermes session record is allowed; `MEMORY.md`/`USER.md` and the main interactive session are not touched.
+- [ ] **Step 4: Implement the wrapper with pinned controls.** Start the pinned `AIAgent` with `skip_memory=True` and the preflight-proven `tools.include` set exactly to `real_ming_knowledge_list_candidates`, `real_ming_read_knowledge_source`, `real_ming_stage_knowledge_generation` and `real_ming_wiki_retrieve`; activation remains a local deterministic runner operation. Use a dedicated profile/session directory, staging work directory and OS restrictions; expose only read-only cited sources and the staging/output roots. Treat any unsupported constructor/CLI/include option, extra callable, denied-operation failure or full-default-toolset fallback as exit `78`, not as a permissive fallback. Task 0 uses a fake/local model boundary with networking disabled and no credentials. A separately authorized one-shot may mount only a named Hermes auth profile read-only for the job identity; it must not inherit Telegram, Notion, Calendar, mail, GitHub or Vercel credentials. The wrapper strips known interactive credential variables before launching the probe or job. The wrapper's own Hermes session record is allowed; `MEMORY.md`/`USER.md` and the main interactive session are not touched.
 
 - [ ] **Step 5: Define the native cron row without activating it.** The manifest contains one proposed `02:00` `Asia/Kuala_Lumpur` script-only job, `deliver: local`, explicit model/provider names from protected configuration, the skill names, limits and idempotency key. It does not create the row or edit the existing 07:30/21:30 report jobs.
 
