@@ -159,7 +159,7 @@ export async function reconcileTombstonesAfterRestore(input: RestoreTombstoneReq
   if (input.registry !== undefined) {
     const localTombstones = new Map(input.registry.tombstones().map((tombstone) => [tombstone.tombstoneId, tombstone]));
     try {
-      for (const entry of remote.head.entries) {
+      for (const entry of [...remote.head.entries].sort((left, right) => left.localEpoch - right.localEpoch)) {
         const local = localTombstones.get(entry.tombstoneId);
         if (local !== undefined) {
           if (local.subject !== entry.subject || local.localEpoch !== entry.localEpoch) {

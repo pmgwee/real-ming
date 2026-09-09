@@ -154,6 +154,35 @@ describe("native knowledge forgetting and restore fencing", () => {
     }
   });
 
+  it("does not permit a pending outbox to be promoted directly to restore-safe", async () => {
+    await withRegistry(async (registry) => {
+      const tombstone = registry.appendLocalTombstone({
+        tombstoneId: "pending-transition",
+        subject: "pending-transition-subject",
+        aliases: [],
+        reason: "controlled transition fixture",
+        requestedAt: "2026-09-09T02:00:00.000Z",
+      });
+      expect(tombstone.status).toBe("local-suppressed");
+      expect(() => registry.updateTombstoneStatus(tombstone.tombstoneId, "restore-safe"))
+        .toThrow(/outbox.*synced/i);
+      expect(registry.tombstones()[0]?.status).toBe("local-suppressed");
+    });
+  });
+
+  it("rejects an independent replay that skips a required tombstone epoch", async () => {
+    await withRegistry(async (registry) => {
+      expect(() => registry.replayIndependentTombstone({
+        tombstoneId: "out-of-order",
+        subject: "out-of-order-subject",
+        localEpoch: 2,
+        restoredAt: "2026-09-09T02:00:00.000Z",
+      })).toThrow(/epoch.*(gap|order)/i);
+      expect(registry.tombstones()).toHaveLength(0);
+      expect(registry.tombstoneOutbox()).toHaveLength(0);
+    });
+  });
+
   it("suppresses a derived page when any source dependency is forgotten", async () => {
     await withRegistry(async (registry) => {
       const remote = fakeHeadStore();

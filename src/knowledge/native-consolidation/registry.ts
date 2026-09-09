@@ -330,7 +330,7 @@ function ensureSchema(database: DatabaseSync): void {
   `);
   // Existing RM-40 state databases predate the source fence. SQLite has no
   // IF NOT EXISTS form for columns, so inspect before adding the migration.
-  const columns = database.prepare("PRAGMA table_info(native_knowledge_state)").all() as readonly { readonly name: string }[];
+  const columns = database.prepare("PRAGMA table_info(native_knowledge_state)").all() as unknown as readonly { readonly name: string }[];
   if (!columns.some((column) => column.name === "source_epoch")) {
     database.exec("ALTER TABLE native_knowledge_state ADD COLUMN source_epoch INTEGER NOT NULL DEFAULT 0");
   }
@@ -772,6 +772,11 @@ export function createNativeKnowledgeRegistry(options: {
           const updated = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE tombstone_id = ?").get(input.tombstoneId) as unknown as TombstoneRow;
           return mapTombstone(updated);
         }
+        const current = state(database);
+        if (input.localEpoch !== current.tombstone_epoch + 1) {
+          database.exec("ROLLBACK;");
+          throw new Error("independent tombstone epoch gap or out-of-order replay");
+        }
         const existingBySubject = database.prepare("SELECT tombstone_id FROM native_knowledge_tombstones WHERE subject = ?").get(input.subject) as unknown as { tombstone_id: string } | undefined;
         if (existingBySubject !== undefined) {
           database.exec("ROLLBACK;");
@@ -814,6 +819,14 @@ export function createNativeKnowledgeRegistry(options: {
       };
       if (!allowed[row.status].includes(status)) {
         throw new Error(`invalid tombstone status transition ${row.status} -> ${status}`);
+      }
+      if (status === "restore-safe") {
+        const outbox = database.prepare(
+          "SELECT status FROM native_knowledge_tombstone_outbox WHERE tombstone_id = ?",
+        ).get(tombstoneId) as unknown as { readonly status: TombstoneOutboxRecord["status"] } | undefined;
+        if (outbox?.status !== "synced") {
+          throw new Error("tombstone outbox must be synced before restore-safe");
+        }
       }
       database.prepare("UPDATE native_knowledge_tombstones SET status = ? WHERE tombstone_id = ?").run(status, tombstoneId);
       const updated = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE tombstone_id = ?").get(tombstoneId) as unknown as TombstoneRow;
