@@ -38,7 +38,7 @@ Capabilities below are labelled by evidence:
 | Backup and restore | **Tested** | Whitelist-only state backup with an isolated restore path. |
 | Private operations dashboard | **Live** | Loopback-bound HTTP read model; see [Operations](#operations). |
 | Curated-knowledge guarantees | **Partial** | Versioned publication, contradiction quarantine and cross-domain projection are built and controlled-tested but not wired to a production caller. Revision 6 makes them optional; see [ADR-0018](docs/adr/0018-compile-knowledge-into-trust-domain-vaults.md). |
-| Selective wiki consolidation | **Tested (controlled only)** | Tasks 0–8 are implemented and controlled-tested with native Hermes as the sole reasoning/memory runtime; the inactive `02:00 Asia/Kuala_Lumpur` manifest is not a cron row. No production caller, live acceptance or local mirror is active. See [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md), the [implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md) and [controlled evidence](docs/evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md). |
+| Selective wiki consolidation | **Tested (controlled only)** | Tasks 0–8 and the final local remediation are controlled-tested with native Hermes as the sole reasoning, synthesis and native-memory runtime. The inactive `02:00 Asia/Kuala_Lumpur` manifest is not a cron row; no production caller, live acceptance or local mirror is active. See [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md), the [implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md), [controlled evidence](docs/evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md) and the [final remediation packet](docs/evidence/RM-40-native-knowledge-final-remediation-review-packet-2026-09-10.md). |
 | Event-driven mandatory controls | **Planned** | No runtime hook or event wiring exists in this repository today. Current deterministic guarantees come from build-time checks and from tool capability being absent rather than forbidden. |
 
 ## Architecture
@@ -92,13 +92,46 @@ Real-Ming states no opinion about Hermes's own features. It previously pinned He
 
 The selective knowledge-consolidation implementation is additive and
 controlled-tested, but not production-wired or active. It must not change
-native memory, inspect every ordinary conversation, or be described as a hard
-security boundary for arbitrary filesystem reads. The Azure-hosted vault is
-canonical; any future local Obsidian mirror is an optional one-way,
-activation-triggered, read-only projection, never an upstream or runtime
-dependency. Its contract and evidence are in [the design spec](docs/superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md),
-[ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md) and
-[the controlled acceptance record](docs/evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md).
+Hermes native memory (`MEMORY.md`, `USER.md`, profile or session history),
+inspect every ordinary conversation, or be described as a hard security
+boundary for arbitrary filesystem reads.
+
+### Native memory and Obsidian knowledge boundary
+
+Hermes remains the sole reasoning, synthesis, Telegram and native-memory
+runtime. The optional consolidation path is deliberately selective: an
+explicit save/forget request or a deliberately marked decision, correction,
+project artifact or research artifact becomes a bounded candidate; an
+ordinary unmarked turn is not swept. Nothing published to the wiki is
+automatically promoted into Hermes native memory.
+
+Real-Ming supplies only the deterministic coordination boundary: exact
+source-byte identity and support checks, claim-appropriate freshness,
+lineage, immutable generation publication, supported-path tombstones,
+restore reconciliation, bounded retrieval and operational health. The first
+slice keeps decisions valid until superseded or forgotten, gives project
+artifacts a 90-day window and research artifacts a 30-day window, and excludes
+calendar, task and mail claims from generated knowledge. A hash proves byte
+identity, not that a claim is true; unsupported, stale or conflicting material
+is quarantined and excluded from normal retrieval.
+
+The Azure-hosted vault is canonical. Generated and staging content lives under
+`${OBSIDIAN_VAULT_PATH}/.real-ming/generated` and
+`${OBSIDIAN_VAULT_PATH}/.real-ming/staging`; human-authored Obsidian notes are
+writer-owned and remain separate. Any future local Obsidian mirror is an
+optional, separately approved, one-way, activation-triggered, read-only
+projection. It cannot synchronize edits upstream, serve `wiki_retrieve`, or
+become a runtime dependency. Forgetting is guaranteed only through the
+supported retrieval/publication path; direct arbitrary filesystem reads,
+already-delivered messages and Hermes native memory/history are separate
+operations.
+
+The current artifact is controlled-only: the native cron manifest remains
+inactive, and deployment, a harmless live one-shot, recurring cron activation
+and any mirror transport each require separate approval. See [the design spec](docs/superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md),
+[ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md),
+[the implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md)
+and [the final remediation packet](docs/evidence/RM-40-native-knowledge-final-remediation-review-packet-2026-09-10.md).
 
 ### How a request flows
 
