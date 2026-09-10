@@ -3,13 +3,15 @@
 A private personal-operations layer built on [Hermes Agent](https://hermes-agent.nousresearch.com/docs). Hermes is the agent runtime; Real-Ming adds the integrations, governance and evidence that one operator's personal, business, academic and financial work needs.
 The intended always-on deployment target is an Azure VM with Azure Key Vault; deployment and live-acceptance status are tracked separately from this design baseline.
 
-## What this solves
+## What can Real-Ming contribute?
 
-Personal operations are spread across systems that each own part of the truth: a calendar, several mailboxes, a task database, a note vault, code repositories. An agent that can reach all of them is useful. An agent that can reach all of them *without rules* is a liability, because the same access that drafts a reply can send one, and the same access that reads a ledger can change it.
+Real-Ming exists as a control plane for agent with defined operating SOP (Agent Mode/Model) , a set of workflow and tools with personalized and customized capability (Agent Skills & MCP) , a Cross-source coordination (Third-party Connectors) , and provide/ingest data as vault(personal information & projects context) of myself in day-to-day task.
 
-Real-Ming exists for the rules, not for the reasoning. It supplies a small set of tools with deliberately narrow capability, a work-item model that survives across systems, and controls that hold whether or not the model is having a good day.
+Everythings tracked, maintained and presented in a kanban dashboard 
 
-It is not a second agent runtime. Building one would mean re-implementing transport, conversation, tool dispatch, scheduling and memory that Hermes already provides — and then maintaining two of everything. That decision is recorded in [ADR-0020](docs/adr/0020-run-ming-on-the-native-hermes-runtime.md) and [ADR-0002](docs/adr/0002-compose-existing-agent-systems.md).
+Example of works: Personal operations are spread across systems that each own part of the truth: a calendar, several mailboxes, a task database, a note vault, code repositories. 
+
+It is not a second agent runtime. Building one would mean re-implementing transport, conversation, tool dispatch, scheduling and memory that Hermes already provides — and then maintaining two of everything.
 
 ## Status
 
@@ -125,6 +127,37 @@ The Personal CFO advises and may perform approved record changes. It never
 initiates money movement, and no perspective can — that limit is a property of
 the tool surface, not of the playbook text.
 
+### How a request flows
+
+1. A message arrives on a channel that Hermes owns.
+2. Hermes handles it natively — conversation, memory, its own tools.
+3. If the request needs one of the operator's systems, Hermes calls a Real-Ming tool.
+4. Real-Ming resolves the named account, calls the provider adapter, and records what happened.
+5. A consequential result is returned as something to approve, not something already done.
+
+Step 5 is the load-bearing one. A mail tool returns a draft reference and states that the message is waiting; it does not report success for an action nobody authorized.
+
+## Production topology
+
+One always-on Linux virtual machine in Azure (Malaysia West) runs everything, under
+systemd, with unit files in [`deploy/systemd/`](deploy/systemd). Native Hermes and
+the Real-Ming extension are separate processes on that single host — the isolation
+is for clean execution and recovery, not a hardened multi-tenant boundary.
+
+| Element | Detail | State |
+| --- | --- | --- |
+| Always-on host | One Azure Linux VM under systemd; restart and reconcile verified with nothing lost and nothing replayed | live-verified |
+| Native Hermes gateway | Sole Telegram consumer; owns conversation, tools, cron, kanban and native memory | live-verified |
+| Real-Ming extension | Separate process, same host; nine MCP tools reached over local stdio | live-verified |
+| Hermes dashboard | Bound to `127.0.0.1:9119` | live-verified |
+| Real-Ming read model | Bound to `127.0.0.1:8787` | live-verified |
+| Private remote access | Approved devices only, over a private network behind OAuth. No public dashboard or SSH port is opened | live-verified |
+| Secrets | Azure Key Vault, resolved at runtime; no copy rests on the host disk | live-verified |
+| Scheduled reports | Two native Hermes cron jobs delivering to Telegram; one unattended run observed | live-verified |
+| Off-host backup | Azure Blob Storage in a separate region, whitelist-only, with an isolated restore proven byte-identical | live-verified |
+| Selective knowledge consolidation | Inactive manifest only; no cron row exists | controlled-tested |
+| Optional local worker | A laptop process for device-specific work; nothing depends on it | intended |
+
 ### Native memory and Obsidian knowledge boundary
 
 Hermes remains the sole reasoning, synthesis, Telegram and native-memory
@@ -167,16 +200,6 @@ the same command passes. See [the design spec](docs/superpowers/specs/2026-09-08
 [the implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md)
 and [the final remediation packet](docs/evidence/RM-40-native-knowledge-final-remediation-review-packet-2026-09-10.md).
 
-### How a request flows
-
-1. A message arrives on a channel that Hermes owns.
-2. Hermes handles it natively — conversation, memory, its own tools.
-3. If the request needs one of the operator's systems, Hermes calls a Real-Ming tool.
-4. Real-Ming resolves the named account, calls the provider adapter, and records what happened.
-5. A consequential result is returned as something to approve, not something already done.
-
-Step 5 is the load-bearing one. A mail tool returns a draft reference and states that the message is waiting; it does not report success for an action nobody authorized.
-
 ## Sources of Record and account routing
 
 External applications remain authoritative. Real-Ming coordinates access and keeps evidence; it does not shadow another system's truth or quietly become the new one. See [ADR-0001](docs/adr/0001-keep-domain-systems-authoritative.md).
@@ -201,6 +224,31 @@ Some boundaries are structural rather than instructional, which is the stronger 
 - **Default tests never contact a provider**, spend quota, use a credential, or touch production data. Live smoke tests require both an explicit flag and supplied credentials.
 
 Deterministic enforcement today comes from build-time guards — the deployment preflight, the baseline drift test, the credential scanner — and from bounded tool capability. Enforcement through runtime events or hooks is a design goal, not a current feature; see the **Planned** row above.
+
+
+**Both dashboards stay bound to loopback.** Neither is published to the internet.
+Remote access works by putting an authenticated private network in front of the
+loopback socket rather than by moving the socket — the bind did not change, the
+trust boundary did. See
+[ADR-0021](docs/adr/0021-reach-the-dashboard-over-tailscale-with-nous-oauth.md).
+
+"Always-on" describes the host and the supervised units, and one unattended
+scheduled run has been observed. It is not a measured uptime claim, and no
+availability target is set or monitored.
+
+Backups are whitelist-only and restore into an isolated location, so a restore
+cannot overwrite live state by accident. Credentials, OAuth material and caches
+never enter the snapshot.
+
+
+## Limitations and non-goals
+
+- **Single operator by design.** [ADR-0008](docs/adr/0008-optimize-v1-for-one-operator.md) optimizes v1 for one person. Multi-user access control is not implemented.
+- **Not a general-purpose agent framework.** If a capability exists natively in Hermes, Real-Ming should not reimplement it, and several previous Real-Ming components were deleted on those grounds.
+- **No autonomous outward action.** Sending, publishing, deploying and spending all stop for approval.
+- **No runtime event enforcement yet.** Deterministic guarantees are build-time and capability-shaped; see the **Planned** row in [Capabilities](#capabilities).
+- **Deployment is specific to this installation.** The scripts under `deploy/` assume one host and one cloud account; they are not a portable installer.
+- **No CI workflows in this repository.** Checks run locally through `npm run check`.
 
 ## Prerequisites
 
@@ -314,50 +362,6 @@ The suite is 71 test files under [`test/`](test), covering system behaviour, ada
 | `CEO-Office/` | Runbooks and approvals requiring the operator's own hand |
 | `CONTEXT.md` | Domain vocabulary, roles and authority definitions |
 | `AGENTS.md` | Working agreement for agents contributing to this repository |
-
-## Production topology
-
-One always-on Linux virtual machine in Azure (Malaysia West) runs everything, under
-systemd, with unit files in [`deploy/systemd/`](deploy/systemd). Native Hermes and
-the Real-Ming extension are separate processes on that single host — the isolation
-is for clean execution and recovery, not a hardened multi-tenant boundary.
-
-| Element | Detail | State |
-| --- | --- | --- |
-| Always-on host | One Azure Linux VM under systemd; restart and reconcile verified with nothing lost and nothing replayed | live-verified |
-| Native Hermes gateway | Sole Telegram consumer; owns conversation, tools, cron, kanban and native memory | live-verified |
-| Real-Ming extension | Separate process, same host; nine MCP tools reached over local stdio | live-verified |
-| Hermes dashboard | Bound to `127.0.0.1:9119` | live-verified |
-| Real-Ming read model | Bound to `127.0.0.1:8787` | live-verified |
-| Private remote access | Approved devices only, over a private network behind OAuth. No public dashboard or SSH port is opened | live-verified |
-| Secrets | Azure Key Vault, resolved at runtime; no copy rests on the host disk | live-verified |
-| Scheduled reports | Two native Hermes cron jobs delivering to Telegram; one unattended run observed | live-verified |
-| Off-host backup | Azure Blob Storage in a separate region, whitelist-only, with an isolated restore proven byte-identical | live-verified |
-| Selective knowledge consolidation | Inactive manifest only; no cron row exists | controlled-tested |
-| Optional local worker | A laptop process for device-specific work; nothing depends on it | intended |
-
-**Both dashboards stay bound to loopback.** Neither is published to the internet.
-Remote access works by putting an authenticated private network in front of the
-loopback socket rather than by moving the socket — the bind did not change, the
-trust boundary did. See
-[ADR-0021](docs/adr/0021-reach-the-dashboard-over-tailscale-with-nous-oauth.md).
-
-"Always-on" describes the host and the supervised units, and one unattended
-scheduled run has been observed. It is not a measured uptime claim, and no
-availability target is set or monitored.
-
-Backups are whitelist-only and restore into an isolated location, so a restore
-cannot overwrite live state by accident. Credentials, OAuth material and caches
-never enter the snapshot.
-
-## Limitations and non-goals
-
-- **Single operator by design.** [ADR-0008](docs/adr/0008-optimize-v1-for-one-operator.md) optimizes v1 for one person. Multi-user access control is not implemented.
-- **Not a general-purpose agent framework.** If a capability exists natively in Hermes, Real-Ming should not reimplement it, and several previous Real-Ming components were deleted on those grounds.
-- **No autonomous outward action.** Sending, publishing, deploying and spending all stop for approval.
-- **No runtime event enforcement yet.** Deterministic guarantees are build-time and capability-shaped; see the **Planned** row in [Capabilities](#capabilities).
-- **Deployment is specific to this installation.** The scripts under `deploy/` assume one host and one cloud account; they are not a portable installer.
-- **No CI workflows in this repository.** Checks run locally through `npm run check`.
 
 ## Documentation
 
