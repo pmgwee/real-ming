@@ -2782,14 +2782,18 @@
 
         <section class="extension-detail" aria-labelledby="extension-tools-title">
           <div class="extension-detail-head">
-            <div><span class="data-label">One of nine MCP servers</span><h3 id="extension-tools-title">Real-Ming extension · 9 tools</h3></div>
-            <p>The extension adds Ming-specific records, reports and provider access. It does not own transport, conversation, reasoning or the coding loop.</p>
+            <div><span class="data-label">One of nine MCP servers</span><h3 id="extension-tools-title">Real-Ming extension · 9 tools · 6 skills · 0 plugins</h3></div>
+            <p>Everything Real-Ming contributes reaches Hermes through three mechanisms and no others: <strong>configuration</strong> sets ownership, <strong>skills</strong> guide work, and <strong>MCP tools</strong> perform operations. It ships no plugin and owns no transport, conversation, reasoning or coding loop.</p>
           </div>
           <div class="extension-groups">
             <div class="extension-group"><strong>Work Items + execution links · 3</strong><span><code>real_ming_list_work_items</code><br><code>real_ming_get_work_item</code><br><code>real_ming_link_execution_task</code></span></div>
             <div class="extension-group"><strong>Scheduled reports · 1</strong><span><code>real_ming_run_scheduled_report</code><br>Native cron composes through the tool; Hermes owns Telegram delivery.</span></div>
             <div class="extension-group"><strong>Provider access · 5</strong><span><code>real_ming_list_calendar_events</code> · <code>real_ming_create_calendar_event</code><br><code>real_ming_search_mail</code> · <code>real_ming_read_email</code> · <code>real_ming_draft_email</code></span></div>
+            <div class="extension-group"><strong>Skills · 6</strong><span><code>coo</code> · <code>cto</code> · <code>cmo</code> · <code>personal-cfo</code> · <code>cao</code><br><code>real-ming</code> — vocabulary, authority and portfolio.<br>Guidance only: no skill carries a credential or grants a permission.</span></div>
+            <div class="extension-group"><strong>Scheduled jobs · 2</strong><span>Native Hermes cron rows at <code>07:30</code> and <code>21:30 Asia/Kuala_Lumpur</code>.<br>Real-Ming composes through one tool; Hermes owns the schedule and Telegram delivery.</span></div>
+            <div class="extension-group"><strong>Plugins · 0</strong><span>Real-Ming ships no plugin and installs no hook. Nothing it provides extends the Hermes runtime itself.</span></div>
           </div>
+          <div class="diagram-note"><strong>DEPLOYED VS REPOSITORY:</strong> the host exposes <strong>9 tools and 6 skills</strong>. The repository additionally contains <strong>7 selective-knowledge tools</strong> (<code>capture_knowledge_candidate</code>, <code>knowledge_list_candidates</code>, <code>read_knowledge_source</code>, <code>stage_knowledge_generation</code>, <code>wiki_retrieve</code>, <code>forget_wiki_knowledge</code>, <code>knowledge_health</code>) and <strong>2 knowledge skills</strong> — controlled-tested and <strong>not deployed</strong>. A third, narrower scope exists in code for a nightly job restricted to four operations; no such job runs. Verified on the host: <code>.real-ming/generated</code> does not exist, and the vault holds one agent-written note.</div>
 
           <div class="provider-bridge" aria-label="Loopback provider bridge and Google credential topology">
             <article class="bridge-node child"><strong>Real-Ming MCP child</strong><p>Spawned by Hermes over local stdio. It inherits only its declared environment: bridge key and runtime path. It has no Azure Key Vault access and no Google credential.</p></article>
@@ -2800,9 +2804,9 @@
               <strong>Azure Key Vault · one refresh token per account</strong>
               <p>A credential can reach only the account that minted it. No Google secret is copied into Hermes configuration.</p>
               <div class="account-grid">
-                <div class="account-node"><strong>leeahming199@gmail.com</strong><span>Google Calendar</span></div>
-                <div class="account-node"><strong>perminggwee@gmail.com</strong><span>Personal / opportunity mail</span></div>
-                <div class="account-node"><strong>I26042693@student.newinti.edu.my</strong><span>Academic mail</span></div>
+                <div class="account-node"><strong>Account A</strong><span>Google Calendar</span></div>
+                <div class="account-node"><strong>Account B</strong><span>Personal / opportunity mail</span></div>
+                <div class="account-node"><strong>Account C</strong><span>Academic mail</span></div>
               </div>
             </article>
           </div>

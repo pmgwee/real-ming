@@ -98,6 +98,36 @@ flowchart TB
 
 Real-Ming is reached as a tool. It is never in the path of an ordinary conversation, so plain chat needs no work item, no role ceremony and no structured turn plan.
 
+### What Real-Ming actually ships
+
+Everything it contributes reaches Hermes through three mechanisms and no others.
+Configuration sets ownership, skills guide work, and MCP tools perform
+operations — *a skill guides, a tool performs, a plugin extends the runtime*, and
+Real-Ming ships no plugin.
+
+| Mechanism | Deployed | What it is |
+| --- | ---: | --- |
+| **Configuration** | — | A secret-free Hermes config fragment, `SOUL.md`, ownership variables (`REAL_MING_TELEGRAM_OWNERSHIP`, `REAL_MING_SCHEDULER_OWNERSHIP`) and the systemd units. It states no opinion about Hermes memory. |
+| **Skills** | **6** | Five role playbooks — `coo`, `cto`, `cmo`, `personal-cfo`, `cao` — plus `real-ming` for vocabulary, authority and portfolio. Guidance only: no skill carries a credential or grants a permission. |
+| **MCP tools** | **9** | 3 work-item and execution-link · 1 scheduled-report · 5 provider access, over one stdio server. |
+| **Scheduled jobs** | **2** | Native Hermes cron rows at 07:30 and 21:30 `Asia/Kuala_Lumpur`. Real-Ming composes through one tool; Hermes owns the schedule and the Telegram delivery. |
+| **Plugins** | **0** | None exists. Nothing Real-Ming provides extends the Hermes runtime itself. |
+
+**Deployed is not the same as present in this repository.** The host exposes
+9 tools and 6 skills. The repository additionally holds **7 selective-knowledge
+tools** — `capture_knowledge_candidate`, `knowledge_list_candidates`,
+`read_knowledge_source`, `stage_knowledge_generation`, `wiki_retrieve`,
+`forget_wiki_knowledge`, `knowledge_health` — and **2 knowledge skills**, all
+controlled-tested and **not deployed**. A third, narrower scope exists in code
+for a nightly job restricted to four operations; no such job runs.
+
+Five of the nine deployed tools are provider access, which a native connector
+could also perform. They exist for governance rather than capability: there is
+no send tool and no `gmail.send` scope, and the MCP child holds no Google
+credential or Key Vault access, calling a loopback endpoint where per-account
+tokens and the mailbox allowlist are enforced. The four genuinely
+Real-Ming-shaped tools are the work-item, execution-link and report ones.
+
 ## Production topology
 
 One always-on Linux virtual machine in Azure (Malaysia West) runs everything, under
