@@ -135,7 +135,12 @@ operations.
 
 The current artifact is controlled-only: the native cron manifest remains
 inactive, and deployment, a harmless live one-shot, recurring cron activation
-and any mirror transport each require separate approval. See [the design spec](docs/superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md),
+and any mirror transport each require separate approval. The 10 September
+remediation packet records its own status as **NOT READY, blockers remain**:
+NKC-10 could not be proven in that workspace because the pinned Hermes import
+needs PyYAML, so native-Hermes execution is not claimed, Its `npm run check` exited `1` on a Chromium `spawn EPERM` *environment*
+failure; that blocker is workspace-specific and does not reproduce here, where
+the same command passes. See [the design spec](docs/superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md),
 [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md),
 [the implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md)
 and [the final remediation packet](docs/evidence/RM-40-native-knowledge-final-remediation-review-packet-2026-09-10.md).
@@ -313,8 +318,9 @@ Backups are whitelist-only and restore into an isolated location so a restore ca
 | [AGENTS.md](AGENTS.md) | Working agreement, definition of done, secrets policy |
 | [docs/BASELINE.md](docs/BASELINE.md) | Current design and deployed revision labels |
 | [docs/specs/real-ming-v1.1.md](docs/specs/real-ming-v1.1.md) | The system specification |
-| [docs/adr/](docs/adr) | Twenty-one decision records, oldest to newest |
-| [docs/architecture/](docs/architecture) | Capability and architecture reviews |
+| [docs/adr/](docs/adr) | Twenty-two decision records, oldest to newest |
+| [docs/architecture/real-ming-agent-diagram-v7-cleanup.html](docs/architecture/real-ming-agent-diagram-v7-cleanup.html) | The current architecture diagram — Revision 6, v7 cleanup |
+| [docs/architecture/](docs/architecture) | Capability and architecture reviews, and retained earlier diagram revisions |
 | [docs/agents/](docs/agents) | Agent guidance, handoffs, lessons learned |
 | [hermes/README.md](hermes/README.md) | The Hermes configuration pack |
 
