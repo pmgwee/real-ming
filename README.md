@@ -37,6 +37,29 @@ Capabilities below are labelled by evidence:
 | Selective wiki consolidation | **Tested (controlled only)** | Tasks 0–8 and the final local remediation are controlled-tested with native Hermes as the sole reasoning, synthesis and native-memory runtime. The inactive `02:00 Asia/Kuala_Lumpur` manifest is not a cron row; no production caller, live acceptance or local mirror is active. See [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md), the [implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md), [controlled evidence](docs/evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md) and the [final remediation packet](docs/evidence/RM-40-native-knowledge-final-remediation-review-packet-2026-09-10.md). |
 | Event-driven mandatory controls | **Planned** | No runtime hook or event wiring exists in this repository today. Current deterministic guarantees come from build-time checks and from tool capability being absent rather than forbidden. |
 
+### Executive perspectives
+
+Five bounded perspectives shape how work is framed. Each is a Hermes skill in [`hermes/skills/ming/`](hermes/skills/ming), loaded on merit when the work matches.
+
+| Perspective | Scope |
+| --- | --- |
+| **COO** | Daily operations, life, career and coordination |
+| **CTO** | Software, infrastructure and technical operations |
+| **CMO** | Content, research, production and distribution |
+| **Personal CFO** | Finance, accounting and analytical snapshots |
+| **CAO** | Academic commitments, planning and draft support |
+
+They are perspectives, not agents. There is no process, inbox, runtime or storage
+folder per role, and a role label is not a security boundary — authority comes
+from the approval model, not from which playbook happens to be active. Real-Ming
+records role metadata on tracked work; ordinary conversation selects no role at
+all and announces none.
+
+The Personal CFO advises and may perform approved record changes. It never
+initiates money movement, and no perspective can — that limit is a property of
+the tool surface, not of the playbook text.
+
+
 ## Architecture
 
 ```mermaid
@@ -74,6 +97,27 @@ flowchart TB
 
 Real-Ming is reached as a tool. It is never in the path of an ordinary conversation, so plain chat needs no work item, no role ceremony and no structured turn plan.
 
+## Production topology
+
+One always-on Linux virtual machine in Azure (Malaysia West) runs everything, under
+systemd, with unit files in [`deploy/systemd/`](deploy/systemd). Native Hermes and
+the Real-Ming extension are separate processes on that single host — the isolation
+is for clean execution and recovery, not a hardened multi-tenant boundary.
+
+| Element | Detail | State |
+| --- | --- | --- |
+| Always-on host | One Azure Linux VM under systemd; restart and reconcile verified with nothing lost and nothing replayed | live-verified |
+| Native Hermes gateway | Sole Telegram consumer; owns conversation, tools, cron, kanban and native memory | live-verified |
+| Real-Ming extension | Separate process, same host; nine MCP tools reached over local stdio | live-verified |
+| Hermes dashboard | Bound to `127.0.0.1:9119` | live-verified |
+| Real-Ming read model | Bound to `127.0.0.1:8787` | live-verified |
+| Private remote access | Approved devices only, over a private network behind OAuth. No public dashboard or SSH port is opened | live-verified |
+| Secrets | Azure Key Vault, resolved at runtime; no copy rests on the host disk | live-verified |
+| Scheduled reports | Two native Hermes cron jobs delivering to Telegram; one unattended run observed | live-verified |
+| Off-host backup | Azure Blob Storage in a separate region, whitelist-only, with an isolated restore proven byte-identical | live-verified |
+| Selective knowledge consolidation | Inactive manifest only; no cron row exists | controlled-tested |
+| Optional local worker | A laptop process for device-specific work; nothing depends on it | intended |
+
 ## What can Real-Ming contribute?
 
 Real-Ming is the integration and governance layer around Hermes. It contributes operator-specific SOPs and configuration, bounded skills and MCP tools, cross-source provider coordination, evidence and audit records, and projections such as the private dashboard. Hermes remains the agent: it owns Telegram, conversation, tool dispatch, scheduling, kanban, plugins, skills, native memory and final responses.
@@ -98,28 +142,6 @@ Hermes native memory (`MEMORY.md`, `USER.md`, profile or session history),
 inspect every ordinary conversation, or be described as a hard security
 boundary for arbitrary filesystem reads.
 
-### Executive perspectives
-
-Five bounded perspectives shape how work is framed. Each is a Hermes skill in [`hermes/skills/ming/`](hermes/skills/ming), loaded on merit when the work matches.
-
-| Perspective | Scope |
-| --- | --- |
-| **COO** | Daily operations, life, career and coordination |
-| **CTO** | Software, infrastructure and technical operations |
-| **CMO** | Content, research, production and distribution |
-| **Personal CFO** | Finance, accounting and analytical snapshots |
-| **CAO** | Academic commitments, planning and draft support |
-
-They are perspectives, not agents. There is no process, inbox, runtime or storage
-folder per role, and a role label is not a security boundary — authority comes
-from the approval model, not from which playbook happens to be active. Real-Ming
-records role metadata on tracked work; ordinary conversation selects no role at
-all and announces none.
-
-The Personal CFO advises and may perform approved record changes. It never
-initiates money movement, and no perspective can — that limit is a property of
-the tool surface, not of the playbook text.
-
 ### How a request flows
 
 1. A message arrives on a channel that Hermes owns.
@@ -129,27 +151,6 @@ the tool surface, not of the playbook text.
 5. A consequential result is returned as something to approve, not something already done.
 
 Step 5 is the load-bearing one. A mail tool returns a draft reference and states that the message is waiting; it does not report success for an action nobody authorized.
-
-## Production topology
-
-One always-on Linux virtual machine in Azure (Malaysia West) runs everything, under
-systemd, with unit files in [`deploy/systemd/`](deploy/systemd). Native Hermes and
-the Real-Ming extension are separate processes on that single host — the isolation
-is for clean execution and recovery, not a hardened multi-tenant boundary.
-
-| Element | Detail | State |
-| --- | --- | --- |
-| Always-on host | One Azure Linux VM under systemd; restart and reconcile verified with nothing lost and nothing replayed | live-verified |
-| Native Hermes gateway | Sole Telegram consumer; owns conversation, tools, cron, kanban and native memory | live-verified |
-| Real-Ming extension | Separate process, same host; nine MCP tools reached over local stdio | live-verified |
-| Hermes dashboard | Bound to `127.0.0.1:9119` | live-verified |
-| Real-Ming read model | Bound to `127.0.0.1:8787` | live-verified |
-| Private remote access | Approved devices only, over a private network behind OAuth. No public dashboard or SSH port is opened | live-verified |
-| Secrets | Azure Key Vault, resolved at runtime; no copy rests on the host disk | live-verified |
-| Scheduled reports | Two native Hermes cron jobs delivering to Telegram; one unattended run observed | live-verified |
-| Off-host backup | Azure Blob Storage in a separate region, whitelist-only, with an isolated restore proven byte-identical | live-verified |
-| Selective knowledge consolidation | Inactive manifest only; no cron row exists | controlled-tested |
-| Optional local worker | A laptop process for device-specific work; nothing depends on it | intended |
 
 ### Native memory and Obsidian knowledge boundary
 
