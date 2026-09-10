@@ -1,6 +1,7 @@
 # Real-Ming
 
 A private personal-operations layer built on [Hermes Agent](https://hermes-agent.nousresearch.com/docs). Hermes is the agent runtime; Real-Ming adds the integrations, governance and evidence that one operator's personal, business, academic and financial work needs.
+The intended always-on deployment target is an Azure VM with Azure Key Vault; deployment and live-acceptance status are tracked separately from this design baseline.
 
 ## What this solves
 
@@ -77,6 +78,12 @@ flowchart TB
 ```
 
 Real-Ming is reached as a tool. It is never in the path of an ordinary conversation, so plain chat needs no work item, no role ceremony and no structured turn plan.
+
+## What can Real-Ming contribute?
+
+Real-Ming is the integration and governance layer around Hermes. It contributes operator-specific SOPs and configuration, bounded skills and MCP tools, cross-source provider coordination, evidence and audit records, and projections such as the private dashboard. Hermes remains the agent: it owns Telegram, conversation, tool dispatch, scheduling, kanban, plugins, skills, native memory and final responses.
+
+Every item remains attributable to its source of record and is shown through an operational read model; Real-Ming does not recreate Hermes or silently shadow provider truth.
 
 ### Responsibility boundary
 
