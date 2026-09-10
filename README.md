@@ -103,6 +103,28 @@ Hermes native memory (`MEMORY.md`, `USER.md`, profile or session history),
 inspect every ordinary conversation, or be described as a hard security
 boundary for arbitrary filesystem reads.
 
+### Executive perspectives
+
+Five bounded perspectives shape how work is framed. Each is a Hermes skill in [`hermes/skills/ming/`](hermes/skills/ming), loaded on merit when the work matches.
+
+| Perspective | Scope |
+| --- | --- |
+| **COO** | Daily operations, life, career and coordination |
+| **CTO** | Software, infrastructure and technical operations |
+| **CMO** | Content, research, production and distribution |
+| **Personal CFO** | Finance, accounting and analytical snapshots |
+| **CAO** | Academic commitments, planning and draft support |
+
+They are perspectives, not agents. There is no process, inbox, runtime or storage
+folder per role, and a role label is not a security boundary — authority comes
+from the approval model, not from which playbook happens to be active. Real-Ming
+records role metadata on tracked work; ordinary conversation selects no role at
+all and announces none.
+
+The Personal CFO advises and may perform approved record changes. It never
+initiates money movement, and no perspective can — that limit is a property of
+the tool surface, not of the playbook text.
+
 ### Native memory and Obsidian knowledge boundary
 
 Hermes remains the sole reasoning, synthesis, Telegram and native-memory
@@ -293,13 +315,40 @@ The suite is 71 test files under [`test/`](test), covering system behaviour, ada
 | `CONTEXT.md` | Domain vocabulary, roles and authority definitions |
 | `AGENTS.md` | Working agreement for agents contributing to this repository |
 
-## Operations
+## Production topology
 
-The system runs on an always-on Linux host under systemd, with unit files in [`deploy/systemd/`](deploy/systemd). Both the Hermes dashboard and the Real-Ming read model bind to loopback only; neither is published to the internet and no public dashboard or SSH port is opened.
+One always-on Linux virtual machine in Azure (Malaysia West) runs everything, under
+systemd, with unit files in [`deploy/systemd/`](deploy/systemd). Native Hermes and
+the Real-Ming extension are separate processes on that single host — the isolation
+is for clean execution and recovery, not a hardened multi-tenant boundary.
 
-Remote access is over a private network with authentication in front of it, rather than by exposing a port. The current arrangement and the reasoning behind it are recorded in [ADR-0021](docs/adr/0021-reach-the-dashboard-over-tailscale-with-nous-oauth.md).
+| Element | Detail | State |
+| --- | --- | --- |
+| Always-on host | One Azure Linux VM under systemd; restart and reconcile verified with nothing lost and nothing replayed | live-verified |
+| Native Hermes gateway | Sole Telegram consumer; owns conversation, tools, cron, kanban and native memory | live-verified |
+| Real-Ming extension | Separate process, same host; nine MCP tools reached over local stdio | live-verified |
+| Hermes dashboard | Bound to `127.0.0.1:9119` | live-verified |
+| Real-Ming read model | Bound to `127.0.0.1:8787` | live-verified |
+| Private remote access | Approved devices only, over a private network behind OAuth. No public dashboard or SSH port is opened | live-verified |
+| Secrets | Azure Key Vault, resolved at runtime; no copy rests on the host disk | live-verified |
+| Scheduled reports | Two native Hermes cron jobs delivering to Telegram; one unattended run observed | live-verified |
+| Off-host backup | Azure Blob Storage in a separate region, whitelist-only, with an isolated restore proven byte-identical | live-verified |
+| Selective knowledge consolidation | Inactive manifest only; no cron row exists | controlled-tested |
+| Optional local worker | A laptop process for device-specific work; nothing depends on it | intended |
 
-Backups are whitelist-only and restore into an isolated location so a restore cannot overwrite live state by accident.
+**Both dashboards stay bound to loopback.** Neither is published to the internet.
+Remote access works by putting an authenticated private network in front of the
+loopback socket rather than by moving the socket — the bind did not change, the
+trust boundary did. See
+[ADR-0021](docs/adr/0021-reach-the-dashboard-over-tailscale-with-nous-oauth.md).
+
+"Always-on" describes the host and the supervised units, and one unattended
+scheduled run has been observed. It is not a measured uptime claim, and no
+availability target is set or monitored.
+
+Backups are whitelist-only and restore into an isolated location, so a restore
+cannot overwrite live state by accident. Credentials, OAuth material and caches
+never enter the snapshot.
 
 ## Limitations and non-goals
 
