@@ -10,6 +10,13 @@ authoritative; this file orients you, it does not replace them.
 branch. `codex/rm-40-readiness` still exists but is fully merged and retired —
 do not commit to it. Cut a new branch only if the CEO asks for one.
 
+**Bounded remediation exception (9 September 2026):** the CEO authorized a
+local corrective review from exact commit
+`669355afaebae0a65a85d9712c28328b49b9db7f`. That work belongs on
+`fix/rm40-native-knowledge-remediation`; it must not rewrite or replace the
+reviewed history and must not be pushed or deployed. The current packet is
+`docs/evidence/RM-40-native-knowledge-remediation-review-packet-2026-09-09.md`.
+
 ## What Real-Ming is
 
 A private personal-operations layer on top of **Hermes Agent**. Hermes is the

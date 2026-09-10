@@ -16,6 +16,7 @@ import type {
 } from "../../src/hermes/contracts.js";
 import {
   captureCandidate,
+  sha256ContentHash,
   verifyEvidence,
 } from "../../src/knowledge/native-consolidation/evidence.js";
 import {
@@ -58,6 +59,7 @@ function candidate(
   id: string,
   kind: NativeKnowledgeCandidate["kind"] = "project-artifact",
 ): NativeKnowledgeCandidate {
+  const excerpt = `Controlled source-backed claim ${id}.`;
   const claimClass =
     kind === "decision" || kind === "correction"
       ? "decision"
@@ -78,8 +80,8 @@ function candidate(
     sourceIdentity: `fixture:${id}`,
     sourceReference: `fixture:${id}`,
     sourceVersion: "v1",
-    excerpt: `Controlled source-backed claim ${id}.`,
-    contentHash: `sha256:${id}`,
+    excerpt,
+    contentHash: sha256ContentHash(excerpt),
     capturedAt: now,
     asOf: now,
     trustDomain: "Ming Creatives",
@@ -157,6 +159,7 @@ function fakeHeadStore(options: { readonly unavailable?: boolean } = {}): {
             {
               tombstoneId: input.tombstone.tombstoneId,
               subject: input.tombstone.subject,
+              aliases: [...input.tombstone.aliases],
               localEpoch: input.tombstone.localEpoch,
             },
           ],
@@ -207,6 +210,7 @@ async function runOne(
     now,
     generatedRoot: fixture.generatedRoot,
     stagingRoot: fixture.stagingRoot,
+    clock: () => now,
     loadCandidate: async (id) => values.get(id),
     readSource: async (value) => sourceFor(value),
     assessSupport: async () => "supported",
@@ -455,6 +459,7 @@ describe("native knowledge controlled acceptance matrix", () => {
           headStore: complete.store,
           snapshotHighestLocalEpoch: pending.localEpoch,
           snapshotPendingTombstoneIds: [pending.tombstoneId],
+          snapshotTombstoneIds: [pending.tombstoneId],
         }),
       ).toMatchObject({ kind: "safe" });
 

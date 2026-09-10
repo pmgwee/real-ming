@@ -73,8 +73,18 @@ export async function captureCandidate(input: CaptureRequest & {
     : { kind: "denied", reason: admission.reason };
 }
 
-function contentHash(value: string): string {
-  return `sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`;
+/**
+ * Return the canonical identity for the exact UTF-8 bytes represented by a
+ * source snapshot.  The source contract carries text, so encoding it once as
+ * UTF-8 is deliberate; callers must not normalize whitespace or line endings
+ * before this function is evaluated.
+ */
+export function sha256ContentHash(value: string): string {
+  return `sha256:${createHash("sha256").update(Buffer.from(value, "utf8")).digest("hex")}`;
+}
+
+function isCanonicalContentHash(value: string): boolean {
+  return /^sha256:[0-9a-f]{64}$/u.test(value);
 }
 
 /**
@@ -128,8 +138,11 @@ export async function verifyEvidence(
     };
   }
   const excerptPresent = source.content.includes(input.candidate.excerpt);
-  const declaredHashIsPlausible =
-    source.contentHash.startsWith("sha256:") || contentHash(source.content) === source.contentHash;
+  const computedHash = sha256ContentHash(source.content);
+  const declaredHashIsCanonical =
+    isCanonicalContentHash(source.contentHash) && isCanonicalContentHash(input.candidate.contentHash);
+  const declaredHashMatchesBytes =
+    declaredHashIsCanonical && source.contentHash === computedHash && input.candidate.contentHash === computedHash;
   const freshness = isFresh({
     claimClass: input.candidate.claimClass,
     asOf: input.candidate.asOf,
@@ -146,7 +159,7 @@ export async function verifyEvidence(
     };
   }
   const semanticSupport = input.semanticSupport ?? "uncertain";
-  if (!excerptPresent || !declaredHashIsPlausible || semanticSupport !== "supported") {
+  if (!excerptPresent || !declaredHashMatchesBytes || semanticSupport !== "supported") {
     return {
       disposition: "quarantined",
       support: semanticSupport,
@@ -155,9 +168,9 @@ export async function verifyEvidence(
       sourceReference: source.sourceReference,
       reason: !excerptPresent
         ? "candidate-excerpt-not-present-in-source"
-        : semanticSupport !== "supported"
-          ? "semantic-support-not-established-by-hash"
-          : "source-hash-format-invalid",
+        : !declaredHashIsCanonical || !declaredHashMatchesBytes
+          ? "source-hash-mismatch"
+          : "semantic-support-not-established-by-hash",
     };
   }
   return {

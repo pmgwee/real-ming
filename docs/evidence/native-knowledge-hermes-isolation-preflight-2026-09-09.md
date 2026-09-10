@@ -63,9 +63,11 @@ with exit `78`; there is no permissive fallback.
 
 ## Memory, authentication and OS containment
 
-- The disposable agent boundary used `skip_memory=True`, `enabledToolsets=["file"]`,
-  a fake/local model, networking disabled, and no credential values.
-- The probe returned `authMode=offline-fake-local-no-credentials` and did not
+- The disposable agent boundary used `skip_memory=True`,
+  `enabledToolsets=["real-ming"]`, the exact four-name MCP `tools.include`
+  allowlist, a loopback/local deterministic model stub, networking disabled,
+  and no credential values.
+- The probe returned `authMode=offline-local-deterministic-stub` and did not
   inherit Telegram, Notion, Calendar, mail, GitHub, Vercel or model API values.
 - On Windows, disposable directories were protected with an ACL denying write
   while retaining read/execute. Writes succeeded only below the staging and

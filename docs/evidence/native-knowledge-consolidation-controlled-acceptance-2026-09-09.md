@@ -1,4 +1,8 @@
-# Native knowledge consolidation — controlled acceptance
+# Native knowledge consolidation — superseded controlled acceptance snapshot
+
+> Historical evidence retained for audit. The implementation recorded here is
+> superseded by the bounded remediation branch. Use the current remediation
+> review packet for the exact corrective artifact and its verification results.
 
 **Date:** 9 September 2026 (Asia/Kuala_Lumpur)
 **Baseline:** Real-Ming v1.1 · Architecture Revision 6
