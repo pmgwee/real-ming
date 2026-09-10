@@ -112,19 +112,12 @@ them while Hermes keeps the schedule and the delivery.
 Real-Ming is reached as a tool. It is never in the path of an ordinary conversation, so plain chat needs no work item, no role ceremony and no structured turn plan.
 
 ### What Real-Ming actually ships
-
-Everything it contributes reaches Hermes through three mechanisms and no others.
-Configuration sets ownership, skills guide work, and MCP tools perform
-operations — *a skill guides, a tool performs, a plugin extends the runtime*, and
-Real-Ming ships no plugin.
-
 | Mechanism | Deployed | What it is |
 | --- | ---: | --- |
 | **Configuration** | — | A secret-free Hermes config fragment, `SOUL.md`, ownership variables (`REAL_MING_TELEGRAM_OWNERSHIP`, `REAL_MING_SCHEDULER_OWNERSHIP`) and the systemd units. It states no opinion about Hermes memory. |
 | **Skills** | **6** | Five role playbooks — `coo`, `cto`, `cmo`, `personal-cfo`, `cao` — plus `real-ming` for vocabulary, authority and portfolio. Guidance only: no skill carries a credential or grants a permission. |
 | **MCP tools** | **9** | 3 work-item and execution-link · 1 scheduled-report · 5 provider access, over one stdio server. |
 | **Scheduled jobs** | **2** | Native Hermes cron rows at 07:30 and 21:30 `Asia/Kuala_Lumpur`. Real-Ming composes through one tool; Hermes owns the schedule and the Telegram delivery. |
-| **Plugins** | **0** | None exists. Nothing Real-Ming provides extends the Hermes runtime itself. |
 
 **Deployed is not the same as present in this repository.** The host exposes
 9 tools and 6 skills. The repository additionally holds **7 selective-knowledge
