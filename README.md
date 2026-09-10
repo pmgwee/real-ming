@@ -5,7 +5,7 @@ The intended always-on deployment target is an Azure VM with Azure Key Vault; de
 
 ## What can Real-Ming contribute?
 
-Real-Ming exists as a operating layer for agent with defined configuration (Agent Mode) , a set of workflow and tools with personalized & customized capability (Agent Skills & MCP) , a Cross-source coordination (Third-party Connectors) , and provide/ingest data as vault(personal information & projects context) of myself in day-to-day task.
+Real-Ming exists as a operating layer for agent with defined configuration (Agent Mode) , a set of workflow and tools with personalized & customized capability (Agent Skills & MCP) , a Cross-source coordination (Third-party Connectors) , and provide/ingest data as vault (personal & projects Knowledge Base) of myself in day-to-day task.
 
 Everythings tracked, maintained and presented in a kanban dashboard 
 ## Status
