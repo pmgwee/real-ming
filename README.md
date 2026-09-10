@@ -71,13 +71,16 @@ flowchart TB
         CLI["CLI"]
     end
 
-    subgraph H["Hermes Agent — runtime"]
+    subgraph H["Hermes Agent — the runtime"]
         GW["Gateway<br/>transport · conversation · tool loop"]
-        NAT["Native subsystems<br/>memory · cron · kanban · skills"]
+        NAT["Native subsystems<br/>memory · kanban · plugins"]
+        SK["Skills · 6<br/>coo · cto · cmo · personal-cfo · cao<br/>real-ming"]
+        CRON["Cron · 2 rows<br/>07:30 and 21:30 Asia/Kuala_Lumpur"]
     end
 
     subgraph R["Real-Ming — integration and governance"]
-        MCP["MCP server<br/>bounded tool surface"]
+        CFG["Configuration<br/>ownership variables · config fragment<br/>SOUL.md · systemd units"]
+        MCP["MCP server · 9 tools<br/>3 work-item · 1 report · 5 provider"]
         ADP["Provider adapters"]
         EV["Work items · evidence · audit"]
     end
@@ -90,11 +93,21 @@ flowchart TB
     DB --> GW
     CLI --> GW
     GW --- NAT
-    GW -->|tool call| MCP
+    CFG -.->|"sets ownership"| GW
+    CFG -.->|"authors"| SK
+    SK -.->|"guides, grants nothing"| GW
+    GW -->|"tool call"| MCP
+    CRON -->|"composes through one tool"| MCP
     MCP --> ADP
-    ADP -->|read, and write only when approved| EXT
+    ADP -->|"read, and write only when approved"| EXT
     MCP --> EV
 ```
+
+Real-Ming reaches Hermes two ways, and the direction matters. **Configuration and
+skills flow into Hermes** — Real-Ming authors them, Hermes loads them, and neither
+carries a credential or grants a permission. **Tools are called out of Hermes** —
+the gateway decides when, and cron composes the two daily reports through one of
+them while Hermes keeps the schedule and the delivery.
 
 Real-Ming is reached as a tool. It is never in the path of an ordinary conversation, so plain chat needs no work item, no role ceremony and no structured turn plan.
 
