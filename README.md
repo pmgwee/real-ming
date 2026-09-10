@@ -15,9 +15,7 @@ It is not a second agent runtime. Building one would mean re-implementing transp
 
 ## Status
 
-**Real-Ming v1.1, Architecture Revision 6.** Single operator, private repository, not a general-purpose product and not accepting external users.
-
-Revision 6 is the design baseline: Hermes owns the messaging gateway, conversation and execution, and Real-Ming is an additive extension reached as a tool. The deployed revision is tracked separately in [docs/BASELINE.md](docs/BASELINE.md) and is allowed to lag the design; a test fails the build if the two labels drift apart.
+The deployed revision is tracked separately in [docs/BASELINE.md](docs/BASELINE.md) 
 
 Capabilities below are labelled by evidence:
 
