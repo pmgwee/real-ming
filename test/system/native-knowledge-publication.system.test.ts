@@ -10,6 +10,7 @@ import {
 import type { RunLease, StagedPage } from "../../src/knowledge/native-consolidation/contracts.js";
 import {
   activateGeneration,
+  generatedRootBytes,
   readManifest,
   reconcileGenerations,
   stageGeneration,
@@ -100,6 +101,22 @@ describe("native knowledge immutable publication", () => {
     });
   });
 
+  it("cleans a failed staging attempt so a partial generation cannot accumulate", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, lease }) => {
+      await expect(stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("too-large", "x".repeat(128 * 1024 + 1))],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+      })).rejects.toThrow(/page too large/i);
+      expect(readdirSync(join(generatedRoot, "generations"))).toHaveLength(0);
+      expect(readdirSync(stagingRoot)).toHaveLength(0);
+    });
+  });
+
   it("makes activation the single pointer event and carries both complete pages forward", async () => {
     await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
       const first = await stage({
@@ -133,6 +150,198 @@ describe("native knowledge immutable publication", () => {
       expect(result.kind).toBe("healthy");
       expect(result.quarantined).toContain("orphan");
       expect(registry.activeGeneration()).toBeUndefined();
+    });
+  });
+
+  it("rejects a one-byte-over generated-root budget without installing a generation", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
+      await expect(stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("budget", "budgeted content")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+        maxGeneratedRootBytes: 1,
+      })).rejects.toThrow(/generated-root-byte-limit/i);
+      expect(readdirSync(join(generatedRoot, "generations"))).toHaveLength(0);
+      expect(registry.activeGeneration()).toBeUndefined();
+    });
+  });
+
+  it("accepts a generation exactly at the configured generated-root byte limit", async () => {
+    await withWorkspace(async ({ directory, generatedRoot, stagingRoot, registry, lease }) => {
+      const scratchGenerated = join(directory, "scratch", "generated");
+      const scratchStaging = join(directory, "scratch", "staging");
+      mkdirSync(scratchGenerated, { recursive: true });
+      mkdirSync(scratchStaging, { recursive: true });
+      const scratch = await stage({
+        run: lease,
+        generatedRoot: scratchGenerated,
+        stagingRoot: scratchStaging,
+        pages: [page("exact", "exactly bounded")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+        maxGeneratedRootBytes: 64 * 1024,
+      });
+      const exactBudget = generatedRootBytes(scratchGenerated);
+      rmSync(scratch.immutablePath, { recursive: true, force: true });
+      const actual = await stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("exact", "exactly bounded")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+        maxGeneratedRootBytes: exactBudget,
+      });
+      expect(generatedRootBytes(generatedRoot)).toBe(exactBudget);
+      registry.recordStagedGeneration(actual);
+    });
+  });
+
+  it("retains the active and protected rollback generations and is idempotent", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
+      const installed: string[] = [];
+      for (const id of ["one", "two", "three", "four"]) {
+        const staged = await stage({
+          run: lease,
+          generatedRoot,
+          stagingRoot,
+          pages: [page(id, `content ${id}`)],
+          sourceEpoch: 0,
+          tombstoneEpoch: 0,
+          now: `2026-09-09T02:00:0${installed.length}.000Z`,
+        });
+        registry.recordStagedGeneration(staged);
+        const activated = activateGeneration({
+          registry,
+          generation: staged,
+          lease,
+          activePath: generatedRoot,
+          now: `2026-09-09T02:00:1${installed.length}.000Z`,
+          maxRetainedGenerations: 2,
+          protectedGenerationIds: installed.slice(0, 1),
+        });
+        expect(activated.kind).toBe("activated");
+        installed.push(staged.generationId);
+      }
+      const directories = readdirSync(join(generatedRoot, "generations"));
+      expect(directories).toHaveLength(2);
+      const active = registry.activeGeneration();
+      expect(active).toBeDefined();
+      expect(directories).toContain(active?.generationId);
+      expect(directories).toContain(installed[0]);
+      // A second cleanup-triggering activation must not fail because the old
+      // generation was already removed.
+      expect(readdirSync(join(generatedRoot, "generations"))).toHaveLength(2);
+    });
+  });
+
+  it("preserves generations recorded as in-progress while retaining newer generations", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
+      const first = await stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("in-progress-a", "first")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+      });
+      registry.recordStagedGeneration(first);
+
+      const second = await stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("in-progress-b", "second")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:01:00.000Z",
+      });
+      registry.recordStagedGeneration(second);
+
+      expect(activateGeneration({
+        registry,
+        generation: second,
+        lease,
+        activePath: generatedRoot,
+        now: "2026-09-09T02:01:01.000Z",
+        maxRetainedGenerations: 1,
+      }).kind).toBe("activated");
+
+      expect(existsSync(first.immutablePath)).toBe(true);
+      expect(existsSync(second.immutablePath)).toBe(true);
+    });
+  });
+
+  it("fences activation when the independent tombstone head advances", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
+      const staged = await stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("head-fence", "head fenced content")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+      });
+      registry.recordStagedGeneration(staged);
+      registry.setTombstoneHeadEpoch(1);
+      const result = activateGeneration({
+        registry,
+        generation: staged,
+        lease,
+        activePath: generatedRoot,
+        now: "2026-09-09T02:00:01.000Z",
+        expectedTombstoneHeadEpoch: 0,
+      });
+      expect(result).toMatchObject({ kind: "fenced", reason: "tombstone-head-epoch-advanced" });
+    });
+  });
+
+  it("reports committed activation when retention cleanup fails and leaves repair state", async () => {
+    await withWorkspace(async ({ generatedRoot, stagingRoot, registry, lease }) => {
+      const staged = await stage({
+        run: lease,
+        generatedRoot,
+        stagingRoot,
+        pages: [page("cleanup-failure", "active content")],
+        sourceEpoch: 0,
+        tombstoneEpoch: 0,
+        now: "2026-09-09T02:00:00.000Z",
+      });
+      registry.recordStagedGeneration(staged);
+      const originalInProgress = registry.inProgressGenerationIds.bind(registry);
+      const failingRegistry = new Proxy(registry, {
+        get(target, property, receiver) {
+          if (property === "inProgressGenerationIds") {
+            return () => {
+              originalInProgress();
+              throw new Error("controlled cleanup interruption");
+            };
+          }
+          return Reflect.get(target, property, receiver);
+        },
+      });
+      const result = activateGeneration({
+        registry: failingRegistry,
+        generation: staged,
+        lease,
+        activePath: generatedRoot,
+        now: "2026-09-09T02:00:01.000Z",
+      });
+      expect(result).toMatchObject({
+        kind: "activated",
+        generationId: staged.generationId,
+        retentionCleanupPending: true,
+      });
+      expect(failingRegistry.activeGeneration()?.generationId).toBe(staged.generationId);
+      expect(failingRegistry.runHealth().repairState).toBe("needs-repair");
     });
   });
 });

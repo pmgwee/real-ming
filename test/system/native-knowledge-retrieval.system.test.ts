@@ -113,6 +113,56 @@ describe("native knowledge supported retrieval", () => {
     }
   });
 
+  it("suppresses a page when any source dependency, page identity, path, or reference is forgotten", async () => {
+    const fixture = await setup([{
+      ...page("derived", "Derived project decision."),
+      sourceCandidateIds: ["candidate-a", "candidate-b"],
+      sourceReference: "fixture:derived-source",
+    }]);
+    try {
+      fixture.registry.appendLocalTombstone({
+        subject: "candidate-b",
+        aliases: [],
+        reason: "dependency forget",
+        requestedAt: "2026-09-09T02:05:00.000Z",
+      });
+      const result = wikiRetrieve({
+        registry: fixture.registry,
+        generatedRoot: fixture.generatedRoot,
+        query: "Derived project",
+        now: "2026-09-09T02:05:00.000Z",
+      });
+      expect(result).toMatchObject({ kind: "not-found" });
+    } finally {
+      fixture.registry.close();
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed when a concurrent tombstone/publication fence changes during a read", async () => {
+    const fixture = await setup([page("race", "A race-sensitive page.")]);
+    try {
+      const originalFence = fixture.registry.consistencyFence.bind(fixture.registry);
+      let calls = 0;
+      fixture.registry.consistencyFence = () => {
+        calls += 1;
+        const fence = originalFence();
+        return calls === 2 ? { ...fence, tombstoneEpoch: fence.tombstoneEpoch + 1 } : fence;
+      };
+      const result = wikiRetrieve({
+        registry: fixture.registry,
+        generatedRoot: fixture.generatedRoot,
+        query: "race-sensitive",
+        now: "2026-09-09T02:05:00.000Z",
+      });
+      expect(result).toMatchObject({ kind: "needs-repair" });
+      expect(fixture.registry.runHealth().repairState).toBe("needs-repair");
+    } finally {
+      fixture.registry.close();
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
   it.each([
     ["no active pointer", (fixture: Awaited<ReturnType<typeof setup>>) => fixture.registry.setRepairState("healthy")],
     ["registry repair", (fixture: Awaited<ReturnType<typeof setup>>) => fixture.registry.setRepairState("needs-repair")],
@@ -149,6 +199,32 @@ describe("native knowledge supported retrieval", () => {
       });
       expect(["wiki-unavailable", "needs-repair"]).toContain(result.kind);
       expect(readFileSync(join(fixture.generation.immutablePath, "pages/a.md"), "utf8")).toBe("tampered");
+    } finally {
+      fixture.registry.close();
+      rmSync(fixture.directory, { recursive: true, force: true });
+    }
+  });
+
+  it("verifies page bytes after the read so a mid-read mutation is not returned", async () => {
+    const fixture = await setup([page("mid-read", "Original page content.")]);
+    try {
+      const originalFence = fixture.registry.consistencyFence.bind(fixture.registry);
+      let calls = 0;
+      fixture.registry.consistencyFence = () => {
+        calls += 1;
+        if (calls === 2) {
+          writeFileSync(join(fixture.generation.immutablePath, "pages/mid-read.md"), "Mutated page content.", "utf8");
+        }
+        return originalFence();
+      };
+      const result = wikiRetrieve({
+        registry: fixture.registry,
+        generatedRoot: fixture.generatedRoot,
+        query: "Original page content",
+        now: "2026-09-09T02:05:00.000Z",
+      });
+      expect(result).toMatchObject({ kind: "needs-repair" });
+      expect(fixture.registry.runHealth().repairState).toBe("needs-repair");
     } finally {
       fixture.registry.close();
       rmSync(fixture.directory, { recursive: true, force: true });

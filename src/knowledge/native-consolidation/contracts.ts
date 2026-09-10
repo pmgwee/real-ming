@@ -76,6 +76,9 @@ export interface NativeKnowledgeCandidateMetadata {
   readonly sourceReference: string;
   readonly sourceVersion: string;
   readonly contentHash: string;
+  /** Hashes bind loader prose to the admitted candidate without storing prose. */
+  readonly claimHash: string;
+  readonly excerptHash: string;
   readonly capturedAt: string;
   readonly asOf: string;
   readonly trustDomain: TrustDomain;
@@ -116,6 +119,8 @@ export interface StagedPage {
   readonly path: string;
   readonly content: string;
   readonly sourceCandidateIds: readonly string[];
+  /** Secondary and derived identities that must share tombstone suppression. */
+  readonly dependencies?: readonly string[];
   readonly claimClass: ClaimClass;
   readonly sourceReference: string;
   readonly capturedAt: string;
@@ -130,6 +135,7 @@ export interface GenerationPageMetadata {
   readonly sha256: string;
   readonly bytes: number;
   readonly sourceCandidateIds: readonly string[];
+  readonly dependencies?: readonly string[];
   readonly claimClass: ClaimClass;
   readonly sourceReference: string;
   readonly capturedAt: string;
@@ -170,6 +176,8 @@ export interface StageGenerationRequest {
   readonly sourceEpoch: number;
   readonly tombstoneEpoch: number;
   readonly now: string;
+  /** Optional lower test/deployment budget; production defaults are bounded. */
+  readonly maxGeneratedRootBytes?: number;
 }
 
 export interface ActivationRequest {
@@ -177,6 +185,17 @@ export interface ActivationRequest {
   readonly lease: RunLease;
   readonly activePath: string;
   readonly now: string;
+  /** Snapshot fences captured immediately before filesystem preparation. */
+  readonly expectedActiveGenerationId?: string | null;
+  readonly expectedPublicationEpoch?: number;
+  readonly expectedSourceEpoch?: number;
+  readonly expectedTombstoneEpoch?: number;
+  readonly expectedTombstoneHeadEpoch?: number;
+  readonly expectedRepairState?: RepairState;
+  /** Optional retention bound; production defaults to the first-slice limit. */
+  readonly maxRetainedGenerations?: number;
+  /** Generations held by an in-progress recovery/publication operation. */
+  readonly protectedGenerationIds?: readonly string[];
 }
 
 export interface ReconcileRequest {
@@ -190,7 +209,14 @@ export type ReconcileResult =
   | { readonly kind: "needs-repair"; readonly reason: string; readonly quarantined: readonly string[] };
 
 export type ActivationResult =
-  | { readonly kind: "activated"; readonly generationId: string; readonly publicationEpoch: number }
+  | {
+      readonly kind: "activated";
+      readonly generationId: string;
+      readonly publicationEpoch: number;
+      /** Activation is committed; cleanup may be retried by reconciliation. */
+      readonly retentionCleanupPending?: boolean;
+      readonly retentionCleanupError?: string;
+    }
   | { readonly kind: "fenced"; readonly reason: string }
   | { readonly kind: "invalid"; readonly reason: string };
 
@@ -272,13 +298,29 @@ export interface TombstoneRecord {
   readonly createdAt: string;
 }
 
+export type TombstoneOutboxStatus = "pending" | "failed" | "synced";
+
+/** Opaque durable propagation metadata; the tombstone payload remains in the registry. */
+export interface TombstoneOutboxRecord {
+  readonly outboxId: string;
+  readonly tombstoneId: string;
+  readonly localEpoch: number;
+  readonly status: TombstoneOutboxStatus;
+  readonly attempts: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
 export type ForgetResult = TombstoneRecord & {
   readonly verifiedHeadEpoch: number | null;
 };
 
 export interface TombstoneHead {
   readonly epoch: number;
-  readonly entries: readonly Pick<TombstoneRecord, "tombstoneId" | "subject" | "localEpoch">[];
+  /** Older heads may omit aliases; a current head must carry them when present. */
+  readonly entries: readonly (Pick<TombstoneRecord, "tombstoneId" | "subject" | "localEpoch"> & {
+    readonly aliases?: readonly string[];
+  })[];
   readonly complete: boolean;
   readonly version: string;
 }
@@ -298,6 +340,10 @@ export interface TombstoneHeadStore {
 export interface RestoreTombstoneRequest {
   readonly snapshotHighestLocalEpoch: number;
   readonly snapshotPendingTombstoneIds: readonly string[];
+  /** Optional complete set captured in the backup for stronger coverage. */
+  readonly snapshotTombstoneIds?: readonly string[];
+  /** ISO timestamp used when a newer independent entry is replayed locally. */
+  readonly restoredAt?: string;
 }
 
 export type RestoreTombstoneResult =
@@ -338,6 +384,21 @@ export interface NativeKnowledgeRunHealth {
   readonly isolationEligible: boolean;
 }
 
+/** Point-in-time registry fence used by readers and publishers. */
+export interface NativeKnowledgeConsistencyFence {
+  readonly activeGenerationId: string | null;
+  readonly publicationEpoch: number;
+  readonly sourceEpoch: number;
+  readonly tombstoneEpoch: number;
+  readonly tombstoneHeadEpoch: number;
+  readonly repairState: RepairState;
+}
+
+export interface NativeKnowledgeConsistencySnapshot {
+  readonly fence: NativeKnowledgeConsistencyFence;
+  readonly active: ActiveGeneration | undefined;
+}
+
 export interface ConsolidationRunRequest {
   readonly operatingDate: string;
   readonly now: string;
@@ -348,6 +409,8 @@ export interface ConsolidationRunRequest {
     readonly previous: GenerationManifest | undefined;
   }) => Promise<readonly StagedPage[]>;
   readonly maxWallClockMs?: number;
+  /** Optional deterministic clock for controlled tests; production uses UTC now. */
+  readonly clock?: () => string;
 }
 
 export interface ConsolidationRunResult {

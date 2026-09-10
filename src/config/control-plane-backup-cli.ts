@@ -44,6 +44,10 @@ async function main(): Promise<void> {
   const hermesVaultPath = configuredHermesVaultPath !== undefined && configuredHermesVaultPath.length > 0 && existsSync(configuredHermesVaultPath)
     ? configuredHermesVaultPath
     : undefined;
+  const configuredNativeKnowledgeStatePath = process.env["REAL_MING_NATIVE_KNOWLEDGE_STATE_PATH"]?.trim();
+  const nativeKnowledgeStatePath = configuredNativeKnowledgeStatePath !== undefined && configuredNativeKnowledgeStatePath.length > 0 && existsSync(configuredNativeKnowledgeStatePath)
+    ? configuredNativeKnowledgeStatePath
+    : undefined;
   const directory =
     process.env["REAL_MING_LOCAL_BACKUP_DIRECTORY"]?.trim() ||
     "/var/lib/real-ming/backups";
@@ -68,6 +72,9 @@ async function main(): Promise<void> {
     ...(hermesVaultPath === undefined || hermesVaultPath.length === 0
       ? {}
       : { hermesVaultPath }),
+    ...(nativeKnowledgeStatePath === undefined || nativeKnowledgeStatePath.length === 0
+      ? {}
+      : { nativeKnowledgeStatePath }),
     destinationDirectory: directory,
     backupId,
     createdAt,

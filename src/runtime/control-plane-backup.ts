@@ -26,6 +26,7 @@ export interface ControlPlaneBackupManifest {
       | "hermes-native-state"
       | "hermes-native-file"
       | "hermes-native-vault"
+      | "native-knowledge-state"
       | "native-knowledge-tombstone-outbox";
     readonly name: string;
     readonly sha256: string;
@@ -51,6 +52,8 @@ export interface ControlPlaneBackupSet {
   readonly hermesVaultPath?: string;
   /** Optional opaque local tombstone sync outbox. */
   readonly nativeKnowledgeTombstoneOutboxPath?: string;
+  /** Optional native knowledge registry SQLite database. */
+  readonly nativeKnowledgeStatePath?: string;
   readonly manifestPath: string;
   readonly manifest: ControlPlaneBackupManifest;
 }
@@ -67,6 +70,94 @@ export interface ControlPlaneBackupUploader {
 
 function digest(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+/**
+ * The native registry keeps the full tombstone payload in its SQLite state.
+ * This sidecar is deliberately opaque: it is a durable inventory of pending
+ * propagation work, not a second memory store. A state database without the
+ * native outbox table is left unchanged for legacy control-plane backups.
+ */
+function nativeKnowledgeOutboxSnapshot(statePath: string): readonly Record<string, unknown>[] | undefined {
+  const database = new DatabaseSync(statePath, { readOnly: true });
+  try {
+    const table = database.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'native_knowledge_tombstone_outbox'",
+    ).get() as { readonly name: string } | undefined;
+    if (table === undefined) return undefined;
+    const rows = database.prepare(
+      `SELECT outbox_id, tombstone_id, local_epoch, status, attempts, created_at, updated_at
+       FROM native_knowledge_tombstone_outbox ORDER BY local_epoch, outbox_id`,
+    ).all() as readonly Record<string, unknown>[];
+    return rows.map((row) => ({
+      outboxId: row.outbox_id,
+      tombstoneId: row.tombstone_id,
+      localEpoch: row.local_epoch,
+      status: row.status,
+      attempts: row.attempts,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * Generation rows contain absolute paths because the live registry is local to
+ * its vault. A verified restore copies that vault under a new root, so rebase
+ * only the known `.real-ming/generated/generations/<id>` suffix. Any row that
+ * cannot be proven to match is left untouched and the restored registry is
+ * repair-locked rather than pointed at an inferred path.
+ */
+function rebaseNativeKnowledgeGenerationPaths(statePath: string, restoredVaultPath: string): void {
+  const database = new DatabaseSync(statePath);
+  try {
+    const table = database.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'native_knowledge_generations'",
+    ).get() as { readonly name: string } | undefined;
+    if (table === undefined) return;
+    const rows = database.prepare(
+      "SELECT generation_id, path FROM native_knowledge_generations",
+    ).all() as unknown as readonly { readonly generation_id: string; readonly path: string }[];
+    database.exec("BEGIN IMMEDIATE;");
+    try {
+      let unprovable = false;
+      for (const row of rows) {
+        const normalized = typeof row.path === "string" ? row.path.replaceAll("\\", "/") : "";
+        const match = normalized.match(/\/\.real-ming\/generated\/generations\/([^/]+)$/u);
+        if (
+          match === null ||
+          !/^[A-Za-z0-9._-]+$/u.test(row.generation_id) ||
+          match[1] !== row.generation_id
+        ) {
+          unprovable = true;
+          continue;
+        }
+        const rebased = join(
+          resolve(restoredVaultPath),
+          ".real-ming",
+          "generated",
+          "generations",
+          row.generation_id,
+        );
+        database.prepare(
+          "UPDATE native_knowledge_generations SET path = ? WHERE generation_id = ?",
+        ).run(rebased, row.generation_id);
+      }
+      if (unprovable) {
+        database.prepare(
+          "UPDATE native_knowledge_state SET repair_state = 'needs-repair' WHERE id = 1",
+        ).run();
+      }
+      database.exec("COMMIT;");
+    } catch (error) {
+      try { database.exec("ROLLBACK;"); } catch { /* already rolled back */ }
+      throw error;
+    }
+  } finally {
+    database.close();
+  }
 }
 
 /**
@@ -165,6 +256,7 @@ export interface ControlPlaneBackupVerification {
 
 export interface ControlPlaneBackupRestore extends ControlPlaneBackupVerification {
   readonly directory: string;
+  readonly nativeKnowledgeStatePath?: string;
   readonly nativeKnowledgeTombstoneOutboxPath?: string;
 }
 
@@ -274,6 +366,7 @@ function manifestFromDisk(manifestPath: string): ControlPlaneBackupManifest {
     "hermes-native-state",
     "hermes-native-file",
     "hermes-native-vault",
+    "native-knowledge-state",
     "native-knowledge-tombstone-outbox",
   ]);
   const names = new Set<string>();
@@ -489,16 +582,30 @@ export function restoreControlPlaneBackup(options: {
     }
     const destinationManifest = join(directory, "manifest.json");
     copyFileSync(verification.manifestPath, destinationManifest);
-    const restoredTombstoneOutbox = verification.manifest.files.some(
+  const restoredTombstoneOutbox = verification.manifest.files.some(
       (file) => file.role === "native-knowledge-tombstone-outbox",
     )
       ? containedPath(directory, "native-knowledge/tombstone-outbox.json")
       : undefined;
+    const restoredNativeKnowledgeState = verification.manifest.files.some(
+      (file) => file.role === "native-knowledge-state",
+    )
+      ? containedPath(directory, "native-knowledge/state.sqlite")
+      : undefined;
+    const restoredVaultPath = verification.manifest.directories?.some(
+      (entry) => entry.name === "hermes-vault",
+    ) === true
+      ? containedPath(directory, "hermes-vault")
+      : undefined;
+    if (restoredNativeKnowledgeState !== undefined && restoredVaultPath !== undefined) {
+      rebaseNativeKnowledgeGenerationPaths(restoredNativeKnowledgeState, restoredVaultPath);
+    }
     const sqliteRoles = new Set([
       "operations-state",
       "notion-write-ledger",
       "hermes-session",
       "hermes-native-state",
+      "native-knowledge-state",
     ]);
     const restoredSqliteIntegrity = verification.manifest.files
       .filter((file) => sqliteRoles.has(file.role))
@@ -512,6 +619,9 @@ export function restoreControlPlaneBackup(options: {
       directory,
       manifestPath: destinationManifest,
       sqliteIntegrity: restoredSqliteIntegrity,
+      ...(restoredNativeKnowledgeState === undefined
+        ? {}
+        : { nativeKnowledgeStatePath: restoredNativeKnowledgeState }),
       ...(restoredTombstoneOutbox === undefined
         ? {}
         : { nativeKnowledgeTombstoneOutboxPath: restoredTombstoneOutbox }),
@@ -536,6 +646,8 @@ export async function backupControlPlaneState(options: {
   readonly hermesNativeStateDirectory?: string;
   /** Optional native Obsidian/LLM-Wiki vault directory. */
   readonly hermesVaultPath?: string;
+  /** Optional native registry database; auto-detected from statePath when omitted. */
+  readonly nativeKnowledgeStatePath?: string;
   /** Optional opaque local tombstone sync outbox. */
   readonly nativeKnowledgeTombstoneOutboxPath?: string;
   readonly destinationDirectory: string;
@@ -566,6 +678,11 @@ export async function backupControlPlaneState(options: {
   if (options.hermesVaultPath !== undefined && !existsSync(options.hermesVaultPath)) {
     throw new Error("The configured Hermes native vault must exist before backup.");
   }
+  const nativeKnowledgeIsSeparate = options.nativeKnowledgeStatePath !== undefined &&
+    resolve(options.nativeKnowledgeStatePath) !== resolve(options.statePath);
+  if (nativeKnowledgeIsSeparate) {
+    assertRegularFile(options.nativeKnowledgeStatePath!, "native knowledge registry state");
+  }
   if (options.nativeKnowledgeTombstoneOutboxPath !== undefined) {
     if (!existsSync(options.nativeKnowledgeTombstoneOutboxPath)) {
       throw new Error("The configured native knowledge tombstone outbox must exist before backup.");
@@ -587,7 +704,10 @@ export async function backupControlPlaneState(options: {
   const hermesVaultPath = options.hermesVaultPath === undefined
     ? undefined
     : join(directory, "hermes-vault");
-  const nativeKnowledgeTombstoneOutboxPath = options.nativeKnowledgeTombstoneOutboxPath === undefined
+  const nativeKnowledgeStatePath = nativeKnowledgeIsSeparate
+    ? join(directory, "native-knowledge", "state.sqlite")
+    : undefined;
+  let nativeKnowledgeTombstoneOutboxPath = options.nativeKnowledgeTombstoneOutboxPath === undefined
     ? undefined
     : join(directory, "native-knowledge", "tombstone-outbox.json");
   const manifestPath = join(directory, "manifest.json");
@@ -620,6 +740,13 @@ export async function backupControlPlaneState(options: {
         destinationPath: hermesStatePath,
       });
     }
+    if (nativeKnowledgeStatePath !== undefined && options.nativeKnowledgeStatePath !== undefined) {
+      mkdirSync(dirname(nativeKnowledgeStatePath), { recursive: true });
+      await backupSqliteState({
+        sourcePath: options.nativeKnowledgeStatePath,
+        destinationPath: nativeKnowledgeStatePath,
+      });
+    }
     let nativeStateFiles: readonly {
       readonly relativePath: string;
       readonly kind: HermesNativeStateFile["kind"];
@@ -640,6 +767,19 @@ export async function backupControlPlaneState(options: {
     if (nativeKnowledgeTombstoneOutboxPath !== undefined && options.nativeKnowledgeTombstoneOutboxPath !== undefined) {
       mkdirSync(dirname(nativeKnowledgeTombstoneOutboxPath), { recursive: true });
       copyFileSync(options.nativeKnowledgeTombstoneOutboxPath, nativeKnowledgeTombstoneOutboxPath);
+    }
+    if (nativeKnowledgeTombstoneOutboxPath === undefined) {
+      const nativeStatePath = options.nativeKnowledgeStatePath ?? options.statePath;
+      const snapshot = nativeKnowledgeOutboxSnapshot(nativeStatePath);
+      if (snapshot !== undefined) {
+        nativeKnowledgeTombstoneOutboxPath = join(directory, "native-knowledge", "tombstone-outbox.json");
+        mkdirSync(dirname(nativeKnowledgeTombstoneOutboxPath), { recursive: true });
+        writeFileSync(
+          nativeKnowledgeTombstoneOutboxPath,
+          `${JSON.stringify({ schema: "real-ming.native-knowledge-tombstone-outbox.v1", entries: snapshot }, null, 2)}\n`,
+          { encoding: "utf8", flag: "wx" },
+        );
+      }
     }
     const manifest: ControlPlaneBackupManifest = {
       backupId: options.backupId,
@@ -684,6 +824,13 @@ export async function backupControlPlaneState(options: {
               name: `hermes-vault/${file.relativePath.replaceAll("\\", "/")}`,
               sha256: file.sha256,
             }))),
+        ...(nativeKnowledgeStatePath === undefined
+          ? []
+          : [{
+              role: "native-knowledge-state" as const,
+              name: "native-knowledge/state.sqlite",
+              sha256: digest(nativeKnowledgeStatePath),
+            }]),
         ...(nativeKnowledgeTombstoneOutboxPath === undefined
           ? []
           : [{
@@ -717,6 +864,7 @@ export async function backupControlPlaneState(options: {
       ...(hermesStatePath === undefined ? {} : { hermesStatePath }),
       ...(hermesNativeStateDirectory === undefined ? {} : { hermesNativeStateDirectory }),
       ...(hermesVaultPath === undefined ? {} : { hermesVaultPath }),
+      ...(nativeKnowledgeStatePath === undefined ? {} : { nativeKnowledgeStatePath }),
       ...(nativeKnowledgeTombstoneOutboxPath === undefined ? {} : { nativeKnowledgeTombstoneOutboxPath }),
     };
   } catch (error) {
@@ -755,6 +903,7 @@ export async function backupAndUploadControlPlaneState(options: {
   readonly hermesStatePath?: string;
   readonly hermesNativeStateDirectory?: string;
   readonly hermesVaultPath?: string;
+  readonly nativeKnowledgeStatePath?: string;
   readonly nativeKnowledgeTombstoneOutboxPath?: string;
   readonly destinationDirectory: string;
   readonly backupId: string;

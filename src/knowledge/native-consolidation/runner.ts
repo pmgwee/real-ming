@@ -1,15 +1,17 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import {
   NATIVE_KNOWLEDGE_LIMITS,
   type ConsolidationRunRequest,
   type GenerationManifest,
+  type NativeKnowledgeConsistencyFence,
   type NativeKnowledgeCandidate,
   type SourceSnapshot,
+  type StagedGeneration,
   type StagedPage,
 } from "./contracts.js";
-import { verifyEvidence } from "./evidence.js";
+import { sha256ContentHash, verifyEvidence } from "./evidence.js";
 import { activateGeneration, readManifest, stageGeneration } from "./publication.js";
 import { wikiRetrieve } from "./retrieval.js";
 import { isSuppressedByTombstone } from "./tombstones.js";
@@ -30,12 +32,25 @@ function elapsedMs(startedAt: number): number {
   return Date.now() - startedAt;
 }
 
+function currentTimestamp(input: ConsolidationRunRequest): string {
+  return input.clock?.() ?? new Date().toISOString();
+}
+
 function isRetryableFailure(reason: string): boolean {
   // The first slice retries only an explicitly classified transient source
   // outage. Publication, activation, isolation and model failures are not
   // replayed under the same lease because doing so could duplicate a side
   // effect or hide a fencing defect.
   return reason.startsWith("source-unavailable:");
+}
+
+function sameWorkFence(left: NativeKnowledgeConsistencyFence, right: NativeKnowledgeConsistencyFence): boolean {
+  return left.activeGenerationId === right.activeGenerationId &&
+    left.publicationEpoch === right.publicationEpoch &&
+    left.sourceEpoch === right.sourceEpoch &&
+    left.tombstoneEpoch === right.tombstoneEpoch &&
+    left.tombstoneHeadEpoch === right.tombstoneHeadEpoch &&
+    left.repairState === right.repairState;
 }
 
 function previousPages(
@@ -49,6 +64,7 @@ function previousPages(
     path: page.path,
     content: readFileSync(join(generationPath, page.path), "utf8"),
     sourceCandidateIds: page.sourceCandidateIds,
+    ...(page.dependencies === undefined ? {} : { dependencies: page.dependencies }),
     claimClass: page.claimClass,
     sourceReference: page.sourceReference,
     capturedAt: page.capturedAt,
@@ -63,6 +79,47 @@ function mergePages(previous: readonly StagedPage[], next: readonly StagedPage[]
   const merged = new Map(previous.map((page) => [page.pageId, page]));
   for (const page of next) merged.set(page.pageId, page);
   return [...merged.values()];
+}
+
+function quarantineUnactivatedGeneration(
+  registry: NativeKnowledgeRegistry,
+  generation: StagedGeneration,
+): void {
+  // A fenced activation never committed the active pointer. Remove the
+  // immutable directory and mark its registry row quarantined so a retry or
+  // retention sweep cannot mistake the orphan for an in-progress publication.
+  try {
+    registry.quarantineGeneration(generation.generationId);
+  } catch {
+    registry.setRepairState("needs-repair");
+  }
+  try {
+    rmSync(generation.immutablePath, { recursive: true, force: true });
+  } catch {
+    registry.setRepairState("needs-repair");
+  }
+}
+
+function admittedCandidateMatches(
+  admitted: ReturnType<NativeKnowledgeRegistry["candidate"]>,
+  loaded: NativeKnowledgeCandidate,
+): boolean {
+  if (admitted === undefined) return false;
+  return admitted.candidateId === loaded.candidateId &&
+    admitted.kind === loaded.kind &&
+    admitted.claimClass === loaded.claimClass &&
+    admitted.sourceIdentity === loaded.sourceIdentity &&
+    admitted.sourceReference === loaded.sourceReference &&
+    admitted.sourceVersion === loaded.sourceVersion &&
+    admitted.contentHash === loaded.contentHash &&
+    admitted.claimHash === sha256ContentHash(loaded.claim) &&
+    admitted.excerptHash === sha256ContentHash(loaded.excerpt) &&
+    JSON.stringify(admitted.dependencies) === JSON.stringify(loaded.dependencies) &&
+    admitted.capturedAt === loaded.capturedAt &&
+    admitted.asOf === loaded.asOf &&
+    admitted.trustDomain === loaded.trustDomain &&
+    admitted.sensitivity === loaded.sensitivity &&
+    admitted.retentionClass === loaded.retentionClass;
 }
 
 /** Run one bounded native-Hermes consolidation job; no provider or native-memory writes. */
@@ -80,6 +137,7 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
   let toolCalls = 0;
   let sourceBytes = 0;
   let modelCalls = 0;
+  const runStartFence = input.registry.consistencyFence();
 
   const recordFailure = (reason: string): import("./contracts.js").ConsolidationRunResult => {
     try {
@@ -103,6 +161,9 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       toolCalls += 1;
       if (toolCalls > NATIVE_KNOWLEDGE_LIMITS.maxToolCalls) throw new Error("tool-call limit exceeded");
       if (candidate === undefined) throw new Error(`candidate ${item.candidateId} payload unavailable`);
+      if (!admittedCandidateMatches(input.registry.candidate(item.candidateId), candidate)) {
+        throw new Error(`candidate ${item.candidateId} metadata or lineage mismatch`);
+      }
       candidates.push(candidate);
       const source = await input.readSource(candidate);
       toolCalls += 1;
@@ -122,55 +183,131 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
     }
     let previous: GenerationManifest | undefined;
     let previousPath: string | undefined;
-    const active = input.registry.activeGeneration();
+    const activeSnapshot = input.registry.consistencySnapshot();
+    if (!sameWorkFence(runStartFence, activeSnapshot.fence)) throw new Error("publication fence changed before active snapshot");
+    const active = activeSnapshot.active;
     if (active !== undefined) {
       previous = readManifest(join(active.path, "manifest.json"));
       previousPath = active.path;
     }
     if (candidates.length === 0) {
-      input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, input.now);
+      if (!sameWorkFence(runStartFence, input.registry.consistencyFence())) throw new Error("publication fence changed during consolidation");
+      input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, currentTimestamp(input));
       return { kind: "succeeded", runId: claimed.runId, retryCount };
     }
     if (elapsedMs(startedAt) > maxWallClockMs) throw new Error("wall-clock budget exceeded before synthesis");
     if (modelCalls >= NATIVE_KNOWLEDGE_LIMITS.maxModelCalls) throw new Error("model-call limit exceeded");
     modelCalls += 1;
     const pages = await input.synthesize({ candidates, previous });
+    if (elapsedMs(startedAt) > maxWallClockMs) throw new Error("wall-clock budget exceeded after synthesis");
     if (pages.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) throw new Error("generation page limit exceeded");
+    const selectedIds = new Set(candidates.map((candidate) => candidate.candidateId));
+    const selectedById = new Map(candidates.map((candidate) => [candidate.candidateId, candidate]));
+    const pagesWithLineage = pages.map((page) => {
+      if (page.sourceCandidateIds.length === 0) throw new Error("synthesis page has no source candidate lineage");
+      if (page.sourceCandidateIds.some((candidateId) => !selectedIds.has(candidateId))) {
+        throw new Error(`synthesis page ${page.pageId} references an unselected candidate`);
+      }
+      // A model may omit secondary lineage from its page envelope. Add the
+      // admitted dependencies deterministically before publication so every
+      // supported suppression identity survives into the manifest. Reject
+      // malformed dependency values rather than allowing an untracked alias.
+      const dependencies = new Set<string>();
+      for (const candidateId of page.sourceCandidateIds) {
+        const admitted = selectedById.get(candidateId);
+        if (admitted === undefined) throw new Error(`synthesis page ${page.pageId} references an unselected candidate`);
+        for (const dependency of admitted.dependencies) {
+          if (dependency.trim().length === 0) throw new Error(`candidate ${candidateId} has an empty dependency`);
+          dependencies.add(dependency);
+        }
+      }
+      for (const dependency of page.dependencies ?? []) {
+        if (dependency.trim().length === 0) throw new Error(`synthesis page ${page.pageId} has an empty dependency`);
+        dependencies.add(dependency);
+      }
+      return {
+        ...page,
+        dependencies: [...dependencies].sort(),
+      };
+    });
     const carried = previous === undefined || previousPath === undefined
       ? []
       : previousPages(previous, previousPath, input.registry);
-    const complete = mergePages(carried, pages);
+    const complete = mergePages(carried, pagesWithLineage);
     if (complete.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) throw new Error("complete generation page limit exceeded");
+    const beforePublication = input.registry.consistencySnapshot().fence;
+    if (!sameWorkFence(runStartFence, beforePublication)) throw new Error("publication fence changed during consolidation");
+    const publicationNow = currentTimestamp(input);
+    if (!Number.isFinite(Date.parse(publicationNow))) throw new Error("publication timestamp is invalid");
     const generated = await stageGeneration({
       run: claimed,
       generatedRoot: input.generatedRoot,
       stagingRoot: input.stagingRoot,
       pages: complete,
       ...(previous === undefined ? {} : { previous }),
-      sourceEpoch: 0,
-      tombstoneEpoch: Math.max(
-        input.registry.runHealth().tombstoneHeadEpoch,
-        ...input.registry.tombstones().map((tombstone) => tombstone.localEpoch),
-      ),
-      now: input.now,
+      sourceEpoch: beforePublication.sourceEpoch,
+      tombstoneEpoch: beforePublication.tombstoneEpoch,
+      now: publicationNow,
     });
-    input.registry.recordStagedGeneration(generated);
+    if (!sameWorkFence(beforePublication, input.registry.consistencyFence())) {
+      quarantineUnactivatedGeneration(input.registry, generated);
+      throw new Error("publication fence changed after filesystem preparation");
+    }
+    try {
+      input.registry.recordStagedGeneration(generated);
+    } catch (error) {
+      // The files are durable but the registry row was not. Clean the
+      // unreferenced generation before returning the real registry error.
+      try { rmSync(generated.immutablePath, { recursive: true, force: true }); } catch { input.registry.setRepairState("needs-repair"); }
+      throw error;
+    }
+    const activationNow = currentTimestamp(input);
     const activation = activateGeneration({
       registry: input.registry,
       generation: generated,
       lease: claimed,
       activePath: input.generatedRoot,
-      now: input.now,
+      now: activationNow,
+      expectedActiveGenerationId: beforePublication.activeGenerationId,
+      expectedPublicationEpoch: beforePublication.publicationEpoch,
+      expectedSourceEpoch: beforePublication.sourceEpoch,
+      expectedTombstoneEpoch: beforePublication.tombstoneEpoch,
+      expectedTombstoneHeadEpoch: beforePublication.tombstoneHeadEpoch,
+      expectedRepairState: beforePublication.repairState,
+      // Keep the generation that was active when this run began available as
+      // a rollback/recovery point while retention cleanup runs. The next run
+      // will protect its then-current active generation instead, so this is a
+      // bounded one-generation rollback window rather than an archive.
+      protectedGenerationIds: beforePublication.activeGenerationId === null
+        ? []
+        : [beforePublication.activeGenerationId],
     });
-    if (activation.kind !== "activated") throw new Error(`activation:${activation.reason}`);
+    if (activation.kind !== "activated") {
+      quarantineUnactivatedGeneration(input.registry, generated);
+      throw new Error(`activation:${activation.reason}`);
+    }
     const readBack = wikiRetrieve({
       registry: input.registry,
       generatedRoot: input.generatedRoot,
       query: complete[0]?.pageId ?? "generated knowledge",
-      now: input.now,
+      now: activationNow,
     });
-    if (readBack.kind !== "ok") throw new Error(`retrieval-readback:${readBack.reason}`);
-    input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, input.now);
+    if (readBack.kind !== "ok") {
+      // The registry pointer transaction is already durable at this point.
+      // Never turn a committed activation into a misleading failed run. Keep
+      // retrieval fail-closed, mark repair, and let reconciliation retry the
+      // read/cleanup boundary.
+      input.registry.setRepairState("needs-repair");
+      input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, currentTimestamp(input));
+      return {
+        kind: "succeeded",
+        runId: claimed.runId,
+        generationId: generated.generationId,
+        retryCount,
+        reason: `activated-with-repair:${readBack.reason}`,
+      };
+    }
+    input.registry.recordRunSuccess(claimed.runId, claimed.leaseToken, claimed.leaseEpoch, currentTimestamp(input));
     return { kind: "succeeded", runId: claimed.runId, generationId: generated.generationId, retryCount };
   } catch (error) {
     const reason = error instanceof Error ? error.message : "native knowledge run failed";

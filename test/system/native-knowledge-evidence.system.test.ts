@@ -77,7 +77,7 @@ describe("native knowledge evidence boundary", () => {
       sourceIdentity: "research:controlled",
       sourceReference: "https://example.test/research/1",
       sourceVersion: "v1",
-      contentHash: "sha256:source-content",
+      contentHash: "sha256:0387dbd58bcf9a23fe212219d0f449fa34ac09b55f1b76b02174ad89cebb5660",
       excerpt: "The source excerpt.",
       asOf: "2026-08-01T00:00:00.000Z",
     });
@@ -86,7 +86,7 @@ describe("native knowledge evidence boundary", () => {
       sourceReference: "https://example.test/research/1",
       sourceVersion: "v1",
       content: "The source excerpt.",
-      contentHash: "sha256:source-content",
+      contentHash: "sha256:0387dbd58bcf9a23fe212219d0f449fa34ac09b55f1b76b02174ad89cebb5660",
       asOf: "2026-08-01T00:00:00.000Z",
       retrievedAt: "2026-09-01T00:00:00.000Z",
     } as const;
@@ -102,6 +102,38 @@ describe("native knowledge evidence boundary", () => {
     await expect(verifyEvidence({ candidate, source, now: "2026-08-15T00:00:00.000Z", semanticSupport: "unsupported" })).resolves.toMatchObject({
       disposition: "quarantined",
       support: "unsupported",
+    });
+  });
+
+  it("rejects a fabricated but syntactically valid sha256 claim", async () => {
+    const content = "The source excerpt.";
+    const fabricated = `sha256:${"0".repeat(64)}`;
+    const candidate = candidateFixture({
+      candidateId: "candidate-fabricated-hash",
+      sourceIdentity: "research:controlled",
+      sourceReference: "https://example.test/research/fabricated",
+      sourceVersion: "v1",
+      excerpt: content,
+      contentHash: fabricated,
+      asOf: "2026-09-09T00:00:00.000Z",
+    });
+    const source = {
+      sourceIdentity: candidate.sourceIdentity,
+      sourceReference: candidate.sourceReference,
+      sourceVersion: candidate.sourceVersion,
+      content,
+      contentHash: fabricated,
+      asOf: candidate.asOf,
+      retrievedAt: "2026-09-09T02:00:00.000Z",
+    } as const;
+    await expect(verifyEvidence({
+      candidate,
+      source,
+      now: "2026-09-09T02:00:00.000Z",
+      semanticSupport: "supported",
+    })).resolves.toMatchObject({
+      disposition: "quarantined",
+      reason: "source-hash-mismatch",
     });
   });
 });

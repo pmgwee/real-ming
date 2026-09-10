@@ -396,7 +396,12 @@ later, separately authorized one-shot may use only a named Hermes auth profile
 resolved by the pinned credential store, mounted read-only for the dedicated
 job identity. The profile name and environment variable name may appear in
 evidence, never the credential value, and the job must not inherit the main
-Telegram, Notion, Calendar, mail, GitHub or Vercel secrets.
+Telegram, Notion, Calendar, mail, GitHub or Vercel secrets. The installed
+wrapper constructs each child environment from an explicit allowlist
+(including only path-discovery and bounded route variables) before launching
+either the pinned-runtime probe or the local consolidation entry point; it
+does not inherit the parent environment or rely on a denylist of known
+credential names.
 
 The compatibility preflight must read the exact pinned Hermes source and
 exercise the constructor/CLI flags and MCP include filter. Any missing flag,

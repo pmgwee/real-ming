@@ -8,7 +8,9 @@ const accountNamePattern = /^[a-z0-9]{3,24}$/u;
 const containerNamePattern = /^[a-z0-9](?:[a-z0-9-]{1,61}[a-z0-9])$/u;
 
 function validVersion(value: string): boolean {
-  return value === "v0" || /^v[1-9][0-9]*$/u.test(value) || /^W?\/"[^"]+"$/u.test(value);
+  // Local fixtures use vN; Azure returns an opaque quoted ETag (optionally
+  // weak, W/"..."). Preserve the token exactly for the next If-Match.
+  return value === "v0" || /^v[1-9][0-9]*$/u.test(value) || /^"[^"]+"$/u.test(value) || /^W\/"[^"]+"$/u.test(value);
 }
 
 function parseHead(value: unknown, response: Response): TombstoneHead | undefined {
@@ -24,12 +26,18 @@ function parseHead(value: unknown, response: Response): TombstoneHead | undefine
   ) return undefined;
   const epoch = candidate.epoch as number;
   const etag = response.headers.get("etag");
-  const version = etag !== null && validVersion(etag) ? etag : candidate.version;
+  // An ETag is the concurrency authority for an existing blob. If the
+  // service sends one but it is malformed, falling back to a body-supplied
+  // version could make the next conditional write target an unverified
+  // revision. Fail closed instead.
+  if (etag !== null && !validVersion(etag)) return undefined;
+  const version = etag ?? candidate.version;
   if (!validVersion(version)) return undefined;
   const entries = candidate.entries.filter((entry): entry is TombstoneHead["entries"][number] =>
     typeof entry === "object" && entry !== null &&
     typeof entry.tombstoneId === "string" && typeof entry.subject === "string" &&
-    Number.isSafeInteger(entry.localEpoch) && entry.localEpoch >= 0,
+    Number.isSafeInteger(entry.localEpoch) && entry.localEpoch >= 0 &&
+    (entry.aliases === undefined || (Array.isArray(entry.aliases) && entry.aliases.every((alias: unknown) => typeof alias === "string"))),
   );
   if (entries.length !== candidate.entries.length) return undefined;
   return { epoch, entries, complete: true, version };
@@ -90,11 +98,21 @@ export function createAzureBlobTombstoneHeadStore(options: {
       const current = await readHead();
       if (current.kind !== "ok") return current;
       if (current.head.version !== input.expectedVersion) return { kind: "conflict", head: current.head };
+      const existing = current.head.entries.find((entry) => entry.tombstoneId === input.tombstone.tombstoneId);
+      if (existing !== undefined) {
+        if (existing.subject !== input.tombstone.subject || existing.localEpoch !== input.tombstone.localEpoch) {
+          return { kind: "conflict", head: current.head };
+        }
+        // Retries after an acknowledged PUT are idempotent and must not
+        // append a duplicate entry or advance the independent head again.
+        return { kind: "appended", head: current.head };
+      }
       const head: TombstoneHead = {
         epoch: current.head.epoch + 1,
         entries: [...current.head.entries, {
           tombstoneId: input.tombstone.tombstoneId,
           subject: input.tombstone.subject,
+          aliases: [...input.tombstone.aliases],
           localEpoch: input.tombstone.localEpoch,
         }],
         complete: true,
@@ -106,7 +124,9 @@ export function createAzureBlobTombstoneHeadStore(options: {
         "x-ms-date": now(),
         "x-ms-version": storageApiVersion,
         "content-type": "application/json",
-        "If-Match": input.expectedVersion === "v0" ? "*" : input.expectedVersion,
+        ...(input.expectedVersion === "v0"
+          ? { "If-None-Match": "*" }
+          : { "If-Match": input.expectedVersion }),
       };
       let response: Response;
       try {
@@ -118,7 +138,14 @@ export function createAzureBlobTombstoneHeadStore(options: {
         return refreshed.kind === "ok" ? { kind: "conflict", head: refreshed.head } : { kind: "unavailable", reason: "tombstone head conflict could not be read" };
       }
       if (!response.ok) return { kind: "unavailable", reason: "tombstone head append unavailable" };
-      return { kind: "appended", head };
+      // Azure's response ETag is the opaque concurrency token for the next
+      // update. Never replace it with the locally predicted epoch label: a
+      // successful PUT without a valid ETag cannot be safely followed.
+      const responseEtag = response.headers.get("etag");
+      if (responseEtag === null || !validVersion(responseEtag)) {
+        return { kind: "unavailable", reason: "tombstone head append returned invalid version" };
+      }
+      return { kind: "appended", head: { ...head, version: responseEtag } };
     },
   };
 }

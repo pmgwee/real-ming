@@ -15,11 +15,14 @@ import {
   type LeaseCheckResult,
   type LeaseClaimResult,
   type NativeKnowledgeCandidate,
+  type NativeKnowledgeConsistencyFence,
+  type NativeKnowledgeConsistencySnapshot,
   type NativeKnowledgeCandidateMetadata,
   type NativeKnowledgeRunHealth,
   type RunLease,
   type RunStatus,
   type StagedGeneration,
+  type TombstoneOutboxRecord,
   type TombstoneRecord,
 } from "./contracts.js";
 
@@ -33,8 +36,12 @@ export interface NativeKnowledgeRegistry {
   recordRunFailure(runId: string, leaseToken: string, leaseEpoch: number, failureCode: string): void;
   recordRunSuccess(runId: string, leaseToken: string, leaseEpoch: number, at: string): void;
   recordStagedGeneration(generation: StagedGeneration): void;
+  /** Mark an unactivated generation as quarantined after a fenced publication. */
+  quarantineGeneration(generationId: string): void;
   generation(generationId: string): ActiveGeneration | undefined;
   generationManifestHash(generationId: string): string | undefined;
+  /** Generations still held by an unfinished publication or repair. */
+  inProgressGenerationIds(): readonly string[];
   activateGeneration(input: ActivationRequest): ActivationResult;
   activeGeneration(): ActiveGeneration | undefined;
   appendLocalTombstone(input: {
@@ -45,6 +52,16 @@ export interface NativeKnowledgeRegistry {
     readonly requestedAt: string;
   }): TombstoneRecord;
   tombstones(): readonly TombstoneRecord[];
+  tombstoneOutbox(): readonly TombstoneOutboxRecord[];
+  markTombstoneOutboxSynced(tombstoneId: string, at?: string): void;
+  recordTombstoneOutboxFailure(tombstoneId: string, at?: string): void;
+  replayIndependentTombstone(input: {
+    readonly tombstoneId: string;
+    readonly subject: string;
+    readonly aliases?: readonly string[];
+    readonly localEpoch: number;
+    readonly restoredAt: string;
+  }): TombstoneRecord;
   updateTombstoneStatus(
     tombstoneId: string,
     status: TombstoneRecord["status"],
@@ -52,6 +69,9 @@ export interface NativeKnowledgeRegistry {
   setTombstoneHeadEpoch(epoch: number): void;
   setRepairState(state: NativeKnowledgeRunHealth["repairState"]): void;
   runHealth(isolationEligible?: boolean): NativeKnowledgeRunHealth;
+  consistencyFence(): NativeKnowledgeConsistencyFence;
+  /** Read the active pointer and all publication fences from one SQLite state snapshot. */
+  consistencySnapshot(): NativeKnowledgeConsistencySnapshot;
   close(): void;
 }
 
@@ -64,6 +84,8 @@ interface CandidateRow {
   source_reference: string;
   source_version: string;
   content_hash: string;
+  claim_hash: string;
+  excerpt_hash: string;
   captured_at: string;
   as_of: string;
   trust_domain: NativeKnowledgeCandidate["trustDomain"];
@@ -111,10 +133,21 @@ interface TombstoneRow {
   created_at: string;
 }
 
+interface TombstoneOutboxRow {
+  outbox_id: string;
+  tombstone_id: string;
+  local_epoch: number;
+  status: TombstoneOutboxRecord["status"];
+  attempts: number;
+  created_at: string;
+  updated_at: string;
+}
+
 interface StateRow {
   active_generation_id: string | null;
   publication_epoch: number;
   lease_epoch: number;
+  source_epoch: number;
   tombstone_epoch: number;
   tombstone_head_epoch: number;
   repair_state: NativeKnowledgeRunHealth["repairState"];
@@ -132,12 +165,20 @@ function digest(value: unknown): string {
   return `sha256:${createHash("sha256").update(JSON.stringify(value)).digest("hex")}`;
 }
 
+function textDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(Buffer.from(value, "utf8")).digest("hex")}`;
+}
+
 function bytes(value: unknown): number {
   return Buffer.byteLength(JSON.stringify(value), "utf8");
 }
 
 function addSeconds(iso: string, seconds: number): string {
   return new Date(Date.parse(iso) + seconds * 1000).toISOString();
+}
+
+function canonicalAliases(values: readonly string[]): readonly string[] {
+  return [...new Set(values.map((value) => value.trim().toLocaleLowerCase("en-US")).filter(Boolean))].sort();
 }
 
 function mapCandidate(row: CandidateRow): NativeKnowledgeCandidateMetadata {
@@ -150,6 +191,8 @@ function mapCandidate(row: CandidateRow): NativeKnowledgeCandidateMetadata {
     sourceReference: row.source_reference,
     sourceVersion: row.source_version,
     contentHash: row.content_hash,
+    claimHash: row.claim_hash,
+    excerptHash: row.excerpt_hash,
     capturedAt: row.captured_at,
     asOf: row.as_of,
     trustDomain: row.trust_domain,
@@ -172,6 +215,18 @@ function mapTombstone(row: TombstoneRow): TombstoneRecord {
     localEpoch: row.local_epoch,
     status: row.status,
     createdAt: row.created_at,
+  };
+}
+
+function mapTombstoneOutbox(row: TombstoneOutboxRow): TombstoneOutboxRecord {
+  return {
+    outboxId: row.outbox_id,
+    tombstoneId: row.tombstone_id,
+    localEpoch: row.local_epoch,
+    status: row.status,
+    attempts: row.attempts,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -206,6 +261,7 @@ function ensureSchema(database: DatabaseSync): void {
       active_generation_id TEXT,
       publication_epoch INTEGER NOT NULL DEFAULT 0,
       lease_epoch INTEGER NOT NULL DEFAULT 0,
+      source_epoch INTEGER NOT NULL DEFAULT 0,
       tombstone_epoch INTEGER NOT NULL DEFAULT 0,
       tombstone_head_epoch INTEGER NOT NULL DEFAULT 0,
       repair_state TEXT NOT NULL DEFAULT 'healthy'
@@ -221,6 +277,8 @@ function ensureSchema(database: DatabaseSync): void {
       source_reference TEXT NOT NULL,
       source_version TEXT NOT NULL,
       content_hash TEXT NOT NULL,
+      claim_hash TEXT NOT NULL DEFAULT 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
+      excerpt_hash TEXT NOT NULL DEFAULT 'sha256:0000000000000000000000000000000000000000000000000000000000000000',
       captured_at TEXT NOT NULL,
       as_of TEXT NOT NULL,
       trust_domain TEXT NOT NULL,
@@ -281,7 +339,30 @@ function ensureSchema(database: DatabaseSync): void {
       status TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS native_knowledge_tombstone_outbox (
+      outbox_id TEXT PRIMARY KEY,
+      tombstone_id TEXT NOT NULL UNIQUE,
+      local_epoch INTEGER NOT NULL,
+      status TEXT NOT NULL CHECK (status IN ('pending', 'failed', 'synced')),
+      attempts INTEGER NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY (tombstone_id) REFERENCES native_knowledge_tombstones(tombstone_id)
+    );
   `);
+  // Existing RM-40 state databases predate the source fence. SQLite has no
+  // IF NOT EXISTS form for columns, so inspect before adding the migration.
+  const columns = database.prepare("PRAGMA table_info(native_knowledge_state)").all() as unknown as readonly { readonly name: string }[];
+  if (!columns.some((column) => column.name === "source_epoch")) {
+    database.exec("ALTER TABLE native_knowledge_state ADD COLUMN source_epoch INTEGER NOT NULL DEFAULT 0");
+  }
+  const candidateColumns = database.prepare("PRAGMA table_info(native_knowledge_candidates)").all() as unknown as readonly { readonly name: string }[];
+  if (!candidateColumns.some((column) => column.name === "claim_hash")) {
+    database.exec("ALTER TABLE native_knowledge_candidates ADD COLUMN claim_hash TEXT NOT NULL DEFAULT 'sha256:0000000000000000000000000000000000000000000000000000000000000000'");
+  }
+  if (!candidateColumns.some((column) => column.name === "excerpt_hash")) {
+    database.exec("ALTER TABLE native_knowledge_candidates ADD COLUMN excerpt_hash TEXT NOT NULL DEFAULT 'sha256:0000000000000000000000000000000000000000000000000000000000000000'");
+  }
 }
 
 export function createNativeKnowledgeRegistry(options: {
@@ -339,6 +420,9 @@ export function createNativeKnowledgeRegistry(options: {
         sourceReference: candidate.sourceReference,
         sourceVersion: candidate.sourceVersion,
         contentHash: candidate.contentHash,
+        claimHash: textDigest(candidate.claim),
+        excerptHash: textDigest(candidate.excerpt),
+        dependencies: [...candidate.dependencies],
         asOf: candidate.asOf,
       });
       const existingByFingerprint = database
@@ -359,10 +443,10 @@ export function createNativeKnowledgeRegistry(options: {
         database.prepare(
           `INSERT INTO native_knowledge_candidates
            (candidate_id, fingerprint, kind, claim_class, source_identity,
-            source_reference, source_version, content_hash, captured_at, as_of,
+            source_reference, source_version, content_hash, claim_hash, excerpt_hash, captured_at, as_of,
             trust_domain, sensitivity, retention_class, dependencies_json,
             status, disposition, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staged', NULL, ?, ?)`,
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'staged', NULL, ?, ?)`,
         ).run(
           candidate.candidateId,
           fingerprint,
@@ -372,6 +456,8 @@ export function createNativeKnowledgeRegistry(options: {
           candidate.sourceReference,
           candidate.sourceVersion,
           candidate.contentHash,
+          textDigest(candidate.claim),
+          textDigest(candidate.excerpt),
           candidate.capturedAt,
           candidate.asOf,
           candidate.trustDomain,
@@ -381,6 +467,7 @@ export function createNativeKnowledgeRegistry(options: {
           timestamp,
           timestamp,
         );
+        database.prepare("UPDATE native_knowledge_state SET source_epoch = source_epoch + 1 WHERE id = 1").run();
         appendStatus(candidate.candidateId, null, "staged", "admitted", timestamp);
         database.exec("COMMIT;");
       } catch (error) {
@@ -534,6 +621,12 @@ export function createNativeKnowledgeRegistry(options: {
       );
     },
 
+    quarantineGeneration(generationId) {
+      database.prepare(
+        "UPDATE native_knowledge_generations SET status = 'quarantined' WHERE generation_id = ? AND status IN ('staged', 'needs-repair')",
+      ).run(generationId);
+    },
+
     generation(generationId) {
       const row = database.prepare("SELECT * FROM native_knowledge_generations WHERE generation_id = ?").get(generationId) as unknown as GenerationRow | undefined;
       if (row === undefined) return undefined;
@@ -554,6 +647,13 @@ export function createNativeKnowledgeRegistry(options: {
       return row?.manifest_hash;
     },
 
+    inProgressGenerationIds() {
+      const rows = database.prepare(
+        "SELECT generation_id FROM native_knowledge_generations WHERE status IN ('staged', 'needs-repair') ORDER BY generation_id",
+      ).all() as unknown as { generation_id: string }[];
+      return rows.map((row) => row.generation_id);
+    },
+
     activateGeneration(input) {
       const timestamp = input.now;
       database.exec("BEGIN IMMEDIATE;");
@@ -569,6 +669,33 @@ export function createNativeKnowledgeRegistry(options: {
           return { kind: "invalid", reason: "staged-generation-mismatch" };
         }
         const current = state(database);
+        if (
+          input.expectedActiveGenerationId !== undefined &&
+          current.active_generation_id !== input.expectedActiveGenerationId
+        ) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "active-generation-changed" };
+        }
+        if (input.expectedPublicationEpoch !== undefined && current.publication_epoch !== input.expectedPublicationEpoch) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "publication-epoch-advanced" };
+        }
+        if (input.expectedSourceEpoch !== undefined && current.source_epoch !== input.expectedSourceEpoch) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "source-epoch-advanced" };
+        }
+        if (input.expectedTombstoneEpoch !== undefined && current.tombstone_epoch !== input.expectedTombstoneEpoch) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "tombstone-epoch-advanced" };
+        }
+        if (input.expectedTombstoneHeadEpoch !== undefined && current.tombstone_head_epoch !== input.expectedTombstoneHeadEpoch) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "tombstone-head-epoch-advanced" };
+        }
+        if (input.expectedRepairState !== undefined && current.repair_state !== input.expectedRepairState) {
+          database.exec("ROLLBACK;");
+          return { kind: "fenced", reason: "repair-state-changed" };
+        }
         // A forget can arrive after filesystem preparation but before this
         // SQLite pointer transaction. The generation must not become active
         // when its tombstone epoch is older than the current local ledger.
@@ -582,8 +709,12 @@ export function createNativeKnowledgeRegistry(options: {
         if (current.active_generation_id !== null) {
           database.prepare("UPDATE native_knowledge_generations SET status = 'superseded' WHERE generation_id = ? AND status = 'active'").run(current.active_generation_id);
         }
+        const includedCandidateIds = new Set(
+          input.generation.manifest.pages.flatMap((page) => page.sourceCandidateIds),
+        );
         const staged = database.prepare("SELECT candidate_id, status FROM native_knowledge_candidates WHERE status = 'staged'").all() as unknown as { candidate_id: string; status: CandidateStatus }[];
         for (const candidate of staged) {
+          if (!includedCandidateIds.has(candidate.candidate_id)) continue;
           database.prepare("UPDATE native_knowledge_candidates SET status = 'published', updated_at = ? WHERE candidate_id = ? AND status = 'staged'").run(timestamp, candidate.candidate_id);
           appendStatus(candidate.candidate_id, candidate.status, "published", "generation-activated", timestamp);
         }
@@ -607,6 +738,24 @@ export function createNativeKnowledgeRegistry(options: {
       try {
         const existing = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE subject = ?").get(input.subject) as unknown as TombstoneRow | undefined;
         if (existing !== undefined) {
+          const requestedAliases = canonicalAliases(input.aliases);
+          const existingAliases = canonicalAliases(parseJson<readonly string[]>(existing.aliases_json));
+          // A repeated forget is idempotent only when it names the same full
+          // suppression identity. Silently dropping a newly supplied alias
+          // would make the operation report success while leaving content
+          // retrievable through that alias.
+          if (JSON.stringify(requestedAliases) !== JSON.stringify(existingAliases)) {
+            throw new Error("tombstone alias set conflicts with existing suppression");
+          }
+          // Older state databases may contain the suppression but not the
+          // outbox table row. Reconcile that omission inside this same
+          // transaction so every supported forget has a durable propagation
+          // record before the operation returns.
+          database.prepare(
+            `INSERT OR IGNORE INTO native_knowledge_tombstone_outbox
+             (outbox_id, tombstone_id, local_epoch, status, attempts, created_at, updated_at)
+             VALUES (?, ?, ?, 'pending', 0, ?, ?)`,
+          ).run(`native-knowledge:outbox:${existing.tombstone_id}`, existing.tombstone_id, existing.local_epoch, existing.created_at, timestamp);
           database.exec("COMMIT;");
           return mapTombstone(existing);
         }
@@ -615,7 +764,7 @@ export function createNativeKnowledgeRegistry(options: {
         const tombstone: TombstoneRecord = {
           tombstoneId: input.tombstoneId ?? `native-knowledge:tombstone:${randomUUID()}`,
           subject: input.subject,
-          aliases: [...new Set(input.aliases)].sort(),
+          aliases: [...canonicalAliases(input.aliases)],
           reason: input.reason,
           localEpoch,
           status: "local-suppressed",
@@ -623,6 +772,14 @@ export function createNativeKnowledgeRegistry(options: {
         };
         database.prepare("UPDATE native_knowledge_state SET tombstone_epoch = ?, repair_state = 'head_sync_pending' WHERE id = 1").run(localEpoch);
         database.prepare("INSERT INTO native_knowledge_tombstones (tombstone_id, subject, aliases_json, reason, local_epoch, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)").run(tombstone.tombstoneId, tombstone.subject, json(tombstone.aliases), tombstone.reason, tombstone.localEpoch, tombstone.status, tombstone.createdAt);
+        // Suppression and its durable independent-head propagation record are
+        // one SQLite transaction. A process crash can therefore leave both
+        // absent or both present, never a suppression without an outbox item.
+        database.prepare(
+          `INSERT INTO native_knowledge_tombstone_outbox
+           (outbox_id, tombstone_id, local_epoch, status, attempts, created_at, updated_at)
+           VALUES (?, ?, ?, 'pending', 0, ?, ?)`,
+        ).run(`native-knowledge:outbox:${tombstone.tombstoneId}`, tombstone.tombstoneId, tombstone.localEpoch, tombstone.createdAt, timestamp);
         database.exec("COMMIT;");
         return tombstone;
       } catch (error) {
@@ -636,10 +793,119 @@ export function createNativeKnowledgeRegistry(options: {
       return rows.map(mapTombstone);
     },
 
+    tombstoneOutbox() {
+      const rows = database.prepare("SELECT * FROM native_knowledge_tombstone_outbox ORDER BY local_epoch, outbox_id").all() as unknown as TombstoneOutboxRow[];
+      return rows.map(mapTombstoneOutbox);
+    },
+
+    markTombstoneOutboxSynced(tombstoneId, at = now()) {
+      database.prepare(
+        `UPDATE native_knowledge_tombstone_outbox
+         SET status = 'synced', updated_at = ?
+         WHERE tombstone_id = ? AND status IN ('pending', 'failed')`,
+      ).run(at, tombstoneId);
+    },
+
+    recordTombstoneOutboxFailure(tombstoneId, at = now()) {
+      database.prepare(
+        `UPDATE native_knowledge_tombstone_outbox
+         SET status = 'failed', attempts = attempts + 1, updated_at = ?
+         WHERE tombstone_id = ? AND status <> 'synced'`,
+      ).run(at, tombstoneId);
+    },
+
+    replayIndependentTombstone(input) {
+      if (!Number.isSafeInteger(input.localEpoch) || input.localEpoch < 1) {
+        throw new Error("independent tombstone epoch is invalid");
+      }
+      database.exec("BEGIN IMMEDIATE;");
+      try {
+        const existingById = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE tombstone_id = ?").get(input.tombstoneId) as unknown as TombstoneRow | undefined;
+        if (existingById !== undefined) {
+          const aliases = [...new Set((input.aliases ?? []).map((value) => value.trim().toLocaleLowerCase("en-US")).filter(Boolean))].sort();
+          const existingAliases = parseJson<readonly string[]>(existingById.aliases_json);
+          if (existingById.subject !== input.subject || existingById.local_epoch !== input.localEpoch ||
+            (input.aliases !== undefined && JSON.stringify(existingAliases) !== JSON.stringify(aliases))) {
+            database.exec("ROLLBACK;");
+            throw new Error("independent tombstone conflicts with restored local state");
+          }
+          database.prepare(
+            "UPDATE native_knowledge_state SET tombstone_epoch = CASE WHEN tombstone_epoch > ? THEN tombstone_epoch ELSE ? END, tombstone_head_epoch = CASE WHEN tombstone_head_epoch > ? THEN tombstone_head_epoch ELSE ? END WHERE id = 1",
+          ).run(input.localEpoch, input.localEpoch, input.localEpoch, input.localEpoch);
+          database.prepare(
+            `INSERT OR IGNORE INTO native_knowledge_tombstone_outbox
+             (outbox_id, tombstone_id, local_epoch, status, attempts, created_at, updated_at)
+             VALUES (?, ?, ?, 'synced', 0, ?, ?)`,
+          ).run(`native-knowledge:outbox:${input.tombstoneId}`, input.tombstoneId, input.localEpoch, existingById.created_at, input.restoredAt);
+          database.prepare(
+            "UPDATE native_knowledge_tombstone_outbox SET status = 'synced', updated_at = ? WHERE tombstone_id = ?",
+          ).run(input.restoredAt, input.tombstoneId);
+          if (existingById.status === "local-suppressed" || existingById.status === "head-sync-pending") {
+            database.prepare("UPDATE native_knowledge_tombstones SET status = 'restore-safe' WHERE tombstone_id = ?").run(input.tombstoneId);
+          }
+          database.exec("COMMIT;");
+          const updated = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE tombstone_id = ?").get(input.tombstoneId) as unknown as TombstoneRow;
+          return mapTombstone(updated);
+        }
+        const current = state(database);
+        if (input.localEpoch !== current.tombstone_epoch + 1) {
+          database.exec("ROLLBACK;");
+          throw new Error("independent tombstone epoch gap or out-of-order replay");
+        }
+        const existingBySubject = database.prepare("SELECT tombstone_id FROM native_knowledge_tombstones WHERE subject = ?").get(input.subject) as unknown as { tombstone_id: string } | undefined;
+        if (existingBySubject !== undefined) {
+          database.exec("ROLLBACK;");
+          throw new Error("independent tombstone subject conflicts with restored local state");
+        }
+        const tombstone: TombstoneRecord = {
+          tombstoneId: input.tombstoneId,
+          subject: input.subject,
+          aliases: [...new Set((input.aliases ?? []).map((value) => value.trim().toLocaleLowerCase("en-US")).filter(Boolean))].sort(),
+          reason: "replayed from independent tombstone head",
+          localEpoch: input.localEpoch,
+          status: "restore-safe",
+          createdAt: input.restoredAt,
+        };
+        database.prepare(
+          "INSERT INTO native_knowledge_tombstones (tombstone_id, subject, aliases_json, reason, local_epoch, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        ).run(tombstone.tombstoneId, tombstone.subject, json(tombstone.aliases), tombstone.reason, tombstone.localEpoch, tombstone.status, tombstone.createdAt);
+        database.prepare(
+          "INSERT INTO native_knowledge_tombstone_outbox (outbox_id, tombstone_id, local_epoch, status, attempts, created_at, updated_at) VALUES (?, ?, ?, 'synced', 0, ?, ?)",
+        ).run(`native-knowledge:outbox:${tombstone.tombstoneId}`, tombstone.tombstoneId, tombstone.localEpoch, tombstone.createdAt, tombstone.createdAt);
+        database.prepare(
+          "UPDATE native_knowledge_state SET tombstone_epoch = CASE WHEN tombstone_epoch > ? THEN tombstone_epoch ELSE ? END, tombstone_head_epoch = CASE WHEN tombstone_head_epoch > ? THEN tombstone_head_epoch ELSE ? END WHERE id = 1",
+        ).run(input.localEpoch, input.localEpoch, input.localEpoch, input.localEpoch);
+        database.exec("COMMIT;");
+        return tombstone;
+      } catch (error) {
+        try { database.exec("ROLLBACK;"); } catch { /* already rolled back */ }
+        throw error;
+      }
+    },
+
     updateTombstoneStatus(tombstoneId, status) {
-      database.prepare("UPDATE native_knowledge_tombstones SET status = ? WHERE tombstone_id = ?").run(status, tombstoneId);
       const row = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE tombstone_id = ?").get(tombstoneId) as unknown as TombstoneRow | undefined;
-      return row === undefined ? undefined : mapTombstone(row);
+      if (row === undefined) return undefined;
+      const allowed: Record<TombstoneRecord["status"], readonly TombstoneRecord["status"][]> = {
+        "local-suppressed": ["local-suppressed", "head-sync-pending", "restore-safe"],
+        "head-sync-pending": ["head-sync-pending", "restore-safe"],
+        "restore-safe": ["restore-safe", "cleanup-complete"],
+        "cleanup-complete": ["cleanup-complete"],
+      };
+      if (!allowed[row.status].includes(status)) {
+        throw new Error(`invalid tombstone status transition ${row.status} -> ${status}`);
+      }
+      if (status === "restore-safe") {
+        const outbox = database.prepare(
+          "SELECT status FROM native_knowledge_tombstone_outbox WHERE tombstone_id = ?",
+        ).get(tombstoneId) as unknown as { readonly status: TombstoneOutboxRecord["status"] } | undefined;
+        if (outbox?.status !== "synced") {
+          throw new Error("tombstone outbox must be synced before restore-safe");
+        }
+      }
+      database.prepare("UPDATE native_knowledge_tombstones SET status = ? WHERE tombstone_id = ?").run(status, tombstoneId);
+      const updated = database.prepare("SELECT * FROM native_knowledge_tombstones WHERE tombstone_id = ?").get(tombstoneId) as unknown as TombstoneRow;
+      return mapTombstone(updated);
     },
 
     setTombstoneHeadEpoch(epoch) {
@@ -671,6 +937,63 @@ export function createNativeKnowledgeRegistry(options: {
         repairState: current.repair_state,
         isolationEligible,
       };
+    },
+
+    consistencyFence() {
+      const current = state(database);
+      return {
+        activeGenerationId: current.active_generation_id,
+        publicationEpoch: current.publication_epoch,
+        sourceEpoch: current.source_epoch,
+        tombstoneEpoch: current.tombstone_epoch,
+        tombstoneHeadEpoch: current.tombstone_head_epoch,
+        repairState: current.repair_state,
+      };
+    },
+
+    consistencySnapshot() {
+      // A reader must not observe the active pointer from one SQLite snapshot
+      // and its fence/generation row from another. A deferred read
+      // transaction gives both queries one coherent point-in-time view while
+      // still allowing concurrent writers to proceed after the snapshot is
+      // released.
+      database.exec("BEGIN;");
+      try {
+        const current = state(database);
+        const fence: NativeKnowledgeConsistencyFence = {
+          activeGenerationId: current.active_generation_id,
+          publicationEpoch: current.publication_epoch,
+          sourceEpoch: current.source_epoch,
+          tombstoneEpoch: current.tombstone_epoch,
+          tombstoneHeadEpoch: current.tombstone_head_epoch,
+          repairState: current.repair_state,
+        };
+        if (current.active_generation_id === null) {
+          database.exec("COMMIT;");
+          return { fence, active: undefined };
+        }
+        const row = database.prepare("SELECT * FROM native_knowledge_generations WHERE generation_id = ?").get(current.active_generation_id) as unknown as GenerationRow | undefined;
+        const snapshot = row === undefined || row.publication_epoch === null
+          ? { fence, active: undefined }
+          : {
+              fence,
+              active: {
+                generationId: row.generation_id,
+                runId: row.run_id,
+                path: row.path,
+                manifestHash: row.manifest_hash,
+                sourceEpoch: row.source_epoch,
+                tombstoneEpoch: row.tombstone_epoch,
+                publicationEpoch: row.publication_epoch,
+                createdAt: row.created_at,
+              },
+            };
+        database.exec("COMMIT;");
+        return snapshot;
+      } catch (error) {
+        try { database.exec("ROLLBACK;"); } catch { /* already rolled back */ }
+        throw error;
+      }
     },
 
     close() {
