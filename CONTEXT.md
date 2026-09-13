@@ -72,6 +72,10 @@ _Avoid_: Universal memory, flat shared vault, Obsidian database, Source of Recor
 The governed LLM Wiki pipeline that ingests Candidate Envelopes, reconciles conflicts, emits cited Compiled Knowledge, updates indexes and logs, lints the result, and publishes a new version atomically.
 _Avoid_: Memory writer, source synchronizer, automatic truth promoter
 
+**Role-Scoped Knowledge Retrieval**:
+The supported generated-wiki read in which one Executive Role requests one task-relevant Trust Domain and the system validates that exact pairing before reading any page content.
+_Avoid_: Global search, CEO root, every-turn memory lookup, post-retrieval filtering
+
 **Hot Runtime Memory**:
 The deliberately small, write-gated Hermes memory or generated role brief loaded for execution convenience; it contains stable routing preferences and pointers, not domain corpora or authoritative facts.
 _Avoid_: Knowledge Vault, chat dump, durable personal memory

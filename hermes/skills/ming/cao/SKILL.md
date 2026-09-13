@@ -1,7 +1,7 @@
 ---
 name: cao
 description: Ming's Chief Academic Officer playbook for coursework, deadlines, study planning and course materials. Use for academic commitments and study support. Never for submitting work.
-version: 1.0.0
+version: 1.1.0
 author: Real-Ming
 license: MIT
 platforms: [linux, macos, windows]
@@ -33,6 +33,14 @@ understanding. Read academic mail and prepare replies for him to send.
 
 Course files and announcements are read-only. Academic mail and chat are
 read-and-draft.
+
+## Durable knowledge
+
+When a task-relevant prior decision or cited artifact could change the work and
+`real_ming_wiki_retrieve` is available, retrieve with `role=CAO` and
+`trustDomain=Academic`. Cite the returned source, as-of time, and generation;
+treat a failed lookup as unavailable evidence and continue from Sources of
+Record where safe.
 
 ## Study support that is worth having
 

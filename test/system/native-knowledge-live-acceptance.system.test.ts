@@ -109,6 +109,7 @@ function pageFor(value: NativeKnowledgeCandidate): StagedPage {
     path: `pages/${value.candidateId}.md`,
     content: `# ${value.candidateId}\n\n${value.claim}`,
     sourceCandidateIds: [value.candidateId],
+    trustDomain: value.trustDomain,
     claimClass: value.claimClass,
     sourceReference: value.sourceReference,
     capturedAt: value.capturedAt,
@@ -303,6 +304,8 @@ describe("native knowledge controlled acceptance matrix", () => {
         query: "Controlled source-backed claim",
         now,
         maxResults: 10,
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(both.kind).toBe("ok");
       if (both.kind !== "ok") throw new Error("expected complete snapshot");
@@ -339,6 +342,8 @@ describe("native knowledge controlled acceptance matrix", () => {
           generatedRoot: fixture.generatedRoot,
           query: first.candidateId,
           now,
+          role: "CTO",
+          trustDomain: "Ming Creatives",
         }).kind,
       ).toBe("not-found");
       expect(
@@ -347,6 +352,8 @@ describe("native knowledge controlled acceptance matrix", () => {
           generatedRoot: fixture.generatedRoot,
           query: second.candidateId,
           now,
+          role: "CTO",
+          trustDomain: "Ming Creatives",
         }).kind,
       ).toBe("ok");
     } finally {
@@ -360,12 +367,13 @@ describe("native knowledge controlled acceptance matrix", () => {
     const leaseResult = fixture.registry.claimRun({ operatingDate: "2026-09-09", limit: 12 });
     if (leaseResult.kind !== "claimed") throw new Error("expected controlled lease");
     try {
+      expect(fixture.registry.admitCandidate(value).kind).toBe("accepted");
       const staged = await stageGeneration({
         run: leaseResult,
         generatedRoot: fixture.generatedRoot,
         stagingRoot: fixture.stagingRoot,
         pages: [pageFor(value)],
-        sourceEpoch: 0,
+        sourceEpoch: fixture.registry.consistencyFence().sourceEpoch,
         tombstoneEpoch: 0,
         now,
       });
@@ -415,6 +423,8 @@ describe("native knowledge controlled acceptance matrix", () => {
           generatedRoot: tamper.generatedRoot,
           query: safe.candidateId,
           now,
+          role: "CTO",
+          trustDomain: "Ming Creatives",
         }).kind,
       ).toBe("needs-repair");
       const reconciliation = reconcileGenerations({

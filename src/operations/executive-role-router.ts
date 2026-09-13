@@ -23,6 +23,15 @@ const trustDomainByExecutive: Readonly<Record<ExecutiveRole, TrustDomain>> = {
   CMO: "Ming Creatives",
 };
 
+const retrievalRoleByTrustDomain: Readonly<
+  Partial<Record<TrustDomain, ExecutiveRole>>
+> = {
+  Personal: "COO",
+  "Ming Creatives": "CTO",
+  Academic: "CAO",
+  Finance: "Personal CFO",
+};
+
 export interface ExecutiveRoleRoute {
   readonly explicitExecutive: ExecutiveRole | undefined;
   readonly workstream: Workstream | null | undefined;
@@ -49,4 +58,11 @@ export function routeTrustDomain(
   return workstream === null
     ? trustDomainByExecutive[accountableExecutive]
     : workstreamRoutes[workstream].trustDomain;
+}
+
+/** Deterministic role used for controlled read-back; Entertainment has no role reader. */
+export function retrievalRoleForTrustDomain(
+  trustDomain: TrustDomain,
+): ExecutiveRole | undefined {
+  return retrievalRoleByTrustDomain[trustDomain];
 }

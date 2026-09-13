@@ -200,6 +200,7 @@ describe("native knowledge forgetting and restore fencing", () => {
         path: "pages/summary-a-b.md",
         content: "derived",
         sourceCandidateIds: ["candidate-a", "candidate-b"],
+        trustDomain: "Ming Creatives",
         claimClass: "project",
         sourceReference: "fixture:summary",
         capturedAt: "2026-09-09T02:00:00.000Z",

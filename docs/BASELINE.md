@@ -6,7 +6,7 @@ Revision 6 is the authoritative **design and specification** baseline: native
 Hermes owns the Telegram gateway, conversation, tools and execution, and
 Real-Ming is a thin additive extension. See
 [ADR-0020](adr/0020-run-ming-on-the-native-hermes-runtime.md) and the
-[V6 diagram](architecture/real-ming-agent-diagram-v6.html). Every current
+[original V6 diagram](architecture/old_uncleaned/real-ming-agent-diagram-v6.html). Every current
 artifact below states this label, and `test/docs/baseline.test.ts` fails the
 build if any of them drifts.
 
@@ -46,12 +46,12 @@ evidence](evidence/RM-40-v6-milestone-3-cutover-evidence.md).
 | Role | Artifact | Identity |
 | --- | --- | --- |
 | Product and specification baseline | [docs/specs/real-ming-v1.1.md](specs/real-ming-v1.1.md) | Real-Ming v1.1 Personal Executive Operations Specification, Architecture Revision 6 |
-| Current architecture diagram | [docs/architecture/real-ming-agent-diagram-v6.html](architecture/real-ming-agent-diagram-v6.html) | Architecture Revision 6 — native Hermes + thin Real-Ming extension |
-| Current architecture render | [docs/architecture/real-ming-agent-diagram-v6.png](architecture/real-ming-agent-diagram-v6.png) | Revision 6 render |
+| Original architecture diagram | [docs/architecture/old_uncleaned/real-ming-agent-diagram-v6.html](architecture/old_uncleaned/real-ming-agent-diagram-v6.html) | Architecture Revision 6 — native Hermes + thin Real-Ming extension; retained unchanged after the v7 presentation cleanup |
+| Original architecture render | [docs/architecture/old_uncleaned/real-ming-agent-diagram-v6.png](architecture/old_uncleaned/real-ming-agent-diagram-v6.png) | Revision 6 render; retained unchanged after the v7 presentation cleanup |
 | Current architecture presentation | [docs/architecture/real-ming-agent-diagram-v7-cleanup.html](architecture/real-ming-agent-diagram-v7-cleanup.html) | Architecture Revision 6, v7 cleanup — same revision, corrected presentation. The v6 HTML and PNG above are retained unchanged as the prior render. **PNG render outstanding.** |
 | Post-RM-40 knowledge design | [docs/superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md](superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md) and [ADR-0022](adr/0022-native-knowledge-consolidation-around-hermes.md) | Revision 6 additive design; Tasks 0–8 controlled-tested, with no production caller or cron activation |
 | Post-RM-40 knowledge implementation plan | [docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md](superpowers/plans/2026-09-09-native-knowledge-consolidation.md) | Tasks 0–8 implemented and controlled-tested; live activation and Task 9 remain separately gated |
-| Decision record set | [docs/adr/](adr) | ADR 0001 through ADR 0022 |
+| Decision record set | [docs/adr/](adr) | ADR 0001 through ADR 0023 |
 | Implementation graph | [real-ming-phase3-tickets.json](../real-ming-phase3-tickets.json) | Phase 3 tracer-bullet decomposition, 44 tickets |
 
 ## Recorded historical baseline
@@ -62,8 +62,8 @@ enforces that preservation.
 
 | Role | Artifact | Identity |
 | --- | --- | --- |
-| Recorded V5 architecture diagram | [docs/architecture/real-ming-personal-agent-diagram-v5-CEO-review.html](architecture/real-ming-personal-agent-diagram-v5-CEO-review.html) | Real-Ming Architecture Revision 5 — deployed implementation baseline |
-| Recorded V5 architecture render | [docs/architecture/real-ming-personal-agent-diagram-v5-CEO-review.png](architecture/real-ming-personal-agent-diagram-v5-CEO-review.png) | Historical V5 render |
+| Recorded V5 architecture diagram | [docs/architecture/old_uncleaned/real-ming-personal-agent-diagram-v5-CEO-review.html](architecture/old_uncleaned/real-ming-personal-agent-diagram-v5-CEO-review.html) | Real-Ming Architecture Revision 5 — deployed implementation baseline |
+| Recorded V5 architecture render | [docs/architecture/old_uncleaned/real-ming-personal-agent-diagram-v5-CEO-review.png](architecture/old_uncleaned/real-ming-personal-agent-diagram-v5-CEO-review.png) | Historical V5 render |
 
 ## Superseded artifacts
 

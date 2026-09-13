@@ -1,3 +1,6 @@
+import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   createControlPlaneSupervisor,
   type ControlPlaneSupervisor,
@@ -49,12 +52,28 @@ import type {
   RequestedAction,
   StandingAuthority,
   ExecutiveRole,
+  TrustDomain,
   WorkItem,
   WorkerEffect,
   WorkerReceipt,
   WorkItemAcknowledgement,
   VerifierResult,
 } from "../operations/contracts.js";
+import { createRealMingMcpComposition } from "../config/real-ming-mcp-cli.js";
+import {
+  type ActivationResult,
+  type AdmissionResult,
+  type ConsolidationRunResult,
+  type GenerationManifest,
+  type NativeKnowledgeCandidate,
+  type NativeKnowledgeRunHealth,
+  type SourceSnapshot,
+  type StagedPage,
+} from "../knowledge/native-consolidation/contracts.js";
+import { sha256ContentHash } from "../knowledge/native-consolidation/evidence.js";
+import { activateGeneration, readManifest, stageGeneration } from "../knowledge/native-consolidation/publication.js";
+import { createNativeKnowledgeRegistry } from "../knowledge/native-consolidation/registry.js";
+import { runConsolidation } from "../knowledge/native-consolidation/runner.js";
 import {
   createOperationsGateway,
   type MaterialBlockerReason,
@@ -1097,6 +1116,240 @@ class ControlledDeploymentPromotionExecutor implements DeploymentPromotionExecut
   calls(): readonly string[] {
     return [...this.#calls];
   }
+}
+
+export interface ControlledKnowledgeCandidate {
+  readonly candidateId: string;
+  readonly trustDomain: TrustDomain;
+  readonly content: string;
+}
+
+export interface ControlledKnowledgePage {
+  readonly pageId: string;
+  readonly trustDomain: TrustDomain;
+  readonly sourceCandidateIds: readonly string[];
+  readonly content: string;
+}
+
+export interface RoleScopedKnowledgeHarness {
+  publish(input: {
+    readonly candidates: readonly ControlledKnowledgeCandidate[];
+    readonly pages?: readonly ControlledKnowledgePage[];
+  }): Promise<ConsolidationRunResult>;
+  admitCandidate(input: ControlledKnowledgeCandidate): AdmissionResult;
+  attemptDirectActivation(input: Omit<ControlledKnowledgePage, "content"> & {
+    readonly content?: string;
+  }): Promise<ActivationResult>;
+  retrieve(args: Record<string, unknown>): RealMingToolResult;
+  activeManifest(): GenerationManifest | undefined;
+  removePublishedPage(pageId: string): void;
+  corruptActivePageDomain(pageId: string, value: unknown): void;
+  health(): NativeKnowledgeRunHealth;
+  close(): void;
+}
+
+/**
+ * Controlled end-to-end composition for native generated knowledge. Tests use
+ * this approved system seam; production modules remain hidden behind the same
+ * MCP and consolidation boundaries Hermes uses.
+ */
+export function createRoleScopedKnowledgeHarness(options: {
+  readonly directory: string;
+  readonly now: string;
+}): RoleScopedKnowledgeHarness {
+  const generatedRoot = join(options.directory, "vault", ".real-ming", "generated");
+  const stagingRoot = join(options.directory, "vault", ".real-ming", "staging");
+  const registry = createNativeKnowledgeRegistry({
+    statePath: join(options.directory, "knowledge.sqlite"),
+    now: () => options.now,
+  });
+  const candidates = new Map<string, NativeKnowledgeCandidate>();
+  const sources = new Map<string, SourceSnapshot>();
+  const composition = createRealMingMcpComposition({
+    statePath: join(options.directory, "operations.sqlite"),
+    knowledgeStatePath: join(options.directory, "knowledge.sqlite"),
+    knowledgeGeneratedRoot: generatedRoot,
+    knowledgeStagingRoot: stagingRoot,
+    knowledgeRegistry: registry,
+    knowledgeIsolationEligible: () => true,
+    now: () => options.now,
+  });
+
+  const manifest = (): GenerationManifest | undefined => {
+    const active = registry.activeGeneration();
+    return active === undefined
+      ? undefined
+      : readManifest(join(active.path, "manifest.json"));
+  };
+
+  const controlledCandidate = (item: ControlledKnowledgeCandidate): NativeKnowledgeCandidate => ({
+    candidateId: item.candidateId,
+    kind: "project-artifact",
+    claimClass: "project",
+    claim: item.content,
+    sourceIdentity: `controlled:${item.candidateId}`,
+    sourceReference: `controlled:${item.candidateId}`,
+    sourceVersion: "v1",
+    excerpt: item.content,
+    contentHash: sha256ContentHash(item.content),
+    capturedAt: options.now,
+    asOf: options.now,
+    trustDomain: item.trustDomain,
+    sensitivity: "normal",
+    retentionClass: "project-90d",
+    dependencies: [item.candidateId],
+  });
+
+  return {
+    async publish(input) {
+      for (const item of input.candidates) {
+        const candidate = controlledCandidate(item);
+        candidates.set(candidate.candidateId, candidate);
+        sources.set(candidate.candidateId, {
+          sourceIdentity: candidate.sourceIdentity,
+          sourceReference: candidate.sourceReference,
+          sourceVersion: candidate.sourceVersion,
+          content: candidate.excerpt,
+          contentHash: candidate.contentHash,
+          asOf: candidate.asOf,
+          retrievedAt: options.now,
+        });
+        const captured = await composition.tools.callAsync?.(
+          "real_ming_capture_knowledge_candidate",
+          { candidate, explicit: true, marked: true },
+        );
+        if (captured?.kind !== "ok") {
+          throw new Error(captured?.reason ?? "controlled candidate capture was unavailable");
+        }
+      }
+
+      const pages = input.pages ?? input.candidates.map((candidate) => ({
+        pageId: candidate.candidateId,
+        trustDomain: candidate.trustDomain,
+        sourceCandidateIds: [candidate.candidateId],
+        content: candidate.content,
+      }));
+      return runConsolidation({
+        registry,
+        isolationEligible: true,
+        operatingDate: options.now.slice(0, 10),
+        now: options.now,
+        generatedRoot,
+        stagingRoot,
+        loadCandidate: async (candidateId) => candidates.get(candidateId),
+        readSource: async (candidate) => sources.get(candidate.candidateId) ?? {
+          kind: "unavailable",
+          reason: "controlled source was not configured",
+        },
+        assessSupport: async () => "supported",
+        synthesize: async () => pages.map<StagedPage>((page) => {
+          const source = candidates.get(page.sourceCandidateIds[0] ?? "");
+          if (source === undefined) {
+            throw new Error(`controlled page ${page.pageId} has no configured source`);
+          }
+          return {
+            pageId: page.pageId,
+            path: `pages/${page.pageId}.md`,
+            content: page.content,
+            sourceCandidateIds: page.sourceCandidateIds,
+            trustDomain: page.trustDomain,
+            claimClass: source.claimClass,
+            sourceReference: source.sourceReference,
+            capturedAt: source.capturedAt,
+            asOf: source.asOf,
+            disposition: "supported",
+            uncertainty: "none",
+          };
+        }),
+        clock: () => options.now,
+      });
+    },
+    admitCandidate(input) {
+      const candidate = controlledCandidate(input);
+      const result = registry.admitCandidate(candidate);
+      if (result.kind === "accepted" || result.kind === "duplicate") {
+        candidates.set(candidate.candidateId, candidate);
+      }
+      return result;
+    },
+    async attemptDirectActivation(input) {
+      const claimed = registry.claimRun({
+        operatingDate: options.now.slice(0, 10),
+        limit: 12,
+      });
+      if (claimed.kind !== "claimed") {
+        return { kind: "invalid", reason: "controlled activation could not claim a run" };
+      }
+      const first = candidates.get(input.sourceCandidateIds[0] ?? "");
+      const staged = await stageGeneration({
+        run: claimed,
+        generatedRoot,
+        stagingRoot,
+        pages: [{
+          pageId: input.pageId,
+          path: `pages/${input.pageId}.md`,
+          content: input.content ?? "# Controlled direct activation\n",
+          sourceCandidateIds: input.sourceCandidateIds,
+          trustDomain: input.trustDomain,
+          claimClass: first?.claimClass ?? "project",
+          sourceReference: first?.sourceReference ?? "controlled:missing",
+          capturedAt: first?.capturedAt ?? options.now,
+          asOf: first?.asOf ?? options.now,
+          disposition: "supported",
+          uncertainty: "none",
+        }],
+        sourceEpoch: registry.consistencyFence().sourceEpoch,
+        tombstoneEpoch: registry.consistencyFence().tombstoneEpoch,
+        now: options.now,
+      });
+      registry.recordStagedGeneration(staged);
+      const result = activateGeneration({
+        registry,
+        generation: staged,
+        lease: claimed,
+        activePath: generatedRoot,
+        now: options.now,
+      });
+      if (result.kind !== "activated") {
+        registry.recordRunFailure(
+          claimed.runId,
+          claimed.leaseToken,
+          claimed.leaseEpoch,
+          result.reason,
+        );
+      }
+      return result;
+    },
+    retrieve: (args) => composition.tools.call("real_ming_wiki_retrieve", {
+      ...args,
+      now: options.now,
+    }),
+    activeManifest: manifest,
+    removePublishedPage(pageId) {
+      const active = registry.activeGeneration();
+      const page = manifest()?.pages.find((candidate) => candidate.pageId === pageId);
+      if (active === undefined || page === undefined) throw new Error(`published page ${pageId} was not found`);
+      rmSync(join(active.path, page.path));
+    },
+    corruptActivePageDomain(pageId, value) {
+      const active = registry.activeGeneration();
+      if (active === undefined) throw new Error("no active knowledge generation");
+      const path = join(active.path, "manifest.json");
+      const valueRecord = JSON.parse(readFileSync(path, "utf8")) as {
+        pages: Array<Record<string, unknown>>;
+      };
+      const page = valueRecord.pages.find((candidate) => candidate["pageId"] === pageId);
+      if (page === undefined) throw new Error(`published page ${pageId} was not found`);
+      if (value === undefined) delete page["trustDomain"];
+      else page["trustDomain"] = value;
+      writeFileSync(path, `${JSON.stringify(valueRecord, null, 2)}\n`, "utf8");
+    },
+    health: () => registry.runHealth(true),
+    close() {
+      composition.close();
+      registry.close();
+    },
+  };
 }
 
 export function createRealMingSystemHarness(options: {

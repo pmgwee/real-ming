@@ -13,6 +13,8 @@ import type {
   TombstoneHead,
   TombstoneHeadStore,
 } from "../knowledge/native-consolidation/contracts.js";
+import { trustDomains, type TrustDomain } from "../operations/contracts.js";
+import { retrievalRoleForTrustDomain } from "../operations/executive-role-router.js";
 
 const REQUIRED_COMMIT = "561b053f794a1781868bb032029d589c67708119";
 const CONTROLLED_NOW = "2026-09-09T02:00:00.000Z";
@@ -66,6 +68,7 @@ function parseCandidate(value: unknown): NativeKnowledgeCandidate {
   const candidate = value as Partial<NativeKnowledgeCandidate>;
   const required = ["candidateId", "kind", "claimClass", "claim", "sourceIdentity", "sourceReference", "sourceVersion", "excerpt", "contentHash", "capturedAt", "asOf", "trustDomain", "sensitivity", "retentionClass"] as const;
   if (!required.every((key) => typeof candidate[key] === "string" && candidate[key]!.trim().length > 0)) failure("candidate route contains missing fields");
+  if (!trustDomains.includes(candidate.trustDomain as TrustDomain)) failure("candidate route contains an invalid Trust Domain");
   if (!Array.isArray(candidate.dependencies) || !candidate.dependencies.every((item) => typeof item === "string" && item.trim().length > 0)) failure("candidate dependencies are invalid");
   return candidate as NativeKnowledgeCandidate;
 }
@@ -73,7 +76,8 @@ function parseCandidate(value: unknown): NativeKnowledgeCandidate {
 function parsePage(value: unknown): StagedPage {
   if (typeof value !== "object" || value === null || Array.isArray(value)) failure("Hermes synthesis contains an invalid page");
   const page = value as Partial<StagedPage>;
-  if (typeof page.pageId !== "string" || typeof page.path !== "string" || typeof page.content !== "string" || !Array.isArray(page.sourceCandidateIds) || page.sourceCandidateIds.length === 0 || !page.sourceCandidateIds.every((item) => typeof item === "string" && item.trim().length > 0) || typeof page.claimClass !== "string" || typeof page.sourceReference !== "string" || typeof page.capturedAt !== "string" || typeof page.asOf !== "string" || typeof page.disposition !== "string" || typeof page.uncertainty !== "string") failure("Hermes synthesis page is missing required lineage metadata");
+  if (typeof page.pageId !== "string" || typeof page.path !== "string" || typeof page.content !== "string" || !Array.isArray(page.sourceCandidateIds) || page.sourceCandidateIds.length === 0 || !page.sourceCandidateIds.every((item) => typeof item === "string" && item.trim().length > 0) || typeof page.claimClass !== "string" || typeof page.sourceReference !== "string" || typeof page.capturedAt !== "string" || typeof page.asOf !== "string" || typeof page.disposition !== "string" || typeof page.uncertainty !== "string" || typeof page.trustDomain !== "string") failure("Hermes synthesis page is missing required lineage metadata");
+  if (!trustDomains.includes(page.trustDomain as TrustDomain)) failure("Hermes synthesis page has an invalid Trust Domain");
   if (page.dependencies !== undefined && (!Array.isArray(page.dependencies) || !page.dependencies.every((item) => typeof item === "string" && item.trim().length > 0))) failure("Hermes synthesis page dependencies are invalid");
   return page as StagedPage;
 }
@@ -107,7 +111,7 @@ function controlledCandidate(now: string): { candidate: NativeKnowledgeCandidate
 }
 
 function pageFor(candidate: NativeKnowledgeCandidate): StagedPage {
-  return { pageId: CANDIDATE_ID, path: "pages/controlled.md", content: `# Controlled native knowledge\n\n${candidate.claim}\n`, sourceCandidateIds: [candidate.candidateId], dependencies: candidate.dependencies, claimClass: candidate.claimClass, sourceReference: candidate.sourceReference, capturedAt: candidate.capturedAt, asOf: candidate.asOf, disposition: "supported", uncertainty: "none" };
+  return { pageId: CANDIDATE_ID, path: "pages/controlled.md", content: `# Controlled native knowledge\n\n${candidate.claim}\n`, sourceCandidateIds: [candidate.candidateId], trustDomain: candidate.trustDomain, dependencies: candidate.dependencies, claimClass: candidate.claimClass, sourceReference: candidate.sourceReference, capturedAt: candidate.capturedAt, asOf: candidate.asOf, disposition: "supported", uncertainty: "none" };
 }
 
 function assessSourceSupport(candidate: NativeKnowledgeCandidate, source: SourceSnapshot): "supported" | "unsupported" {
@@ -202,7 +206,7 @@ async function runOfflineFixture(): Promise<Record<string, unknown>> {
     if (result.kind !== "succeeded") return { eligible: true, executed: true, activated: false, result: result.kind, reason: result.reason ?? "offline consolidation did not activate", runtime: "offline-fixture" };
     const active = registry.activeGeneration();
     if (active === undefined) return { eligible: true, executed: true, activated: false, result: "succeeded", reason: "no candidates selected", runtime: "offline-fixture" };
-    if (composition.tools.call("real_ming_wiki_retrieve", { query: fixture.candidate.candidateId, now }).kind !== "ok") failure("offline retrieval read-back failed");
+    if (composition.tools.call("real_ming_wiki_retrieve", { query: fixture.candidate.candidateId, now, role: "CTO", trustDomain: fixture.candidate.trustDomain }).kind !== "ok") failure("offline retrieval read-back failed");
     const manifestPath = join(active.path, "manifest.json");
     if (!existsSync(manifestPath)) failure("offline activated manifest is missing");
     return { eligible: true, executed: true, activated: true, result: "succeeded", generationId: active.generationId, manifestPath, retrieved: true, runtime: "offline-fixture", pinnedCommit: REQUIRED_COMMIT };
@@ -236,11 +240,13 @@ async function runNativeHermesComposition(): Promise<Record<string, unknown>> {
     if (result.kind !== "succeeded") return { eligible: true, executed: true, activated: false, result: result.kind, reason: result.reason ?? "native Hermes consolidation did not activate", runtime: "native-hermes", pinnedCommit: REQUIRED_COMMIT, hermesExecuted: true };
     const active = registry.activeGeneration();
     if (active === undefined) return { eligible: true, executed: true, activated: false, result: "succeeded", reason: "no candidates selected", runtime: "native-hermes", pinnedCommit: REQUIRED_COMMIT, hermesExecuted: true };
-    const retrievalQuery = pages[0]?.pageId ?? pages[0]?.path ?? active.generationId;
-    if (composition.tools.call("real_ming_wiki_retrieve", { query: retrievalQuery, now }).kind !== "ok") failure("native retrieval read-back failed");
+    const readablePage = pages.find((page) => retrievalRoleForTrustDomain(page.trustDomain) !== undefined);
+    const retrievalQuery = readablePage?.pageId ?? readablePage?.path ?? active.generationId;
+    const role = readablePage === undefined ? undefined : retrievalRoleForTrustDomain(readablePage.trustDomain);
+    if (readablePage !== undefined && role !== undefined && composition.tools.call("real_ming_wiki_retrieve", { query: retrievalQuery, now, role, trustDomain: readablePage.trustDomain }).kind !== "ok") failure("native retrieval read-back failed");
     const manifestPath = join(active.path, "manifest.json");
     if (!existsSync(manifestPath)) failure("native activated manifest is missing");
-    return { eligible: true, executed: true, activated: true, result: "succeeded", generationId: active.generationId, manifestPath, retrieved: true, runtime: "native-hermes", pinnedCommit: REQUIRED_COMMIT, hermesExecuted: true };
+    return { eligible: true, executed: true, activated: true, result: "succeeded", generationId: active.generationId, manifestPath, retrieved: readablePage !== undefined, runtime: "native-hermes", pinnedCommit: REQUIRED_COMMIT, hermesExecuted: true };
   } finally { composition.close(); registry.close(); }
 }
 

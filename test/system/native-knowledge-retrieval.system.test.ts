@@ -4,7 +4,9 @@ import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
 import { createNativeKnowledgeRegistry } from "../../src/knowledge/native-consolidation/registry.js";
-import type { StagedPage } from "../../src/knowledge/native-consolidation/contracts.js";
+import type { NativeKnowledgeRegistry } from "../../src/knowledge/native-consolidation/registry.js";
+import type { NativeKnowledgeCandidate, StagedPage } from "../../src/knowledge/native-consolidation/contracts.js";
+import { sha256ContentHash } from "../../src/knowledge/native-consolidation/evidence.js";
 import { activateGeneration, stageGeneration } from "../../src/knowledge/native-consolidation/publication.js";
 import { wikiRetrieve } from "../../src/knowledge/native-consolidation/retrieval.js";
 
@@ -14,6 +16,7 @@ function page(pageId: string, content: string, asOf = "2026-09-09T01:00:00.000Z"
     path: `pages/${pageId}.md`,
     content,
     sourceCandidateIds: [`candidate-${pageId}`],
+    trustDomain: "Ming Creatives",
     claimClass: "project",
     sourceReference: `fixture:${pageId}`,
     capturedAt: "2026-09-09T01:00:00.000Z",
@@ -21,6 +24,33 @@ function page(pageId: string, content: string, asOf = "2026-09-09T01:00:00.000Z"
     disposition: "supported",
     uncertainty: "none",
   };
+}
+
+function admitLineage(registry: NativeKnowledgeRegistry, pages: readonly StagedPage[]): void {
+  for (const page of pages) {
+    for (const candidateId of page.sourceCandidateIds) {
+      const content = `Fixture lineage for ${candidateId}.`;
+      const candidate: NativeKnowledgeCandidate = {
+        candidateId,
+        kind: "project-artifact",
+        claimClass: page.claimClass,
+        claim: content,
+        sourceIdentity: `fixture:${candidateId}`,
+        sourceReference: page.sourceReference,
+        sourceVersion: "v1",
+        excerpt: content,
+        contentHash: sha256ContentHash(content),
+        capturedAt: page.capturedAt,
+        asOf: page.asOf,
+        trustDomain: page.trustDomain,
+        sensitivity: "normal",
+        retentionClass: "project-90d",
+        dependencies: [candidateId],
+      };
+      const result = registry.admitCandidate(candidate);
+      if (result.kind === "denied") throw new Error(`fixture admission failed: ${result.reason}`);
+    }
+  }
 }
 
 async function setup(pages: readonly StagedPage[]) {
@@ -33,12 +63,13 @@ async function setup(pages: readonly StagedPage[]) {
   });
   const lease = registry.claimRun({ operatingDate: "2026-09-09", limit: 12 });
   if (lease.kind !== "claimed") throw new Error("fixture lease was not claimed");
+  admitLineage(registry, pages);
   const generation = await stageGeneration({
     run: lease,
     generatedRoot,
     stagingRoot,
     pages,
-    sourceEpoch: 0,
+    sourceEpoch: registry.consistencyFence().sourceEpoch,
     tombstoneEpoch: 0,
     now: "2026-09-09T02:00:00.000Z",
   });
@@ -64,6 +95,8 @@ describe("native knowledge supported retrieval", () => {
         query: "durable decisions",
         now: "2026-09-09T02:05:00.000Z",
         maxResults: 3,
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(result.kind).toBe("ok");
       if (result.kind !== "ok") return;
@@ -103,6 +136,8 @@ describe("native knowledge supported retrieval", () => {
         query: "project",
         now: "2026-09-09T02:05:00.000Z",
         maxResults: 10,
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(result.kind).toBe("ok");
       if (result.kind !== "ok") return;
@@ -131,6 +166,8 @@ describe("native knowledge supported retrieval", () => {
         generatedRoot: fixture.generatedRoot,
         query: "Derived project",
         now: "2026-09-09T02:05:00.000Z",
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(result).toMatchObject({ kind: "not-found" });
     } finally {
@@ -154,6 +191,8 @@ describe("native knowledge supported retrieval", () => {
         generatedRoot: fixture.generatedRoot,
         query: "race-sensitive",
         now: "2026-09-09T02:05:00.000Z",
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(result).toMatchObject({ kind: "needs-repair" });
       expect(fixture.registry.runHealth().repairState).toBe("needs-repair");
@@ -179,6 +218,8 @@ describe("native knowledge supported retrieval", () => {
         generatedRoot: fixture.generatedRoot,
         query: "safe",
         now: "2026-09-09T02:05:00.000Z",
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(["wiki-unavailable", "needs-repair"]).toContain(result.kind);
     } finally {
@@ -196,6 +237,8 @@ describe("native knowledge supported retrieval", () => {
         generatedRoot: fixture.generatedRoot,
         query: "safe",
         now: "2026-09-09T02:05:00.000Z",
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(["wiki-unavailable", "needs-repair"]).toContain(result.kind);
       expect(readFileSync(join(fixture.generation.immutablePath, "pages/a.md"), "utf8")).toBe("tampered");
@@ -222,6 +265,8 @@ describe("native knowledge supported retrieval", () => {
         generatedRoot: fixture.generatedRoot,
         query: "Original page content",
         now: "2026-09-09T02:05:00.000Z",
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(result).toMatchObject({ kind: "needs-repair" });
       expect(fixture.registry.runHealth().repairState).toBe("needs-repair");
@@ -238,7 +283,8 @@ describe("native knowledge supported retrieval", () => {
         registry: fixture.registry,
         generatedRoot: fixture.generatedRoot,
         query: "safe",
-        role: "untrusted-role",
+        role: "untrusted-role" as never,
+        trustDomain: "Ming Creatives",
         now: "2026-09-09T02:05:00.000Z",
       });
       expect(roleResult.kind).toBe("wiki-unavailable");

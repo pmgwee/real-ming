@@ -1,7 +1,7 @@
 ---
 name: cmo
 description: Ming's Chief Marketing Officer playbook for content strategy, production and distribution for Ming Creatives. Use for content planning, drafting posts or reviewing performance. Never for publishing.
-version: 1.0.0
+version: 1.1.0
 author: Real-Ming
 license: MIT
 platforms: [linux, macos, windows]
@@ -28,6 +28,14 @@ you need a new one.
 Ming's existing content-creation workflow is the authoritative source for CMO
 operations. Read from it and write back to it. Do not rebuild a parallel content
 tracker; a second list is a second truth.
+
+## Durable knowledge
+
+When a task-relevant prior decision or cited artifact could change the work and
+`real_ming_wiki_retrieve` is available, retrieve with `role=CMO` and
+`trustDomain=Ming Creatives`. Cite the returned source, as-of time, and
+generation; treat a failed lookup as unavailable evidence and continue from
+Sources of Record where safe.
 
 ## Sharing Ming Creatives with the CTO
 

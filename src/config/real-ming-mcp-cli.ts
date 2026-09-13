@@ -24,6 +24,7 @@ import type {
   TombstoneHeadStore,
 } from "../knowledge/native-consolidation/contracts.js";
 import type { CalendarAgendaClient, MailboxClient, NativeKnowledgeToolContext, RealMingToolResult, RealMingTools } from "../integration/real-ming-tools.js";
+import { trustDomains, type TrustDomain } from "../operations/contracts.js";
 
 /**
  * The Real-Ming extension as an MCP server, which is how native Hermes reaches
@@ -166,6 +167,9 @@ function configuredKnowledgeCandidates(): readonly NativeKnowledgeCandidate[] | 
     if (!required.every((key) => typeof candidate[key] === "string" && candidate[key]!.trim().length > 0) || !Array.isArray(candidate.dependencies) || !candidate.dependencies.every((item) => typeof item === "string" && item.trim().length > 0)) {
       throw new Error(`configured knowledge candidate ${index} is missing required fields`);
     }
+    if (!trustDomains.includes(candidate.trustDomain as TrustDomain)) {
+      throw new Error(`configured knowledge candidate ${index} has an invalid Trust Domain`);
+    }
     return candidate as NativeKnowledgeCandidate;
   });
 }
@@ -195,11 +199,14 @@ function parsePage(value: unknown): StagedPage {
   if (dependenciesRaw !== undefined && (!Array.isArray(dependenciesRaw) || !dependenciesRaw.every((item) => typeof item === "string" && item.trim().length > 0))) {
     throw new Error("page.dependencies must be a string array when supplied");
   }
+  const trustDomain = requiredText(record["trustDomain"], "page.trustDomain");
+  if (!trustDomains.includes(trustDomain as TrustDomain)) throw new Error("page.trustDomain is invalid");
   return {
     pageId: requiredText(record["pageId"], "page.pageId"),
     path: requiredText(record["path"], "page.path"),
     content: typeof record["content"] === "string" ? record["content"] : (() => { throw new Error("page.content is required"); })(),
     sourceCandidateIds,
+    trustDomain: trustDomain as TrustDomain,
     ...(dependenciesRaw === undefined ? {} : { dependencies: (dependenciesRaw as string[]).map((item) => item.trim()) }),
     claimClass: requiredText(record["claimClass"], "page.claimClass") as StagedPage["claimClass"],
     sourceReference: requiredText(record["sourceReference"], "page.sourceReference"),

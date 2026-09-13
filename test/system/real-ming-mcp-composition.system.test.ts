@@ -81,6 +81,7 @@ describe("production Real-Ming MCP composition", () => {
           path: "pages/empty-lineage.md",
           content: "# Invalid",
           sourceCandidateIds: [],
+          trustDomain: "Ming Creatives",
           claimClass: "project",
           sourceReference: "fixture:composition",
           capturedAt: "2026-09-09T01:00:00.000Z",
@@ -122,6 +123,7 @@ describe("production Real-Ming MCP composition", () => {
           path: "pages/composition-page.md",
           content: "# Composition page\n\nA cited composition fixture.",
           sourceCandidateIds: ["composition-candidate"],
+          trustDomain: "Ming Creatives",
           claimClass: "project",
           sourceReference: "fixture:composition",
           capturedAt: "2026-09-09T01:00:00.000Z",
@@ -144,7 +146,7 @@ describe("production Real-Ming MCP composition", () => {
         now: "2026-09-09T02:00:01.000Z",
       });
       expect(activation.kind).toBe("activated");
-      const retrieved = composition.tools.call("real_ming_wiki_retrieve", { query: "cited composition", now: "2026-09-09T02:00:02.000Z" });
+      const retrieved = composition.tools.call("real_ming_wiki_retrieve", { query: "cited composition", now: "2026-09-09T02:00:02.000Z", role: "CTO", trustDomain: "Ming Creatives" });
       expect(retrieved.kind).toBe("ok");
       const forgotten = await composition.tools.callAsync!("real_ming_forget_wiki_knowledge", {
         subject: "composition-candidate",
@@ -152,7 +154,7 @@ describe("production Real-Ming MCP composition", () => {
         requestedAt: "2026-09-09T02:00:03.000Z",
       });
       expect(forgotten).toMatchObject({ kind: "ok", value: { status: "restore-safe" } });
-      const suppressed = composition.tools.call("real_ming_wiki_retrieve", { query: "cited composition", now: "2026-09-09T02:00:04.000Z" });
+      const suppressed = composition.tools.call("real_ming_wiki_retrieve", { query: "cited composition", now: "2026-09-09T02:00:04.000Z", role: "CTO", trustDomain: "Ming Creatives" });
       expect(suppressed.kind).toBe("failed");
       expect(registry.tombstoneOutbox()).toMatchObject([{ status: "synced" }]);
     } finally {

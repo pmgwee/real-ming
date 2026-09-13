@@ -1,12 +1,20 @@
 # Workbook — wiring the role skills to durable knowledge
 
-**Status:** working notes for a future enhancement. Nothing here is approved,
-scheduled or implemented. Written 10 September 2026 against the deployed system.
+**Status:** historical workbook written 10 September 2026. Its role-scoped
+retrieval questions were resolved for controlled implementation on 14 September
+2026 by [ADR-0023](../adr/0023-scope-native-knowledge-retrieval-by-trust-domain.md)
+and GitHub issue #53; live activation remains unapproved.
 
 This is a thinking document, not a plan. It records what exists, what was
 designed and never built, and one opinionated route through the three knowledge
 systems currently in play. Treat the recommendations as a starting position to
 argue with.
+
+> **14 September checkpoint:** the candidate contract already contained
+> `trustDomain`; the missing link was staged-page, manifest, citation, and reader
+> propagation. The canonical set is Personal, Ming Creatives, Academic,
+> Entertainment, and Finance. CEO is not a capture domain. The generated wiki
+> remains one store with domain metadata, not five new stores.
 
 ## 1. What is actually deployed today
 
@@ -180,6 +188,19 @@ independent of the vault work.
   executive and was digest-only by design?
 - Does a role skill retrieving on every turn cost more than it returns for
   ordinary conversation, and should retrieval be explicitly requested instead?
+
+### Resolved on 14 September 2026
+
+- One candidate and page have exactly one domain. CTO and CMO share Ming
+  Creatives by role authorization, not multi-domain tagging.
+- CEO is not a capture domain. Cross-domain CEO material remains an Approved
+  Projection.
+- Entertainment remains a Trust Domain but has no invented Executive Role or
+  role-scoped raw reader.
+- Retrieval is task-relevant and intent-triggered, never an every-turn preamble.
+- The contract field remains the existing canonical name, `trustDomain`.
+- Plugin enforcement and role/procedure decomposition remain separate work; the
+  retrieval issue does not claim either is implemented.
 
 ## Related
 

@@ -1,7 +1,7 @@
 ---
 name: personal-cfo
 description: Ming's Personal CFO playbook for subscriptions, bills, budgets, holdings analysis and financial records. Use for money questions, DuitSini records, spending reviews or reconciling financial exports. Never for moving money.
-version: 1.0.0
+version: 1.1.0
 author: Real-Ming
 license: MIT
 platforms: [linux, macos, windows]
@@ -37,6 +37,14 @@ There is no direct broker link, and there will not be one here.
 
 Every figure carries a source and an as-of date. A number without those is not
 ready to show him.
+
+## Durable knowledge
+
+When a task-relevant prior decision or cited artifact could change the work and
+`real_ming_wiki_retrieve` is available, retrieve with `role=Personal CFO` and
+`trustDomain=Finance`. Cite the returned source, as-of time, and generation;
+treat a failed lookup as unavailable evidence and continue from Sources of
+Record where safe.
 
 ## Financial Snapshots
 

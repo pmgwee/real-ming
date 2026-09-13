@@ -1,4 +1,11 @@
-import type { WorkItem, WorkItemState } from "../operations/contracts.js";
+import {
+  executiveRoles,
+  trustDomains,
+  type ExecutiveRole,
+  type TrustDomain,
+  type WorkItem,
+  type WorkItemState,
+} from "../operations/contracts.js";
 import type { ExecutionLinkStore } from "./execution-link.js";
 import type { NativeScheduledReportRequest } from "../operations/native-scheduled-reports.js";
 import type { NativeCronReportClient } from "./native-cron-client.js";
@@ -389,16 +396,17 @@ export function createRealMingTools(options: {
           {
             name: "real_ming_wiki_retrieve",
             description:
-              "Retrieve cited, fresh pages only from the verified active generated knowledge snapshot. Staging, quarantine, tombstoned and malformed state fails closed.",
+              "Retrieve cited, fresh pages for one authorized Executive Role and Trust Domain from the verified active generated knowledge snapshot. Authorization, staging, quarantine, tombstones and malformed state fail closed before page content is returned.",
             inputSchema: {
               type: "object",
               properties: {
                 query: { type: "string" },
                 now: { type: "string" },
-                role: { type: "string" },
+                role: { type: "string", enum: [...executiveRoles] },
+                trustDomain: { type: "string", enum: [...trustDomains] },
                 maxResults: { type: "number" },
               },
-              required: ["query", "now"],
+              required: ["query", "now", "role", "trustDomain"],
             },
           } satisfies RealMingToolDefinition,
           {
@@ -884,6 +892,7 @@ export function createRealMingTools(options: {
       candidate.retentionClass,
     ];
     if (!strings.every((entry) => typeof entry === "string" && entry.trim().length > 0)) return undefined;
+    if (!trustDomains.includes(candidate.trustDomain as TrustDomain)) return undefined;
     if (!Array.isArray(candidate.dependencies) || !candidate.dependencies.every((entry) => typeof entry === "string")) return undefined;
     return candidate as NativeKnowledgeCandidate;
   };
@@ -935,13 +944,20 @@ export function createRealMingTools(options: {
     if (knowledge === undefined) return { kind: "failed", reason: "Native knowledge retrieval is not enabled." };
     const query = requiredString(args, "query");
     const now = requiredString(args, "now");
-    if (query === undefined || now === undefined) return { kind: "failed", reason: "query and now are required." };
-    const rawMax = args["maxResults"];
     const role = requiredString(args, "role");
+    const trustDomain = requiredString(args, "trustDomain");
+    if (query === undefined || now === undefined || role === undefined || trustDomain === undefined) {
+      return { kind: "failed", reason: "query, now, role and trustDomain are required." };
+    }
+    if (!executiveRoles.includes(role as ExecutiveRole) || !trustDomains.includes(trustDomain as TrustDomain)) {
+      return { kind: "failed", reason: "role or trustDomain is unsupported." };
+    }
+    const rawMax = args["maxResults"];
     const request: WikiRetrieveRequest = {
       query,
       now,
-      ...(role === undefined ? {} : { role }),
+      role: role as ExecutiveRole,
+      trustDomain: trustDomain as TrustDomain,
       ...(typeof rawMax === "number" ? { maxResults: rawMax } : {}),
     };
     const result = wikiRetrieve({ ...request, registry: knowledge.registry, generatedRoot: knowledge.generatedRoot });

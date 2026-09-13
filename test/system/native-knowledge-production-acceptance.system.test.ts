@@ -165,6 +165,8 @@ describe("native knowledge offline controlled acceptance", () => {
       const retrieved = activeComposition.tools.call("real_ming_wiki_retrieve", {
         query: "controlled native knowledge path",
         now,
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(retrieved.kind).toBe("ok");
       activeComposition.close();
@@ -190,7 +192,7 @@ describe("native knowledge offline controlled acceptance", () => {
       });
       expect(forgotten).toMatchObject({ kind: "ok", value: { status: "restore-safe" } });
       expect(registry.tombstoneOutbox()).toMatchObject([{ tombstoneId: expect.any(String), status: "synced" }]);
-      expect(activeComposition.tools.call("real_ming_wiki_retrieve", { query: candidateId, now }).kind).toBe("failed");
+      expect(activeComposition.tools.call("real_ming_wiki_retrieve", { query: candidateId, now, role: "CTO", trustDomain: "Ming Creatives" }).kind).toBe("failed");
       activeComposition.close();
       activeComposition = undefined;
 
@@ -223,6 +225,8 @@ describe("native knowledge offline controlled acceptance", () => {
             generatedRoot: restoredGeneratedRoot,
             query: "controlled native knowledge path",
             now,
+            role: "CTO",
+            trustDomain: "Ming Creatives",
           });
           return head.store.readHead();
         },
@@ -244,6 +248,8 @@ describe("native knowledge offline controlled acceptance", () => {
           generatedRoot: restoredGeneratedRoot,
           query: "controlled native knowledge path",
           now,
+          role: "CTO",
+          trustDomain: "Ming Creatives",
         }).kind).toBe("not-found");
       } finally {
         restoredRegistry.close();

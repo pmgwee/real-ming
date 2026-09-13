@@ -13,13 +13,26 @@ import type {
   WikiRetrieveRequest,
   WikiRetrieveResult,
 } from "./contracts.js";
+import {
+  executiveRoles,
+  trustDomains,
+  type ExecutiveRole,
+  type TrustDomain,
+} from "../../operations/contracts.js";
+import { routeTrustDomain } from "../../operations/executive-role-router.js";
 import { isFresh } from "./evidence.js";
 import { isSuppressedByTombstone } from "./tombstones.js";
 import { readManifest } from "./publication.js";
 import type { NativeKnowledgeRegistry } from "./registry.js";
 import type { GenerationPageMetadata } from "./contracts.js";
 
-const supportedRoles = new Set(["CEO", "COO", "CTO", "CMO", "CAO", "Personal CFO"]);
+function isExecutiveRole(value: unknown): value is ExecutiveRole {
+  return typeof value === "string" && executiveRoles.includes(value as ExecutiveRole);
+}
+
+function isTrustDomain(value: unknown): value is TrustDomain {
+  return typeof value === "string" && trustDomains.includes(value as TrustDomain);
+}
 
 function sameFence(left: NativeKnowledgeConsistencyFence, right: NativeKnowledgeConsistencyFence): boolean {
   return left.activeGenerationId === right.activeGenerationId &&
@@ -53,8 +66,11 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
   readonly registry: NativeKnowledgeRegistry;
   readonly generatedRoot: string;
 }): WikiRetrieveResult {
-  if (input.role !== undefined && !supportedRoles.has(input.role)) {
+  if (!isExecutiveRole(input.role) || !isTrustDomain(input.trustDomain)) {
     return { kind: "wiki-unavailable", reason: "unsupported knowledge role" };
+  }
+  if (routeTrustDomain(null, input.role) !== input.trustDomain) {
+    return { kind: "wiki-unavailable", reason: "knowledge role is not authorized for Trust Domain" };
   }
   if (input.query.trim().length === 0) return { kind: "not-found", reason: "query is empty" };
   const health = input.registry.runHealth();
@@ -98,6 +114,10 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
   const results: Extract<WikiRetrieveResult, { readonly kind: "ok" }>['results'][number][] = [];
   for (const page of manifest.pages) {
     if (results.length >= limit) break;
+    // Authorization happens before active-state resolution above, and domain
+    // filtering happens before reading page bytes here. A denied page cannot
+    // become a content-oracle through corruption or a different error branch.
+    if (page.trustDomain !== input.trustDomain) continue;
     if (isSuppressedByTombstone(page, tombstones)) continue;
     if (page.disposition !== "supported") continue;
     const freshness = isFresh({ claimClass: page.claimClass, asOf: page.asOf, now: input.now });
@@ -138,6 +158,7 @@ export function wikiRetrieve(input: WikiRetrieveRequest & {
       content: content.slice(0, 16 * 1024),
       citation: {
         sourceReference: page.sourceReference,
+        trustDomain: page.trustDomain,
         excerpt: content.slice(0, 512),
         capturedAt: page.capturedAt,
         asOf: page.asOf,

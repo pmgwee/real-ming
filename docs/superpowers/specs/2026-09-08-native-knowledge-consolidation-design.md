@@ -49,7 +49,7 @@ post-live-acceptance plan. Tasks 0–8 do not create or synchronize this mirror.
 | Native experience | Telegram, conversation, session history, `MEMORY.md`, `USER.md`, tools, skills, plugins, MCP, progress, formatting and native cron remain Hermes-owned | Designed; current V6 live evidence remains valid |
 | Capture | No hook or wrapper intercepts ordinary turns. Candidates are created only by an explicit capture action or a deliberate durable-signal action using the capture skill/tool | Controlled-tested; no production caller |
 | Publication | Hermes writes only a temporary generation; one deterministic Real-Ming activation operation alone makes an immutable generation eligible for supported retrieval | Controlled-tested; activation remains local and inactive |
-| Retrieval | The supported `wiki_retrieve` path resolves and verifies the registry's active-generation reference, tombstones and freshness; registry failure fails closed for wiki results while ordinary chat continues | Controlled-tested; no live caller |
+| Retrieval | The supported `wiki_retrieve` path first authorizes one Executive Role and one Trust Domain, then resolves and verifies the registry's active-generation reference, page domain, tombstones and freshness; registry or scope failure fails closed for wiki results while ordinary chat continues | Controlled-tested including issue #53 role/domain enforcement; no live caller |
 | Forgetting | An explicit forget request immediately suppresses future intake and supported retrieval, then retires or suppresses affected generated content; native-memory deletion remains unrelated housekeeping | Controlled-tested on the supported path; no live caller |
 | Failure | A failed or unavailable consolidation run is visible, retryable and must not make ordinary Telegram chat fail | Controlled-tested; not production-wired |
 
@@ -190,6 +190,29 @@ separate authorized operation.
 
 ## Publication authority and reader contract
 
+### Trust Domain and Executive Role scope
+
+The candidate's explicit `trustDomain` is immutable lineage, not a synthesis
+hint. Every staged page declares exactly one domain, all of its source candidate
+IDs must resolve to that same domain, and schema-v2 generation manifests retain
+the domain on every page. Missing, invalid, or mixed-domain lineage prevents
+activation. A prior schema-v1 generation is not silently upgraded;
+reconciliation marks it unavailable or in need of repair until a fresh v2
+generation is built.
+
+The supported reader requires one Executive Role and one Trust Domain. It
+validates COO/Personal, CTO/Ming Creatives, CMO/Ming Creatives, CAO/Academic, or
+Personal CFO/Finance before resolving the active generation or reading a page.
+No omitted role, CEO alias, invented Entertainment executive, wildcard, list, or
+cross-domain pair is accepted. CEO access across domains remains an Approved
+Projection outside this raw generated-wiki reader. A successful citation repeats
+the page's Trust Domain so the caller can retain the scope evidence.
+
+Retrieval is task-relevant and intent-triggered. Role playbooks may use the
+reader when its evidence can inform the work, but do not run it as an every-turn
+preamble. Tool unavailability is reported as unavailable knowledge and does not
+intercept or disable ordinary Hermes chat.
+
 The deterministic Real-Ming `activate_generation` operation is the only
 publication authority for the generated wiki area. Hermes writes a candidate
 generation below an agent-owned temporary/staging root; the supported system
@@ -209,10 +232,12 @@ that active-generation reference. Generation files are never edited in place.
 Relative paths containing `..`, absolute paths, symlink escapes or targets
 outside the configured generated root are rejected.
 
-The supported `wiki_retrieve` operation reads the active-generation reference,
-loads the matching immutable manifest, checks tombstones and retrieval-time
-freshness, and returns a bounded cited result. A reader retries if the active
-reference changes during the read. It never searches staging, quarantine or
+The supported `wiki_retrieve` operation first validates one canonical Executive
+Role/Trust Domain pair, then reads the active-generation reference, loads the
+matching immutable schema-v2 manifest, filters to that domain before page-byte
+reads, checks tombstones and retrieval-time freshness, and returns a bounded
+cited result carrying the domain. A changed reference fails closed. It never
+searches staging, quarantine or
 superseded generations. Registry unavailability, a missing manifest or a
 hash/path mismatch fails closed for wiki knowledge; ordinary Hermes chat and
 native memory continue independently.

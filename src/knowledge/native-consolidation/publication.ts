@@ -29,6 +29,7 @@ import type {
 } from "./contracts.js";
 import { manifestHash, type NativeKnowledgeRegistry } from "./registry.js";
 import { NATIVE_KNOWLEDGE_LIMITS } from "./contracts.js";
+import { trustDomains, type TrustDomain } from "../../operations/contracts.js";
 
 function sha256(value: string | Uint8Array): string {
   return `sha256:${createHash("sha256").update(value).digest("hex")}`;
@@ -220,6 +221,7 @@ function pageMetadata(page: StagedPage, path: string) {
     sha256: fileHash(path),
     bytes,
     sourceCandidateIds: [...page.sourceCandidateIds],
+    trustDomain: page.trustDomain,
     ...(page.dependencies === undefined ? {} : { dependencies: [...page.dependencies] }),
     claimClass: page.claimClass,
     sourceReference: page.sourceReference,
@@ -233,7 +235,7 @@ function pageMetadata(page: StagedPage, path: string) {
 function readManifestUnchecked(path: string): GenerationManifest {
   const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<GenerationManifest>;
   if (
-    raw.schema !== "real-ming.native-knowledge-generation.v1" ||
+    raw.schema !== "real-ming.native-knowledge-generation.v2" ||
     typeof raw.generationId !== "string" ||
     typeof raw.runId !== "string" ||
     raw.complete !== true ||
@@ -245,6 +247,14 @@ function readManifestUnchecked(path: string): GenerationManifest {
   }
   if (raw.pages.length > NATIVE_KNOWLEDGE_LIMITS.maxPagesPerGeneration) {
     throw new Error("generation page limit exceeded");
+  }
+  if (raw.pages.some((page) => {
+    if (typeof page !== "object" || page === null) return true;
+    const trustDomain = (page as { readonly trustDomain?: unknown }).trustDomain;
+    return typeof trustDomain !== "string" ||
+      !trustDomains.includes(trustDomain as TrustDomain);
+  })) {
+    throw new Error("generation page Trust Domain is missing or invalid");
   }
   return raw as GenerationManifest;
 }
@@ -343,7 +353,7 @@ export async function stageGeneration(input: StageGenerationRequest): Promise<St
     if (totalBytes > NATIVE_KNOWLEDGE_LIMITS.maxActiveSnapshotBytes) throw new Error("active snapshot limit exceeded");
 
     const manifest: GenerationManifest = {
-    schema: "real-ming.native-knowledge-generation.v1",
+    schema: "real-ming.native-knowledge-generation.v2",
     generationId,
     runId: input.run.runId,
     previousGenerationId: input.previous?.generationId ?? null,

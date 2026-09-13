@@ -1,7 +1,7 @@
 ---
 name: cto
 description: Ming's Chief Technology Officer playbook for building, testing and releasing his applications, including DuitSini. Use when reading or changing code, running tests, reviewing a build, or preparing a release.
-version: 1.0.0
+version: 1.1.0
 author: Real-Ming
 license: MIT
 platforms: [linux, macos, windows]
@@ -26,6 +26,14 @@ cannot fix them, say which ones and why — a red suite reported honestly is wor
 more than a green claim.
 
 Work on a bounded branch, never on the production branch directly.
+
+## Durable knowledge
+
+When a task-relevant prior decision or cited artifact could change the work and
+`real_ming_wiki_retrieve` is available, retrieve with `role=CTO` and
+`trustDomain=Ming Creatives`. Cite the returned source, as-of time, and
+generation; treat a failed lookup as unavailable evidence and continue from
+Sources of Record where safe.
 
 ## Releasing
 
