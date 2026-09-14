@@ -70,12 +70,16 @@ Obsidian indexes them normally.
 
 Then open `~/Obsidian/real-ming` as a vault. You will see
 `Native cron ownership.md` and a `real-ming-generated/` folder holding the
-governed pages, their `index.md`, `log.md` and `manifest.json`.
+governed pages, their `index.md`, `log.md` and `manifest.json`, plus a
+`staging/` folder with one empty directory per consolidation run.
 
-> **No Obsidian setting reveals a dot-folder.** *Show all file types* and
-> *Detect all file extensions* affect file **extensions**, not dot-directories,
-> and neither will make a raw `.real-ming/` pull visible. Renaming on the way in
-> is the fix.
+> **Two routes work; pick either.** Ming reported that enabling **Settings →
+> Files and links → Show all file types** made a raw `.real-ming/` pull visible
+> in his Obsidian 1.13.7 file tree. Treat that as the simpler route and try it
+> first, since it keeps the local copy byte-faithful to the host. The
+> `--transform` rename above is the fallback that does not depend on a setting
+> or an Obsidian version. An earlier version of this runbook claimed no setting
+> could work; that claim was wrong and is corrected here.
 
 **In File Explorer it needs no setting at all.** The tar extract sets no Windows
 *hidden* attribute, so pasting the path into the address bar just works —
@@ -218,7 +222,7 @@ no broker sits in front of it, and no mirror exists.
 | Wiki search returns nothing | Your phrase is not a contiguous substring of any page | Retry with an exact phrase, or `rm54-live-acceptance-live` |
 | "No published supported page matched" for everything | Expected — the corpus is two fixtures | Declare real sources; see §4 |
 | Agent offers to "remember" something conversational | It is using native memory, not the wiki | Fine, but do not record it as cited knowledge |
-| `.real-ming` invisible in Obsidian | Obsidian ignores **all** dot-folders, and no setting changes that | Re-pull with the `--transform` in §2 so it arrives as `real-ming-generated/` |
+| `.real-ming` invisible in Obsidian | The dot-folder is not being indexed | First enable **Settings → Files and links → Show all file types** and reload the vault (`Ctrl+R`). If it still does not appear, re-pull with the `--transform` in §2 so it arrives as `real-ming-generated/` |
 | Local edits vanish after a pull | The pull is one-way by design | Azure is canonical; edit through the agent |
 | Role gate returns content instead of refusing | **Real defect** | Stop and report it; the gate is the guarantee |
 
