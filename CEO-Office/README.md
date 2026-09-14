@@ -413,6 +413,7 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [dashboard-and-obsidian-access-runbook.md](dashboard-and-obsidian-access-runbook.md) | Step-by-step: reach the Hermes dashboard and Kanban over an SSH tunnel, and set up Obsidian on your laptop |
 | [curated-knowledge-vault-activation-runbook.md](curated-knowledge-vault-activation-runbook.md) | **Closed 14 Sep 2026.** Record of the Option A decision: the six-root vault is superseded, its guarantees met by the live role-scoped path. Retained as the procedure if it is ever activated |
 | [verify-live-capabilities-from-telegram-runbook.md](verify-live-capabilities-from-telegram-runbook.md) | Six tests you run from your own Telegram chat to confirm the capabilities marked **Live** actually answer you — Work Items, idempotency, Notion, cited retrieval and the role gate. About fifteen minutes, no laptop needed |
+| [verify-knowledge-capabilities-runbook.md](verify-knowledge-capabilities-runbook.md) | What your second brain actually holds today (two fixtures and one note), how to open it in Obsidian, a Telegram test for each of the three knowledge capabilities, what each of the seven knowledge tools is for, and why the six roots stay unbuilt |
 | [native-knowledge-consolidation-activation-runbook.md](native-knowledge-consolidation-activation-runbook.md) | CEO-only review, deployment-disabled rollout, one-shot live acceptance, restore checks and optional 02:00 cron enablement for Tasks 0–8 |
 
 ---
