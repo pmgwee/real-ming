@@ -174,6 +174,25 @@ The 17 tools discovered on the host are the same 17 defined in
 `src/integration/real-ming-tools.ts`: 4 work-item, 7 native-knowledge, 1
 scheduled-report and 5 provider-access.
 
+### 7.1 Service restored without data loss or duplicate Telegram ownership
+
+The first acceptance criterion is about ownership, not just liveness, so it is
+evidenced separately.
+
+| Check | Expected | Observed |
+| --- | --- | --- |
+| `real-ming.service` recovered from the restart loop | active, not restarting | `active`, `NRestarts=0` |
+| Durable state survived | no loss | Mounted SQLite passed integrity checks; the operations state, Notion ledger and native-knowledge registry all back up and restore cleanly (§6.2) |
+| Telegram ownership flag | `native-hermes-gateway` | `REAL_MING_TELEGRAM_OWNERSHIP=native-hermes-gateway` in the active `/etc/real-ming/release.env` **and** in the running container's effective environment |
+| Scheduler ownership flag | `native-hermes-cron` | `REAL_MING_SCHEDULER_OWNERSHIP=native-hermes-cron`, same two places |
+| Real-Ming holds no bot credential | 0 Telegram token variables | 0 Telegram token variables in the container environment |
+| Real-Ming does not poll Telegram | no Telegram activity | 0 Telegram mentions in `real-ming.service` logs |
+| Exactly one Telegram consumer | native Hermes only | Both cron jobs deliver as `telegram:7962877873` from Hermes; the §5 acceptance message was delivered by the Hermes gateway |
+
+Superseded `.pre-*` backup env files on the host still contain the old
+`REAL_MING_SCHEDULER_OWNERSHIP=real-ming` value. They are retained rollback
+copies and are not loaded by any unit; only `release.env` is.
+
 ---
 
 ## 8. Incident observed and recovered during rollout
@@ -200,14 +219,13 @@ diagnosed and closed fault.
 
 ## 9. Repository gates
 
-Gate results for the final RM-54 diff are recorded in the issue closeout
-comment, verified by exit code rather than by reading output.
+Verified by exit code, not by pattern-matching output.
 
-| Gate | Requirement |
+| Gate | Observed |
 | --- | --- |
-| `npm run check` | exit 0 — type-check, tests, build, browser test, deployment preflight |
-| `npm audit --audit-level=high` | exit 0 |
-| `git diff --check` | exit 0 |
+| `npm run check` | **exit 0** — 85 test files passed, 965 tests passed, 2 skipped; type-check, build, real-browser dashboard test and `Control-plane deployment preflight passed.` |
+| `npm audit --audit-level=high` | **exit 0** — `found 0 vulnerabilities` |
+| `git diff --check` | **exit 0** — one `LF will be replaced by CRLF` informational warning only |
 
 The focused backup test recorded at the handoff checkpoint was re-run and
 stayed green:
@@ -216,11 +234,42 @@ stayed green:
 npx vitest run test/system/control-plane-runtime.system.test.ts -t "includes the live native-knowledge registry"
 Test Files  1 passed (1)
      Tests  1 passed | 33 skipped (34)
+exit 0
 ```
 
 ---
 
-## 10. Baseline
+## 10. Independent Standards and Spec reviews
+
+Both axes were reviewed independently against the fixed ticket base `ef49bef`.
+
+**Spec review: no correctness defect.** Every live ID matches the handoff
+byte-for-byte; the legacy vault is nowhere marked Live; recurrence is stated
+disabled in every place it appears; the design baseline is preserved and the
+10 September packet keeps its own `NOT READY` label; the 17/8 counts agree
+across README, the architecture HTML, `docs/BASELINE.md` and the source.
+
+**Findings acted on:**
+
+| Finding | Action |
+| --- | --- |
+| Spec: the evidence recorded no post-restore **Telegram ownership** observation, though the first acceptance criterion asks for one | Verified on the host and added as §7.1 |
+| Spec: §9 listed gate *requirements* rather than observed exit codes | Replaced with the observed values |
+| Spec: the `280 tools` total is derived, with its staleness caveat in a different section | Caveat now stated inline at both places the number appears, and the section date records that only the Real-Ming count was re-measured |
+| Spec: `skills/ming/` was ambiguous between repository and host paths | Disambiguated in `README.md` |
+| Standards: the loopback comment in `dashboard-server.ts` still claimed those endpoints "grant no write" | Corrected. The group already created calendar events, and Work Item capture now creates `Captured` work; the comment now says so and names the shared-bearer consequence |
+
+**Findings examined and deliberately not changed:**
+
+| Finding | Why |
+| --- | --- |
+| Standards: the new backup assertion reads `deploy/backup-control-plane.sh` text, which "proves a string, not a backup" | The behavioural half already exists through an approved seam — `test/system/control-plane-backup.system.test.ts` backs up a separate native registry, asserts the `native-knowledge-state` manifest entry, restores it and reads the tombstone and outbox back. The new assertion is a *deployment composition* guard for a shell line no harness can reach, matching the existing CRLF guard in the same describe block. The two are complementary, so no third seam was added |
+| Standards: `deduplicated` is recomputed outside the gateway and is "racy" | Examined and **not reproducible**. `findWorkItemByCommand` is synchronous and `acknowledgeCeoAction` performs its own lookup before its first `await`, so the outer read, the call and the inner read run in one synchronous block on a single-threaded runtime. No interleaving is possible and no failing test could be written. The duplicated lookup is real but is a readability smell, not a defect; per `AGENTS.md` no fix was made without a reproducing test |
+| Standards: provider error text is forwarded into a tool result | Judgement call, left as built. The forwarded text is the provider's own error for a request body containing only intent, expected effect, role, workstream and idempotency key — no credential of ours reaches it, and it is truncated to 240 characters. Removing it would cost real diagnostic value |
+| Standards: duplicated capture closure, data clumps, `as never` casts, shotgun surgery across six files | Judgement-call smells in `c4ee6eb`, which is already deployed and live-accepted. Refactoring deployed code for style inside a closeout ticket would widen the diff past RM-54 without changing behaviour. Recorded here so a later ticket can take them deliberately |
+| Spec: `Backup and restore` promoted Tested → Live, plus ADR count 22→23 and test files 71→85 | The backup promotion is this ticket's own work and is evidenced in §6. The two counts were stale facts in tables RM-54 had to edit anyway |
+
+## 11. Baseline
 
 The **design baseline** is unchanged: **Real-Ming v1.1 · Architecture
 Revision 6**. RM-54 activated capability inside that revision; it did not

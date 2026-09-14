@@ -140,8 +140,10 @@ Real-Ming is reached as a tool. It is never in the path of an ordinary conversat
 | **Scheduled jobs** | **2** | Native Hermes cron rows at 07:30 and 21:30 `Asia/Kuala_Lumpur`. Real-Ming composes through one tool; Hermes owns the schedule and the Telegram delivery. Knowledge consolidation adds no third row: its manifest stays inactive. |
 
 **The repository and the host now agree.** Since 14 September 2026 the host
-exposes the same **17 tools and 8 skills** this repository holds:
-`hermes mcp test real-ming` discovers 17, and `skills/ming/` carries 8. The
+exposes the same **17 tools and 8 skills** this repository holds in
+[`hermes/skills/ming/`](hermes/skills/ming): on the host,
+`hermes mcp test real-ming` discovers 17 tools and the deployed
+`skills/ming/` directory carries 8. The
 seven native-knowledge tools — `capture_knowledge_candidate`,
 `knowledge_list_candidates`, `read_knowledge_source`,
 `stage_knowledge_generation`, `wiki_retrieve`, `forget_wiki_knowledge`,

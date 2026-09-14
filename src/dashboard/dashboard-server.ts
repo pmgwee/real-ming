@@ -434,8 +434,13 @@ export function createDashboardServer(options: {
         }
         return;
       }
-      // The Real-Ming MCP process is the sole caller of these loopback reads.
-      // Like the cron endpoint they carry no CEO session and grant no write.
+      // The Real-Ming MCP process is the sole caller of these loopback
+      // endpoints, and none of them carries a CEO session. They are not all
+      // read-only: this group creates calendar events, and the Work Item
+      // capture endpoint above creates Captured work. One bearer
+      // (nativeCronApiKey) covers the whole loopback surface, so widening that
+      // surface widens what a leaked bearer reaches -- keep every addition
+      // governed and incapable of executing or completing work.
       if (
         request.method === "POST" &&
         (url.pathname === "/internal/provider/calendar-events" ||
