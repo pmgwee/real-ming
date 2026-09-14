@@ -13,6 +13,7 @@ import {
   createBridgedMailboxClient,
 } from "../integration/provider-read-client.js";
 import { createRealMingTools } from "../integration/real-ming-tools.js";
+import { createBridgedWorkItemCaptureClient } from "../integration/work-item-capture-client.js";
 import { OperationsState } from "../operations/operations-state.js";
 import { createNativeKnowledgeRegistry, type NativeKnowledgeRegistry } from "../knowledge/native-consolidation/registry.js";
 import { stageGeneration as stageNativeGeneration } from "../knowledge/native-consolidation/publication.js";
@@ -23,7 +24,8 @@ import type {
   StagedPage,
   TombstoneHeadStore,
 } from "../knowledge/native-consolidation/contracts.js";
-import type { CalendarAgendaClient, MailboxClient, NativeKnowledgeToolContext, RealMingToolResult, RealMingTools } from "../integration/real-ming-tools.js";
+import type { CalendarAgendaClient, MailboxClient, NativeKnowledgeToolContext, RealMingToolResult, RealMingTools, WorkItemCaptureClient } from "../integration/real-ming-tools.js";
+import { trustDomains, type TrustDomain } from "../operations/contracts.js";
 
 /**
  * The Real-Ming extension as an MCP server, which is how native Hermes reaches
@@ -76,6 +78,7 @@ export interface RealMingMcpCompositionOptions {
   readonly scheduledReports?: import("../integration/native-cron-client.js").NativeCronReportClient;
   readonly calendar?: CalendarAgendaClient;
   readonly mail?: MailboxClient;
+  readonly workItemCapture?: WorkItemCaptureClient;
   readonly defaultCalendarId?: string;
   readonly now?: () => string;
 }
@@ -166,6 +169,9 @@ function configuredKnowledgeCandidates(): readonly NativeKnowledgeCandidate[] | 
     if (!required.every((key) => typeof candidate[key] === "string" && candidate[key]!.trim().length > 0) || !Array.isArray(candidate.dependencies) || !candidate.dependencies.every((item) => typeof item === "string" && item.trim().length > 0)) {
       throw new Error(`configured knowledge candidate ${index} is missing required fields`);
     }
+    if (!trustDomains.includes(candidate.trustDomain as TrustDomain)) {
+      throw new Error(`configured knowledge candidate ${index} has an invalid Trust Domain`);
+    }
     return candidate as NativeKnowledgeCandidate;
   });
 }
@@ -195,11 +201,14 @@ function parsePage(value: unknown): StagedPage {
   if (dependenciesRaw !== undefined && (!Array.isArray(dependenciesRaw) || !dependenciesRaw.every((item) => typeof item === "string" && item.trim().length > 0))) {
     throw new Error("page.dependencies must be a string array when supplied");
   }
+  const trustDomain = requiredText(record["trustDomain"], "page.trustDomain");
+  if (!trustDomains.includes(trustDomain as TrustDomain)) throw new Error("page.trustDomain is invalid");
   return {
     pageId: requiredText(record["pageId"], "page.pageId"),
     path: requiredText(record["path"], "page.path"),
     content: typeof record["content"] === "string" ? record["content"] : (() => { throw new Error("page.content is required"); })(),
     sourceCandidateIds,
+    trustDomain: trustDomain as TrustDomain,
     ...(dependenciesRaw === undefined ? {} : { dependencies: (dependenciesRaw as string[]).map((item) => item.trim()) }),
     claimClass: requiredText(record["claimClass"], "page.claimClass") as StagedPage["claimClass"],
     sourceReference: requiredText(record["sourceReference"], "page.sourceReference"),
@@ -291,6 +300,9 @@ export function createRealMingMcpComposition(options: RealMingMcpCompositionOpti
       ...(options.scheduledReports === undefined ? {} : { scheduledReports: options.scheduledReports }),
       ...(options.calendar === undefined ? {} : { calendar: options.calendar }),
       ...(options.mail === undefined ? {} : { mail: options.mail }),
+      ...(options.workItemCapture === undefined
+        ? {}
+        : { workItemCapture: options.workItemCapture }),
       ...(options.defaultCalendarId === undefined ? {} : { defaultCalendarId: options.defaultCalendarId }),
       ...(knowledge.context === undefined ? {} : { knowledge: knowledge.context }),
     }),
@@ -346,6 +358,14 @@ function main(): void {
     statePath,
     ...(configuredCandidates === undefined ? {} : { knowledgeCandidates: configuredCandidates }),
     ...(scheduledReports === undefined ? {} : { scheduledReports }),
+    ...(bridged === undefined
+      ? {}
+      : {
+          workItemCapture: createBridgedWorkItemCaptureClient({
+            endpoint: `${bridged.endpoint}/internal/work-items/capture`,
+            apiKey: bridged.apiKey,
+          }),
+        }),
     ...(bridged === undefined || calendarId === undefined
         ? {}
         : {

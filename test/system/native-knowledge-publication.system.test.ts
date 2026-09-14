@@ -7,7 +7,8 @@ import {
   createNativeKnowledgeRegistry,
   type NativeKnowledgeRegistry,
 } from "../../src/knowledge/native-consolidation/registry.js";
-import type { RunLease, StagedPage } from "../../src/knowledge/native-consolidation/contracts.js";
+import type { NativeKnowledgeCandidate, RunLease, StagedGeneration, StagedPage } from "../../src/knowledge/native-consolidation/contracts.js";
+import { sha256ContentHash } from "../../src/knowledge/native-consolidation/evidence.js";
 import {
   activateGeneration,
   generatedRootBytes,
@@ -22,6 +23,7 @@ function page(pageId: string, content: string): StagedPage {
     path: `pages/${pageId}.md`,
     content,
     sourceCandidateIds: [`candidate-${pageId}`],
+    trustDomain: "Ming Creatives",
     claimClass: "project",
     sourceReference: `fixture:${pageId}`,
     capturedAt: "2026-09-09T01:00:00.000Z",
@@ -29,6 +31,36 @@ function page(pageId: string, content: string): StagedPage {
     disposition: "supported",
     uncertainty: "none",
   };
+}
+
+function admitGenerationLineage(
+  registry: NativeKnowledgeRegistry,
+  generation: StagedGeneration,
+): void {
+  for (const pageMetadata of generation.manifest.pages) {
+    for (const candidateId of pageMetadata.sourceCandidateIds) {
+      const content = `Fixture lineage for ${candidateId}.`;
+      const candidate: NativeKnowledgeCandidate = {
+        candidateId,
+        kind: "project-artifact",
+        claimClass: pageMetadata.claimClass,
+        claim: content,
+        sourceIdentity: `fixture:${candidateId}`,
+        sourceReference: pageMetadata.sourceReference,
+        sourceVersion: "v1",
+        excerpt: content,
+        contentHash: sha256ContentHash(content),
+        capturedAt: pageMetadata.capturedAt,
+        asOf: pageMetadata.asOf,
+        trustDomain: pageMetadata.trustDomain,
+        sensitivity: "normal",
+        retentionClass: "project-90d",
+        dependencies: [candidateId],
+      };
+      const result = registry.admitCandidate(candidate);
+      if (result.kind === "denied") throw new Error(`fixture admission failed: ${result.reason}`);
+    }
+  }
 }
 
 async function withWorkspace(run: (input: {
@@ -128,6 +160,7 @@ describe("native knowledge immutable publication", () => {
         tombstoneEpoch: 0,
         now: "2026-09-09T02:00:00.000Z",
       });
+      admitGenerationLineage(registry, first);
       registry.recordStagedGeneration(first);
       expect(activateGeneration({ registry, generation: first, lease, activePath: generatedRoot, now: "2026-09-09T02:00:01.000Z" }).kind).toBe("activated");
       const previous = readManifest(join(first.immutablePath, "manifest.json"));
@@ -216,6 +249,7 @@ describe("native knowledge immutable publication", () => {
           tombstoneEpoch: 0,
           now: `2026-09-09T02:00:0${installed.length}.000Z`,
         });
+        admitGenerationLineage(registry, staged);
         registry.recordStagedGeneration(staged);
         const activated = activateGeneration({
           registry,
@@ -263,6 +297,7 @@ describe("native knowledge immutable publication", () => {
         tombstoneEpoch: 0,
         now: "2026-09-09T02:01:00.000Z",
       });
+      admitGenerationLineage(registry, second);
       registry.recordStagedGeneration(second);
 
       expect(activateGeneration({
@@ -290,6 +325,7 @@ describe("native knowledge immutable publication", () => {
         tombstoneEpoch: 0,
         now: "2026-09-09T02:00:00.000Z",
       });
+      admitGenerationLineage(registry, staged);
       registry.recordStagedGeneration(staged);
       registry.setTombstoneHeadEpoch(1);
       const result = activateGeneration({
@@ -315,6 +351,7 @@ describe("native knowledge immutable publication", () => {
         tombstoneEpoch: 0,
         now: "2026-09-09T02:00:00.000Z",
       });
+      admitGenerationLineage(registry, staged);
       registry.recordStagedGeneration(staged);
       const originalInProgress = registry.inProgressGenerationIds.bind(registry);
       const failingRegistry = new Proxy(registry, {

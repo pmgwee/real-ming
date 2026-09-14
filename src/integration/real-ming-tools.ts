@@ -1,4 +1,13 @@
-import type { WorkItem, WorkItemState } from "../operations/contracts.js";
+import {
+  executiveRoles,
+  trustDomains,
+  workstreams,
+  type ExecutiveRole,
+  type TrustDomain,
+  type WorkItem,
+  type Workstream,
+  type WorkItemState,
+} from "../operations/contracts.js";
 import type { ExecutionLinkStore } from "./execution-link.js";
 import type { NativeScheduledReportRequest } from "../operations/native-scheduled-reports.js";
 import type { NativeCronReportClient } from "./native-cron-client.js";
@@ -45,6 +54,16 @@ export interface RealMingTools {
     name: string,
     args: Record<string, unknown>,
   ) => Promise<RealMingToolResult>;
+}
+
+export interface WorkItemCaptureClient {
+  capture(request: {
+    readonly intent: string;
+    readonly expectedEffect: string;
+    readonly accountableExecutive?: ExecutiveRole;
+    readonly workstream?: Workstream;
+    readonly idempotencyKey: string;
+  }): Promise<{ readonly workItem: WorkItem; readonly deduplicated: boolean }>;
 }
 
 /**
@@ -281,6 +300,8 @@ export function createRealMingTools(options: {
   readonly defaultCalendarId?: string;
   /** Optional bounded native-knowledge MCP boundary. */
   readonly knowledge?: NativeKnowledgeToolContext;
+  /** Governed control-plane write; absent from read-only compositions. */
+  readonly workItemCapture?: WorkItemCaptureClient;
 }): RealMingTools {
   const scheduledReports = options.scheduledReports;
   const calendar = options.calendar;
@@ -289,6 +310,7 @@ export function createRealMingTools(options: {
       ? undefined
       : options.mail;
   const knowledge = options.knowledge;
+  const workItemCapture = options.workItemCapture;
   const definitions: readonly RealMingToolDefinition[] = [
     {
       name: "real_ming_list_work_items",
@@ -340,6 +362,32 @@ export function createRealMingTools(options: {
         required: ["workItemId", "nativeTaskId", "idempotencyKey"],
       },
     },
+    ...(workItemCapture === undefined
+      ? []
+      : [
+          {
+            name: "real_ming_capture_work_item",
+            description:
+              "Capture one idempotent Work Item through Real-Ming's governed lifecycle and Notion Master Tasks projection. This creates Captured work only; it cannot execute or complete work.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                intent: { type: "string" },
+                expectedEffect: { type: "string" },
+                accountableExecutive: {
+                  type: "string",
+                  enum: executiveRoles,
+                },
+                workstream: { type: "string", enum: workstreams },
+                idempotencyKey: {
+                  type: "string",
+                  description: "Stable key for this task; reuse it on retry.",
+                },
+              },
+              required: ["intent", "expectedEffect", "idempotencyKey"],
+            },
+          } satisfies RealMingToolDefinition,
+        ]),
     ...(knowledge === undefined
       ? []
       : [
@@ -389,16 +437,17 @@ export function createRealMingTools(options: {
           {
             name: "real_ming_wiki_retrieve",
             description:
-              "Retrieve cited, fresh pages only from the verified active generated knowledge snapshot. Staging, quarantine, tombstoned and malformed state fails closed.",
+              "Retrieve cited, fresh pages for one authorized Executive Role and Trust Domain from the verified active generated knowledge snapshot. Authorization, staging, quarantine, tombstones and malformed state fail closed before page content is returned.",
             inputSchema: {
               type: "object",
               properties: {
                 query: { type: "string" },
                 now: { type: "string" },
-                role: { type: "string" },
+                role: { type: "string", enum: [...executiveRoles] },
+                trustDomain: { type: "string", enum: [...trustDomains] },
                 maxResults: { type: "number" },
               },
-              required: ["query", "now"],
+              required: ["query", "now", "role", "trustDomain"],
             },
           } satisfies RealMingToolDefinition,
           {
@@ -884,6 +933,7 @@ export function createRealMingTools(options: {
       candidate.retentionClass,
     ];
     if (!strings.every((entry) => typeof entry === "string" && entry.trim().length > 0)) return undefined;
+    if (!trustDomains.includes(candidate.trustDomain as TrustDomain)) return undefined;
     if (!Array.isArray(candidate.dependencies) || !candidate.dependencies.every((entry) => typeof entry === "string")) return undefined;
     return candidate as NativeKnowledgeCandidate;
   };
@@ -935,13 +985,20 @@ export function createRealMingTools(options: {
     if (knowledge === undefined) return { kind: "failed", reason: "Native knowledge retrieval is not enabled." };
     const query = requiredString(args, "query");
     const now = requiredString(args, "now");
-    if (query === undefined || now === undefined) return { kind: "failed", reason: "query and now are required." };
-    const rawMax = args["maxResults"];
     const role = requiredString(args, "role");
+    const trustDomain = requiredString(args, "trustDomain");
+    if (query === undefined || now === undefined || role === undefined || trustDomain === undefined) {
+      return { kind: "failed", reason: "query, now, role and trustDomain are required." };
+    }
+    if (!executiveRoles.includes(role as ExecutiveRole) || !trustDomains.includes(trustDomain as TrustDomain)) {
+      return { kind: "failed", reason: "role or trustDomain is unsupported." };
+    }
+    const rawMax = args["maxResults"];
     const request: WikiRetrieveRequest = {
       query,
       now,
-      ...(role === undefined ? {} : { role }),
+      role: role as ExecutiveRole,
+      trustDomain: trustDomain as TrustDomain,
       ...(typeof rawMax === "number" ? { maxResults: rawMax } : {}),
     };
     const result = wikiRetrieve({ ...request, registry: knowledge.registry, generatedRoot: knowledge.generatedRoot });
@@ -988,6 +1045,51 @@ export function createRealMingTools(options: {
       return { kind: "ok", value: result };
     } catch (error) {
       return { kind: "failed", reason: error instanceof Error ? error.message.slice(0, 240) : "Native knowledge forgetting failed." };
+    }
+  };
+
+  const captureWorkItem = async (
+    args: Record<string, unknown>,
+  ): Promise<RealMingToolResult> => {
+    if (workItemCapture === undefined) {
+      return { kind: "failed", reason: "Governed Work Item capture is not enabled." };
+    }
+    const intent = requiredString(args, "intent");
+    const expectedEffect = requiredString(args, "expectedEffect");
+    const idempotencyKey = requiredString(args, "idempotencyKey");
+    const accountableExecutive = requiredString(args, "accountableExecutive");
+    const workstream = requiredString(args, "workstream");
+    if (intent === undefined || expectedEffect === undefined || idempotencyKey === undefined) {
+      return { kind: "failed", reason: "intent, expectedEffect and idempotencyKey are required." };
+    }
+    if (
+      accountableExecutive !== undefined &&
+      !executiveRoles.includes(accountableExecutive as ExecutiveRole)
+    ) {
+      return { kind: "failed", reason: "accountableExecutive is unsupported." };
+    }
+    if (workstream !== undefined && !workstreams.includes(workstream as Workstream)) {
+      return { kind: "failed", reason: "workstream is unsupported." };
+    }
+    try {
+      const result = await workItemCapture.capture({
+        intent,
+        expectedEffect,
+        idempotencyKey,
+        ...(accountableExecutive === undefined
+          ? {}
+          : { accountableExecutive: accountableExecutive as ExecutiveRole }),
+        ...(workstream === undefined ? {} : { workstream: workstream as Workstream }),
+      });
+      return {
+        kind: "ok",
+        value: { workItem: viewOf(result.workItem), deduplicated: result.deduplicated },
+      };
+    } catch (error) {
+      return {
+        kind: "failed",
+        reason: error instanceof Error ? error.message.slice(0, 240) : "Work Item capture failed.",
+      };
     }
   };
 
@@ -1069,6 +1171,11 @@ export function createRealMingTools(options: {
             value: { ...result.link, deduplicated: result.deduplicated },
           };
         }
+        case "real_ming_capture_work_item":
+          return {
+            kind: "failed",
+            reason: "This Work Item tool requires the asynchronous MCP call path.",
+          };
         case "real_ming_knowledge_list_candidates":
           return listKnowledge(args);
         case "real_ming_capture_knowledge_candidate":
@@ -1132,7 +1239,8 @@ export function createRealMingTools(options: {
     scheduledReports === undefined &&
     calendar === undefined &&
     mail === undefined &&
-    knowledge === undefined
+    knowledge === undefined &&
+    workItemCapture === undefined
   ) {
     return tools;
   }
@@ -1140,6 +1248,7 @@ export function createRealMingTools(options: {
   return {
     ...tools,
     callAsync: async (name: string, args: Record<string, unknown>) => {
+      if (name === "real_ming_capture_work_item") return captureWorkItem(args);
       if (name === "real_ming_list_calendar_events") return readCalendar(args);
       if (name === "real_ming_search_mail") return readMail(args);
       if (name === "real_ming_read_email") return readOneEmail(args);

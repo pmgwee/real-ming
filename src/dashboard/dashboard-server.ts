@@ -3,6 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 
 import type { OperationsGateway } from "../operations/operations-gateway.js";
 import type { OperationsState } from "../operations/operations-state.js";
+import { executiveRoles, workstreams } from "../operations/contracts.js";
 import { isCeoActor } from "../operations/actor-identity.js";
 import {
   buildDashboardOverview,
@@ -15,6 +16,7 @@ import type {
   MailReadResult,
   MailSearchResult,
   ProviderWriteOutcome,
+  WorkItemCaptureClient,
 } from "../integration/real-ming-tools.js";
 import type { ProjectPortfolio } from "../portfolio/project-portfolio.js";
 import type { ProjectEvidenceBroker } from "../evidence/evidence-broker.js";
@@ -83,6 +85,11 @@ export interface NativeCronEndpoint {
   readonly run: (
     request: NativeScheduledReportRequest,
   ) => Promise<NativeScheduledReportResult>;
+}
+
+export interface NativeWorkItemEndpoint extends WorkItemCaptureClient {
+  /** The same loopback secret the native cron endpoint uses. */
+  readonly apiKey: string;
 }
 
 /**
@@ -270,6 +277,8 @@ export function createDashboardServer(options: {
     () => NativeHermesDashboardStatus | Promise<NativeHermesDashboardStatus>;
   /** Optional private endpoint used by native Hermes cron, never rendered. */
   readonly nativeCron?: NativeCronEndpoint;
+  /** Optional governed Work Item capture for the native Hermes MCP child. */
+  readonly nativeWorkItems?: NativeWorkItemEndpoint;
   /** Optional private endpoint serving provider reads to the MCP process. */
   readonly providerReads?: ProviderReadEndpoint;
   readonly credentials: readonly DashboardCredential[];
@@ -358,8 +367,80 @@ export function createDashboardServer(options: {
         }
         return;
       }
-      // The Real-Ming MCP process is the sole caller of these loopback reads.
-      // Like the cron endpoint they carry no CEO session and grant no write.
+      if (
+        request.method === "POST" &&
+        url.pathname === "/internal/work-items/capture"
+      ) {
+        const endpoint = options.nativeWorkItems;
+        if (
+          endpoint === undefined ||
+          presentedBearerToken(request) === undefined ||
+          !matchesToken(presentedBearerToken(request) ?? "", endpoint.apiKey)
+        ) {
+          sendUnauthorized(response);
+          return;
+        }
+        try {
+          const body = await readJsonBody(request);
+          const intent = body["intent"];
+          const expectedEffect = body["expectedEffect"];
+          const idempotencyKey = body["idempotencyKey"];
+          if (
+            typeof intent !== "string" || intent.trim() === "" ||
+            typeof expectedEffect !== "string" || expectedEffect.trim() === "" ||
+            typeof idempotencyKey !== "string" || idempotencyKey.trim() === ""
+          ) {
+            sendJson(response, 400, { error: "work-item-fields-required" });
+            return;
+          }
+          const accountableExecutive = body["accountableExecutive"];
+          const workstream = body["workstream"];
+          if (
+            accountableExecutive !== undefined &&
+            (typeof accountableExecutive !== "string" ||
+              !executiveRoles.includes(accountableExecutive as never))
+          ) {
+            sendJson(response, 400, { error: "accountable-executive-unsupported" });
+            return;
+          }
+          if (
+            workstream !== undefined &&
+            (typeof workstream !== "string" || !workstreams.includes(workstream as never))
+          ) {
+            sendJson(response, 400, { error: "workstream-unsupported" });
+            return;
+          }
+          const result = await endpoint.capture({
+            intent,
+            expectedEffect,
+            idempotencyKey,
+            ...(typeof accountableExecutive === "string"
+              ? { accountableExecutive: accountableExecutive as never }
+              : {}),
+            ...(typeof workstream === "string"
+              ? { workstream: workstream as never }
+              : {}),
+          });
+          sendJson(response, 200, result);
+        } catch (error) {
+          if (error instanceof RequestBodyError) {
+            sendJson(response, error.status, { error: error.code });
+            return;
+          }
+          sendJson(response, 422, {
+            error: "work-item-capture-rejected",
+            message: error instanceof Error ? error.message : "Unknown failure.",
+          });
+        }
+        return;
+      }
+      // The Real-Ming MCP process is the sole caller of these loopback
+      // endpoints, and none of them carries a CEO session. They are not all
+      // read-only: this group creates calendar events, and the Work Item
+      // capture endpoint above creates Captured work. One bearer
+      // (nativeCronApiKey) covers the whole loopback surface, so widening that
+      // surface widens what a leaked bearer reaches -- keep every addition
+      // governed and incapable of executing or completing work.
       if (
         request.method === "POST" &&
         (url.pathname === "/internal/provider/calendar-events" ||

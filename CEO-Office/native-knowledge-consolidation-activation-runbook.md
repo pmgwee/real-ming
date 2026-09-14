@@ -1,15 +1,19 @@
 # Native knowledge consolidation — CEO activation runbook
 
-**Status:** controlled implementation complete for Tasks 0–8; **not deployed,
-live-accepted, or scheduled**.
+**Status (14 September 2026):** deployed and live-accepted under RM-54.
+**Still not scheduled** — no recurring cron row exists, and creating one is the
+only step of this runbook left for you.
 
 ## TL;DR
 
-Review the controlled artifact and local Task 0–8 commits, approve a deployment
-with recurrence disabled, authorize one harmless live acceptance run, review its
-evidence, and only then decide whether to enable one native Hermes cron row at
-`02:00 Asia/Kuala_Lumpur`. Do not paste a token or secret into this file, a
-prompt, Telegram, an issue, or the evidence bundle.
+Steps 1–5 are done and evidenced; they are kept below as the record of what was
+checked, not as work waiting on you. **Only §6 remains: decide whether to enable
+one native Hermes cron row at `02:00 Asia/Kuala_Lumpur`.** There is no
+operational need for it today — selective consolidation runs on demand when you
+ask for it — so leaving recurrence off is the safe default. The live results are
+in the [RM-54 evidence record](../docs/evidence/RM-54-live-operations-and-knowledge-2026-09-14.md).
+Do not paste a token or secret into this file, a prompt, Telegram, an issue, or
+the evidence bundle.
 
 ## Why this needs the CEO
 
@@ -56,6 +60,17 @@ those approvals or handle your credentials.
 - [ ] Decide the harmless source-backed fixture/decision to use for the one
       live run. Do not use a secret, sensitive record, calendar/task/mail claim,
       or an irreversible provider action.
+
+## Steps 1–5 · completed 14 September 2026
+
+Deployment with recurrence disabled, the one harmless live acceptance run,
+native retrieval and forgetting, noninterference and the restore check were all
+approved, executed and evidenced. Observed results — the Work Item and Notion
+projection, the retrieved citation, the refused unauthorized role, the
+restore-safe forget, the protected backup carrying the live registry, and the
+isolated restore — are recorded in the
+[RM-54 evidence record](../docs/evidence/RM-54-live-operations-and-knowledge-2026-09-14.md).
+The procedures below are retained as the definition of what was checked.
 
 ## 1. Review and approve the deployment artifact
 
@@ -134,10 +149,13 @@ operator then:
 4. Confirm authored Obsidian notes, native Hermes memory and credentials are
    not overwritten or included in the generated knowledge bundle.
 
-## 6. Decide whether to enable recurrence
+## 6. Decide whether to enable recurrence — **the one step still open**
 
-Only after the live evidence is reviewed may you separately approve one native
-Hermes cron row:
+The live evidence is now available for review. Only after reviewing it may you
+separately approve one native Hermes cron row. Nothing is blocked while this
+stays undecided; selective consolidation already works on demand.
+
+The row, if you approve one:
 
 - schedule: `02:00 Asia/Kuala_Lumpur`;
 - delivery: local/native Hermes policy, silent on success;
@@ -177,9 +195,9 @@ post-live-acceptance transport/deployment approval and remains read-only.
 
 ## CEO sign-off record
 
-- [ ] Controlled artifact reviewed.
-- [ ] Deployment with recurrence disabled approved.
-- [ ] One harmless live acceptance run approved.
-- [ ] Live evidence reviewed and accepted.
-- [ ] Recurring native cron row separately approved (optional).
-- [ ] Local mirror separately approved (optional, post-live only).
+- [x] Controlled artifact reviewed.
+- [x] Deployment with recurrence disabled approved — executed 14 September 2026.
+- [x] One harmless live acceptance run approved — executed 14 September 2026.
+- [ ] Live evidence reviewed and accepted — the [RM-54 evidence record](../docs/evidence/RM-54-live-operations-and-knowledge-2026-09-14.md) is ready for you.
+- [ ] Recurring native cron row separately approved (optional, still off).
+- [ ] Local mirror separately approved (optional, post-live only, still absent).

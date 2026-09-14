@@ -17,11 +17,11 @@ function readRepositoryFile(relative: string): string {
 }
 
 const currentDiagrams = [
-  "docs/architecture/real-ming-agent-diagram-v6.html",
+  "docs/architecture/old_uncleaned/real-ming-agent-diagram-v6.html",
 ] as const;
 
 const recordedHistoricalDiagrams = [
-  "docs/architecture/real-ming-personal-agent-diagram-v5-CEO-review.html",
+  "docs/architecture/old_uncleaned/real-ming-personal-agent-diagram-v5-CEO-review.html",
 ] as const;
 
 describe("Real-Ming baseline synchronization", () => {

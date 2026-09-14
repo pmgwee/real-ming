@@ -1,4 +1,4 @@
-import type { TrustDomain } from "../../operations/contracts.js";
+import type { ExecutiveRole, TrustDomain } from "../../operations/contracts.js";
 
 export const NATIVE_KNOWLEDGE_LIMITS = {
   maxCandidatesPerRun: 12,
@@ -119,6 +119,7 @@ export interface StagedPage {
   readonly path: string;
   readonly content: string;
   readonly sourceCandidateIds: readonly string[];
+  readonly trustDomain: TrustDomain;
   /** Secondary and derived identities that must share tombstone suppression. */
   readonly dependencies?: readonly string[];
   readonly claimClass: ClaimClass;
@@ -135,6 +136,7 @@ export interface GenerationPageMetadata {
   readonly sha256: string;
   readonly bytes: number;
   readonly sourceCandidateIds: readonly string[];
+  readonly trustDomain: TrustDomain;
   readonly dependencies?: readonly string[];
   readonly claimClass: ClaimClass;
   readonly sourceReference: string;
@@ -145,7 +147,7 @@ export interface GenerationPageMetadata {
 }
 
 export interface GenerationManifest {
-  readonly schema: "real-ming.native-knowledge-generation.v1";
+  readonly schema: "real-ming.native-knowledge-generation.v2";
   readonly generationId: string;
   readonly runId: string;
   readonly previousGenerationId: string | null;
@@ -353,12 +355,14 @@ export type RestoreTombstoneResult =
 export interface WikiRetrieveRequest {
   readonly query: string;
   readonly now: string;
-  readonly role?: string;
+  readonly role: ExecutiveRole;
+  readonly trustDomain: TrustDomain;
   readonly maxResults?: number;
 }
 
 export interface WikiCitation {
   readonly sourceReference: string;
+  readonly trustDomain: TrustDomain;
   readonly excerpt: string;
   readonly capturedAt: string;
   readonly asOf: string;

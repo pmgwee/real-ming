@@ -16,6 +16,7 @@ import { activateGeneration, readManifest, stageGeneration } from "./publication
 import { wikiRetrieve } from "./retrieval.js";
 import { isSuppressedByTombstone } from "./tombstones.js";
 import type { NativeKnowledgeRegistry } from "./registry.js";
+import { retrievalRoleForTrustDomain } from "../../operations/executive-role-router.js";
 
 export type SourceReadResult = SourceSnapshot | { readonly kind: "unavailable"; readonly reason: string };
 export type SupportAssessment = "supported" | "unsupported" | "uncertain";
@@ -64,6 +65,7 @@ function previousPages(
     path: page.path,
     content: readFileSync(join(generationPath, page.path), "utf8"),
     sourceCandidateIds: page.sourceCandidateIds,
+    trustDomain: page.trustDomain,
     ...(page.dependencies === undefined ? {} : { dependencies: page.dependencies }),
     claimClass: page.claimClass,
     sourceReference: page.sourceReference,
@@ -213,13 +215,21 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       // supported suppression identity survives into the manifest. Reject
       // malformed dependency values rather than allowing an untracked alias.
       const dependencies = new Set<string>();
+      const sourceDomains = new Set<NativeKnowledgeCandidate["trustDomain"]>();
       for (const candidateId of page.sourceCandidateIds) {
         const admitted = selectedById.get(candidateId);
         if (admitted === undefined) throw new Error(`synthesis page ${page.pageId} references an unselected candidate`);
+        sourceDomains.add(admitted.trustDomain);
         for (const dependency of admitted.dependencies) {
           if (dependency.trim().length === 0) throw new Error(`candidate ${candidateId} has an empty dependency`);
           dependencies.add(dependency);
         }
+      }
+      if (sourceDomains.size !== 1) {
+        throw new Error(`synthesis page ${page.pageId} mixes Trust Domains`);
+      }
+      if (!sourceDomains.has(page.trustDomain)) {
+        throw new Error(`synthesis page ${page.pageId} Trust Domain does not match its source candidates`);
       }
       for (const dependency of page.dependencies ?? []) {
         if (dependency.trim().length === 0) throw new Error(`synthesis page ${page.pageId} has an empty dependency`);
@@ -286,11 +296,33 @@ export async function runConsolidation(input: NativeKnowledgeRunnerRequest): Pro
       quarantineUnactivatedGeneration(input.registry, generated);
       throw new Error(`activation:${activation.reason}`);
     }
-    const readBack = wikiRetrieve({
+    const readBackPage = complete.find((page) => page.trustDomain !== "Entertainment");
+    const readBackRole = readBackPage === undefined
+      ? undefined
+      : retrievalRoleForTrustDomain(readBackPage.trustDomain);
+    const readBack = readBackPage === undefined || readBackRole === undefined
+      ? (() => {
+          const activeGeneration = input.registry.activeGeneration();
+          if (activeGeneration === undefined) {
+            return { kind: "needs-repair" as const, reason: "active generation disappeared before role-less verification" };
+          }
+          try {
+            const verified = readManifest(join(activeGeneration.path, "manifest.json"));
+            return verified.generationId === activeGeneration.generationId &&
+              activeGeneration.manifestHash === generated.manifestHash
+              ? { kind: "ok" as const }
+              : { kind: "needs-repair" as const, reason: "role-less active generation does not match its manifest" };
+          } catch {
+            return { kind: "needs-repair" as const, reason: "role-less active generation could not be verified" };
+          }
+        })()
+      : wikiRetrieve({
       registry: input.registry,
       generatedRoot: input.generatedRoot,
-      query: complete[0]?.pageId ?? "generated knowledge",
+      query: readBackPage.pageId,
       now: activationNow,
+      role: readBackRole,
+      trustDomain: readBackPage.trustDomain,
     });
     if (readBack.kind !== "ok") {
       // The registry pointer transaction is already durable at this point.

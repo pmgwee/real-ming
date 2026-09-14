@@ -1,7 +1,7 @@
 ---
 name: real-ming
 description: Ming's operating vocabulary, authority boundaries and portfolio. Use when work touches his tasks, calendar, projects, finances, coursework, content or daily operations — not for ordinary conversation.
-version: 1.0.0
+version: 1.1.0
 author: Real-Ming
 license: MIT
 platforms: [linux, macos, windows]
@@ -99,10 +99,15 @@ needs Ming's operational continuity:
 1. For substantial work, call `real_ming_list_work_items` and select an
    existing Work Item when one matches. A normal question, explanation or
    small conversation stays native and creates no Work Item.
-2. Keep the native Hermes session/Kanban task as the execution record. Once a
+2. If substantial work has no matching record, call
+   `real_ming_capture_work_item` once with the requested outcome and a stable
+   idempotency key. The tool creates only a Captured Work Item through the
+   governed lifecycle and projects it to Master Tasks; it cannot execute or
+   complete the work.
+3. Keep the native Hermes session/Kanban task as the execution record. Once a
    canonical Work Item is known, call `real_ming_link_execution_task` with a
    stable idempotency key so retries cannot create a duplicate link.
-3. Use `real_ming_get_work_item` when reporting the cross-app state or evidence.
+4. Use `real_ming_get_work_item` when reporting the cross-app state or evidence.
    If a record is missing, say so; do not write Notion or the Real-Ming SQLite
    files directly with `file` or `terminal`.
 

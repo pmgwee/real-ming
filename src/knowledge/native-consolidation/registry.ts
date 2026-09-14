@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { detectSensitiveFields } from "../../operations/sensitive-secret.js";
+import { trustDomains, type TrustDomain } from "../../operations/contracts.js";
 import {
   NATIVE_KNOWLEDGE_LIMITS,
   type ActivationRequest,
@@ -407,6 +408,9 @@ export function createNativeKnowledgeRegistry(options: {
       ) {
         return { kind: "denied", reason: "candidate-required-field-missing" };
       }
+      if (!trustDomains.includes(candidate.trustDomain as TrustDomain)) {
+        return { kind: "denied", reason: "candidate-trust-domain-invalid" };
+      }
       if (
         candidate.sensitivity !== "normal" ||
         detectSensitiveFields({ claim: candidate.claim, excerpt: candidate.excerpt, source: candidate.sourceReference }).length > 0
@@ -422,6 +426,7 @@ export function createNativeKnowledgeRegistry(options: {
         contentHash: candidate.contentHash,
         claimHash: textDigest(candidate.claim),
         excerptHash: textDigest(candidate.excerpt),
+        trustDomain: candidate.trustDomain,
         dependencies: [...candidate.dependencies],
         asOf: candidate.asOf,
       });
@@ -702,6 +707,27 @@ export function createNativeKnowledgeRegistry(options: {
         if (generation.tombstone_epoch < current.tombstone_epoch) {
           database.exec("ROLLBACK;");
           return { kind: "invalid", reason: "tombstone-epoch-advanced" };
+        }
+        for (const page of input.generation.manifest.pages) {
+          for (const candidateId of page.sourceCandidateIds) {
+            const source = database.prepare(
+              "SELECT trust_domain FROM native_knowledge_candidates WHERE candidate_id = ?",
+            ).get(candidateId) as unknown as { trust_domain: NativeKnowledgeCandidate["trustDomain"] } | undefined;
+            if (source === undefined) {
+              database.exec("ROLLBACK;");
+              return {
+                kind: "invalid",
+                reason: `generation page ${page.pageId} references missing candidate ${candidateId}`,
+              };
+            }
+            if (source.trust_domain !== page.trustDomain) {
+              database.exec("ROLLBACK;");
+              return {
+                kind: "invalid",
+                reason: `generation page ${page.pageId} has cross-domain candidate ${candidateId}`,
+              };
+            }
+          }
         }
         const publicationEpoch = current.publication_epoch + 1;
         database.prepare("UPDATE native_knowledge_state SET active_generation_id = ?, publication_epoch = ?, repair_state = 'healthy' WHERE id = 1").run(input.generation.generationId, publicationEpoch);

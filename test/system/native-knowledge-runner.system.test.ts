@@ -100,6 +100,7 @@ describe("native knowledge bounded runner", () => {
             path: `pages/${value.candidateId}.md`,
             content: `# ${value.candidateId}\n\n${value.claim}`,
             sourceCandidateIds: [value.candidateId],
+            trustDomain: value.trustDomain,
             claimClass: value.claimClass,
             sourceReference: value.sourceReference,
             capturedAt: value.capturedAt,
@@ -118,6 +119,8 @@ describe("native knowledge bounded runner", () => {
         generatedRoot: fixture.generatedRoot,
         query: "candidate-a",
         now: "2026-09-09T02:01:00.000Z",
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(read.kind).toBe("ok");
     } finally {
@@ -147,6 +150,7 @@ describe("native knowledge bounded runner", () => {
           path: `pages/${value.candidateId}.md`,
           content: value.claim,
           sourceCandidateIds: [value.candidateId],
+          trustDomain: value.trustDomain,
           claimClass: value.claimClass,
           sourceReference: value.sourceReference,
           capturedAt: value.capturedAt,
@@ -215,6 +219,7 @@ describe("native knowledge bounded runner", () => {
           path: `pages/${value.candidateId}.md`,
           content: `# ${value.candidateId}\n\n${value.claim}`,
           sourceCandidateIds: [value.candidateId],
+          trustDomain: value.trustDomain,
           claimClass: value.claimClass,
           sourceReference: value.sourceReference,
           capturedAt: value.capturedAt,
@@ -281,6 +286,7 @@ describe("native knowledge bounded runner", () => {
             path: `pages/${item.candidateId}.md`,
             content: item.claim,
             sourceCandidateIds: [item.candidateId],
+            trustDomain: item.trustDomain,
             claimClass: item.claimClass,
             sourceReference: item.sourceReference,
             capturedAt: item.capturedAt,
@@ -332,6 +338,7 @@ describe("native knowledge bounded runner", () => {
           path: `pages/${value.candidateId}.md`,
           content: value.claim,
           sourceCandidateIds: [value.candidateId],
+          trustDomain: value.trustDomain,
           claimClass: value.claimClass,
           sourceReference: value.sourceReference,
           capturedAt: value.capturedAt,
@@ -364,6 +371,7 @@ describe("native knowledge bounded runner", () => {
         path: `pages/${value.candidateId}.md`,
         content: `# ${value.candidateId}\n\n${value.claim}`,
         sourceCandidateIds: [value.candidateId],
+        trustDomain: value.trustDomain,
         // Deliberately omit dependencies: the runner must carry every
         // dependency from the admitted registry metadata into the manifest.
         claimClass: value.claimClass,
@@ -422,6 +430,8 @@ describe("native knowledge bounded runner", () => {
         query: "Project claim",
         now: "2026-09-09T02:02:00.000Z",
         maxResults: 10,
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       });
       expect(read.kind).toBe("ok");
       if (read.kind === "ok") expect(read.results.map((entry) => entry.pageId)).toEqual([second.candidateId]);

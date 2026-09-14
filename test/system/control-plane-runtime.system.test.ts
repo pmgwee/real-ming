@@ -691,6 +691,17 @@ describe("RM-15 production-equivalent control plane composition", () => {
     }
   });
 
+  it("includes the live native-knowledge registry in protected backups", () => {
+    const backupEntrypoint = readFileSync(
+      join(process.cwd(), "deploy/backup-control-plane.sh"),
+      "utf8",
+    );
+
+    expect(backupEntrypoint).toContain(
+      "--env REAL_MING_NATIVE_KNOWLEDGE_STATE_PATH=/var/lib/real-ming/native-knowledge.sqlite",
+    );
+  });
+
   it("routes an ordinary production Telegram turn through the configured Hermes API edge", async () => {
     const directory = mkdtempSync(join(tmpdir(), "real-ming-rm40-hermes-production-"));
     const harness = await createControlPlaneSystemHarness({

@@ -13,7 +13,8 @@ import {
 } from "../../src/runtime/control-plane-backup.js";
 import { createHermesSessionStore } from "../../src/hermes/hermes-session-store.js";
 import { createNativeKnowledgeRegistry } from "../../src/knowledge/native-consolidation/registry.js";
-import type { StagedPage } from "../../src/knowledge/native-consolidation/contracts.js";
+import type { NativeKnowledgeCandidate, StagedPage } from "../../src/knowledge/native-consolidation/contracts.js";
+import { sha256ContentHash } from "../../src/knowledge/native-consolidation/evidence.js";
 import { activateGeneration, stageGeneration } from "../../src/knowledge/native-consolidation/publication.js";
 import { wikiRetrieve } from "../../src/knowledge/native-consolidation/retrieval.js";
 
@@ -400,6 +401,7 @@ describe("control-plane recovery sets", () => {
       path: "pages/path-rebase.md",
       content: "A restored cited page.",
       sourceCandidateIds: ["path-rebase-candidate"],
+      trustDomain: "Ming Creatives",
       claimClass: "project",
       sourceReference: "fixture:path-rebase",
       capturedAt: "2026-09-09T01:00:00.000Z",
@@ -407,12 +409,31 @@ describe("control-plane recovery sets", () => {
       disposition: "supported",
       uncertainty: "none",
     };
+    const candidateContent = "A source record for the restored cited page.";
+    const candidate: NativeKnowledgeCandidate = {
+      candidateId: "path-rebase-candidate",
+      kind: "project-artifact",
+      claimClass: "project",
+      claim: candidateContent,
+      sourceIdentity: "fixture:path-rebase",
+      sourceReference: "fixture:path-rebase",
+      sourceVersion: "v1",
+      excerpt: candidateContent,
+      contentHash: sha256ContentHash(candidateContent),
+      capturedAt: "2026-09-09T01:00:00.000Z",
+      asOf: "2026-09-09T01:00:00.000Z",
+      trustDomain: "Ming Creatives",
+      sensitivity: "normal",
+      retentionClass: "project-90d",
+      dependencies: ["path-rebase-candidate"],
+    };
+    expect(registry.admitCandidate(candidate).kind).toBe("accepted");
     const staged = await stageGeneration({
       run: lease,
       generatedRoot,
       stagingRoot,
       pages: [page],
-      sourceEpoch: 0,
+      sourceEpoch: registry.consistencyFence().sourceEpoch,
       tombstoneEpoch: 0,
       now: "2026-09-09T02:00:00.000Z",
     });
@@ -451,6 +472,8 @@ describe("control-plane recovery sets", () => {
         generatedRoot: restoredGeneratedRoot,
         query: "restored cited",
         now: "2026-09-09T02:02:00.000Z",
+        role: "CTO",
+        trustDomain: "Ming Creatives",
       })).toMatchObject({ kind: "ok" });
     } finally {
       reopened.close();

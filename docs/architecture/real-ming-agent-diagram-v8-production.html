@@ -8,7 +8,7 @@
   <meta name="real-ming-baseline" content="Real-Ming v1.1 · Architecture Revision 6">
   <meta name="real-ming-design-target" content="Architecture Revision 6 · native-first · partially activated in production · selective consolidation designed">
   <meta name="description" content="Deployed native Hermes architecture with nine deferred MCP servers, a thin Real-Ming extension, loopback provider bridge, scoped Google credentials, draft-only mail, private dashboards and a designed-only selective knowledge-consolidation path.">
-  <title>Real-Ming Agent Architecture · Architecture Revision 6 (v7 cleanup) · Deployed topology + designed knowledge maintenance</title>
+  <title>Real-Ming Agent Architecture · Architecture Revision 6 (v8 production) · Live production topology</title>
   <style>
     :root {
       --bg: #050a15;
@@ -2657,15 +2657,17 @@
   </style>
 </head>
 <body>
-  <!-- Architecture Revision 6. Design baseline and deployed state are distinct;
-       this rendering reflects the partially activated deployment recorded on 8 Sep 2026.
-       Selective knowledge consolidation is designed here but not activated. -->
+  <!-- Architecture Revision 6, v8 production. Design baseline and deployed state
+       remain distinct labels; this rendering reflects the live deployment recorded
+       on 14 Sep 2026 under RM-54. Role-scoped selective native knowledge is LIVE.
+       Recurring consolidation is deliberately disabled. The six-root curated vault
+       is superseded as an activation target by ADR-0024 and is not live. -->
   <a class="skip-link" href="#architecture">Skip to architecture</a>
   <main id="architecture">
     <header class="hero">
       <div>
         <h1>Native Hermes.<br>A personal system around it.</h1>
-        <div class="version">Real-Ming agent · Architecture Revision 6 · deployed view · 08 Sep 2026</div>
+        <div class="version">Real-Ming agent · Architecture Revision 6 · v8 production view · 14 Sep 2026</div>
         <p class="hero-copy">Talk directly to the Hermes agent experience on Telegram. Keep its gateway, reasoning, tools, skills, plugins, MCP, memory and working loop. Real-Ming supplies Ming-specific context, cross-app coordination and useful operational views—only where native Hermes needs an extension.</p>
       </div>
       <aside class="thesis" aria-label="Architecture thesis">
@@ -2674,8 +2676,9 @@
       </aside>
     </header>
     <div class="review-status" aria-label="Production evidence and design status">
-      <div><strong>LIVE · RM-40 CLOSED · 08 SEP 2026</strong>Malaysia West runs <code>real-ming:v6-9ef3fac</code>. The native Hermes gateway is the single Telegram consumer, with 60 native commands and Codex OAuth-backed reasoning.</div>
-      <div><strong>DESIGNED ONLY · SELECTIVE CONSOLIDATION</strong>Native Hermes cron plus its LLM-Wiki/Obsidian skills may maintain selected, cited wiki knowledge with a minimal Real-Ming registry. No candidate job, forget ledger or activation is live yet.</div>
+      <div><strong>LIVE · RM-54 CLOSED · 14 SEP 2026</strong>Malaysia West runs <code>real-ming:v6-c4ee6eb</code>. The native Hermes gateway is the single Telegram consumer, with Codex OAuth-backed reasoning, 17 Real-Ming MCP tools and 8 Ming skills.</div>
+      <div><strong>LIVE · ROLE-SCOPED SELECTIVE KNOWLEDGE</strong>Governed publication, Role and Trust-Domain-gated retrieval and restore-safe forgetting all ran in production. <strong>Recurring consolidation stays disabled</strong> — two cron rows, no <code>02:00</code> job.</div>
+      <div><strong>SUPERSEDED · SIX-ROOT CURATED VAULT</strong>Its guarantees are met by the live path, so it is deliberately not activated (ADR-0024). Retained, never deleted. Encryption-at-rest across six roots and a separate Projection Broker are accepted as not required.</div>
     </div>
     <nav class="jump-links" aria-label="Architecture chapters"><a href="#map-title">I · Hermes experience</a><a href="#reuse-title">Native vs custom</a><a href="#part-two-title">II · Real-Ming contribution</a><a href="#memory-title">Memory choices</a><a href="#part-three-title">III · Production hosting</a><a href="#acceptance-title">Prove the experience</a></nav>
     <div class="decision-strip" aria-label="V6 architecture direction">
@@ -2683,6 +2686,7 @@
       <div class="decision"><span class="data-label">Intelligence + execution</span><strong>Hermes native agent harness</strong></div>
       <div class="decision"><span class="data-label">Real-Ming shape</span><strong>Skills + plugin/tools + thin companion</strong></div>
       <div class="decision"><span class="data-label">Always-on home</span><strong>Azure Malaysia West</strong></div>
+      <div class="decision"><span class="data-label">Knowledge architecture</span><strong>Role-scoped native path · vault superseded</strong></div>
     </div>
 
     <section class="chapter-divider chapter-one" aria-labelledby="part-one-title">
@@ -3020,7 +3024,7 @@
         <article class="memory-step publish"><span class="step-index">04</span><span class="node-owner">Registry + file reconciliation</span><h3>Verify / publish / recover</h3><p>Write a manifest-backed generation atomically, verify files before registry commit, suppress tombstoned material and reconcile crashes without false success.</p></article>
       </div>
 
-      <div class="diagram-note"><strong>RETAINED ADVANCED PATH · NOT THE DEFAULT:</strong> the three nodes below and the six-root encrypted vault beneath them are implemented and controlled-tested. They have no production caller and are activated only where a required guarantee is demonstrated (ADR-0020, ADR-0022). They are not what runs today. <strong>This is the legacy Curated Knowledge Vault and Projection Broker — a different system from the role-scoped selective native knowledge path above, which went live on 14 September 2026.</strong> Going live there did not activate anything here. Verified on the host 14 Sep 2026: <code>control-plane-cli.ts</code> never passes <code>knowledgeOperations</code>, so the vault, compiler, Projection Broker and Obsidian materializer are all <code>undefined</code> and never run. The credential is <strong>not</strong> the obstacle — <code>real-ming-vault-key</code> exists in Key Vault and resolves at startup. The configured <code>/var/lib/real-ming/obsidian</code> directory holds 0 files and none of the six trust-domain roots exist; <code>REAL_MING_OBSIDIAN_ROOTS</code> is set to <code>CEO</code>, but nothing consumes it.</div>
+      <div class="diagram-note"><strong>SUPERSEDED ADVANCED PATH · ADR-0024:</strong> the three nodes below and the six-root encrypted vault beneath them are implemented and controlled-tested. They have no production caller and are activated only where a required guarantee is demonstrated (ADR-0020, ADR-0022). They are not what runs today. <strong>This is the legacy Curated Knowledge Vault and Projection Broker — a different system from the role-scoped selective native knowledge path above, which went live on 14 September 2026.</strong> Going live there did not activate anything here. Verified on the host 14 Sep 2026: <code>control-plane-cli.ts</code> never passes <code>knowledgeOperations</code>, so the vault, compiler, Projection Broker and Obsidian materializer are all <code>undefined</code> and never run. The credential is <strong>not</strong> the obstacle — <code>real-ming-vault-key</code> exists in Key Vault and resolves at startup. The configured <code>/var/lib/real-ming/obsidian</code> directory holds 0 files and none of the six trust-domain roots exist; <code>REAL_MING_OBSIDIAN_ROOTS</code> is set to <code>CEO</code>, but nothing consumes it.</div>
       <div class="evidence-bridge" aria-label="Agent Brain evidence relationship — optional retained path">
         <article class="evidence-node"><strong>Existing Agent Brain</strong><p>Canonical append-only SQLite Project Evidence and generated project Markdown. A separate project-history system, not universal personal memory.</p></article>
         <div class="pipe-arrow" aria-hidden="true">→</div>
@@ -3031,8 +3035,8 @@
 
       <section class="vault-shell-v5" aria-labelledby="vault-title">
         <div class="vault-head-v5">
-          <div><span class="data-label">Retained optional knowledge service · no production caller</span><h3 id="vault-title">Real-Ming Knowledge Vault</h3></div>
-          <p>A designed encrypted, versioned knowledge service over five Trust-Domain roots plus a CEO Approved-Projections root. Implemented and controlled-tested; nothing in production calls it. Storage boundaries never follow agent names.</p>
+          <div><span class="data-label">Superseded design · retained, never activated · ADR-0024</span><h3 id="vault-title">Real-Ming Knowledge Vault</h3></div>
+          <p>A designed encrypted, versioned knowledge service over five Trust-Domain roots plus a CEO Approved-Projections root. Implemented and controlled-tested; nothing in production calls it, and under <strong>ADR-0024 nothing will</strong> — the guarantees it promised are delivered by the live role-scoped path instead. Its credential is provisioned and its code is retained; the decision is not to activate, not to delete. Storage boundaries never follow agent names.</p>
         </div>
 
         <div class="vault-clarifier">
@@ -3058,7 +3062,7 @@
         </div>
 
         <div class="memory-interfaces">
-          <article class="memory-interface"><strong>Projection Broker → Hermes</strong><p>Optional advanced path: expose governed knowledge as a retrieval tool returning a bounded cited brief. Direct native connectors remain available for authorized sources outside that contract.</p><span class="status-label">optional components tested · native consolidation gate live</span></article>
+          <article class="memory-interface"><strong>Projection Broker → Hermes</strong><p>Optional advanced path: expose governed knowledge as a retrieval tool returning a bounded cited brief. Direct native connectors remain available for authorized sources outside that contract.</p><span class="status-label">superseded by ADR-0024 · native consolidation gate live</span></article>
           <article class="memory-interface"><strong>Native Obsidian + LLM Wiki</strong><p>Hermes owns the live note path and retrieves cited knowledge across sessions and restarts. The Azure vault is backed up and Ming opened the approved vault in his Obsidian client. Selective consolidation is now production-wired beside it, on demand rather than on a schedule.</p><span class="status-label">live · recovered byte-identical</span></article>
           <article class="memory-interface"><strong>Hermes native memory</strong><p>Native Hermes owns its memory and session continuity under its own policy; it is not the authoritative record for tasks, finance or academic commitments, and Real-Ming does not rewrite it.</p><span class="status-label">active built-in provider · Real-Ming does not override it</span></article>
         </div>
