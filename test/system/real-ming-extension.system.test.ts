@@ -65,10 +65,49 @@ describe("RM-40 Real-Ming extension tools", () => {
       .sort();
 
     expect(names).toEqual([
+      "real_ming_capture_work_item",
       "real_ming_get_work_item",
       "real_ming_link_execution_task",
       "real_ming_list_work_items",
     ]);
+  });
+
+  it("captures one idempotent Work Item through the governed lifecycle", async () => {
+    const harness = startHarness();
+    const request = {
+      intent: "Verify live Telegram task capture",
+      expectedEffect: "Record the live acceptance result",
+      accountableExecutive: "CTO",
+      workstream: "MicroSaaS",
+      idempotencyKey: "live-acceptance-54-work-item",
+    };
+
+    const first = await harness.callRealMingToolAsync(
+      "real_ming_capture_work_item",
+      request,
+    );
+    const replay = await harness.callRealMingToolAsync(
+      "real_ming_capture_work_item",
+      request,
+    );
+
+    expect(first).toMatchObject({
+      kind: "ok",
+      value: {
+        workItem: {
+          intent: request.intent,
+          state: "Captured",
+          notionCategory: "Pending",
+          accountableExecutive: "CTO",
+        },
+        deduplicated: false,
+      },
+    });
+    expect(replay).toMatchObject({
+      kind: "ok",
+      value: { deduplicated: true },
+    });
+    expect(harness.workItems()).toHaveLength(1);
   });
 
   it("reports the Notion category a lifecycle state presents as", async () => {

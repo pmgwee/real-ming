@@ -373,6 +373,7 @@ def model_response(messages: list[dict[str, Any]], state: dict[str, Any]) -> Any
             "content": f"# Source-backed knowledge\n\n{claim}\n",
             "sourceCandidateIds": [source_candidate_id],
             "dependencies": list(candidate.get("dependencies") or []),
+            "trustDomain": candidate.get("trustDomain"),
             "claimClass": candidate.get("claimClass"),
             "sourceReference": source_reference,
             "capturedAt": candidate.get("capturedAt"),

@@ -1473,6 +1473,34 @@ export function createRealMingSystemHarness(options: {
       close: () => links().close(),
     },
     now: () => (options.now ?? (() => new Date().toISOString()))(),
+    workItemCapture: {
+      capture: async (request) => {
+        const existing = state.findWorkItemByCommand(
+          "workspace:real-ming",
+          request.idempotencyKey,
+        );
+        const acknowledgement = await gateway.acknowledgeCeoAction({
+          actorId: "ceo:ming",
+          workspaceId: "workspace:real-ming",
+          idempotencyKey: request.idempotencyKey,
+          intent: request.intent,
+          expectedEffect: {
+            kind: "record-note",
+            value: request.expectedEffect,
+          },
+          ...(request.accountableExecutive === undefined
+            ? {}
+            : { accountableExecutive: request.accountableExecutive }),
+          ...(request.workstream === undefined
+            ? {}
+            : { workstream: request.workstream }),
+        });
+        return {
+          workItem: acknowledgement.workItem,
+          deduplicated: existing !== undefined,
+        };
+      },
+    },
     // Registered only where a calendar is actually configured, so an agent
     // never holds a tool that can answer nothing.
     ...(options.calendar === undefined
@@ -2885,6 +2913,13 @@ export interface ControlPlaneSystemHarness {
   runNativeScheduledReport(
     request: NativeScheduledReportRequest,
   ): ReturnType<DailyOperationsControlPlane["runNativeScheduledReport"]>;
+  captureWorkItemFromNativeHermes(request: {
+    readonly intent: string;
+    readonly expectedEffect: string;
+    readonly idempotencyKey: string;
+    readonly accountableExecutive?: ExecutiveRole;
+    readonly workstream?: Workstream;
+  }): Promise<{ readonly workItem: WorkItem; readonly deduplicated: boolean }>;
   dashboardOverview(): Promise<DashboardOverview>;
   hermesOverview(): ReturnType<DailyOperationsControlPlane["hermesOverview"]>;
   telegramMessages(): readonly TelegramOutboundMessage[];
@@ -3085,6 +3120,31 @@ export async function createControlPlaneSystemHarness(options: {
     runCycle: () => controlPlane.runCycle(),
     runNativeScheduledReport: (request) =>
       controlPlane.runNativeScheduledReport(request),
+    captureWorkItemFromNativeHermes: async (request) => {
+      const response = await fetch(
+        `${controlPlane.dashboardOrigin}/internal/work-items/capture`,
+        {
+          method: "POST",
+          headers: {
+            authorization: "Bearer controlled-hermes-api-key",
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(request),
+        },
+      );
+      const body = await response.json() as {
+        readonly workItem?: WorkItem;
+        readonly deduplicated?: boolean;
+        readonly message?: string;
+      };
+      if (!response.ok || body.workItem === undefined) {
+        throw new Error(body.message ?? "Controlled Work Item capture failed.");
+      }
+      return {
+        workItem: body.workItem,
+        deduplicated: body.deduplicated === true,
+      };
+    },
     dashboardOverview: async () => {
       const response = await fetch(`${controlPlane.dashboardOrigin}/api/overview`, {
         headers: { Authorization: `Bearer ${dashboardToken}` },

@@ -13,6 +13,7 @@ import {
   createBridgedMailboxClient,
 } from "../integration/provider-read-client.js";
 import { createRealMingTools } from "../integration/real-ming-tools.js";
+import { createBridgedWorkItemCaptureClient } from "../integration/work-item-capture-client.js";
 import { OperationsState } from "../operations/operations-state.js";
 import { createNativeKnowledgeRegistry, type NativeKnowledgeRegistry } from "../knowledge/native-consolidation/registry.js";
 import { stageGeneration as stageNativeGeneration } from "../knowledge/native-consolidation/publication.js";
@@ -23,7 +24,7 @@ import type {
   StagedPage,
   TombstoneHeadStore,
 } from "../knowledge/native-consolidation/contracts.js";
-import type { CalendarAgendaClient, MailboxClient, NativeKnowledgeToolContext, RealMingToolResult, RealMingTools } from "../integration/real-ming-tools.js";
+import type { CalendarAgendaClient, MailboxClient, NativeKnowledgeToolContext, RealMingToolResult, RealMingTools, WorkItemCaptureClient } from "../integration/real-ming-tools.js";
 import { trustDomains, type TrustDomain } from "../operations/contracts.js";
 
 /**
@@ -77,6 +78,7 @@ export interface RealMingMcpCompositionOptions {
   readonly scheduledReports?: import("../integration/native-cron-client.js").NativeCronReportClient;
   readonly calendar?: CalendarAgendaClient;
   readonly mail?: MailboxClient;
+  readonly workItemCapture?: WorkItemCaptureClient;
   readonly defaultCalendarId?: string;
   readonly now?: () => string;
 }
@@ -298,6 +300,9 @@ export function createRealMingMcpComposition(options: RealMingMcpCompositionOpti
       ...(options.scheduledReports === undefined ? {} : { scheduledReports: options.scheduledReports }),
       ...(options.calendar === undefined ? {} : { calendar: options.calendar }),
       ...(options.mail === undefined ? {} : { mail: options.mail }),
+      ...(options.workItemCapture === undefined
+        ? {}
+        : { workItemCapture: options.workItemCapture }),
       ...(options.defaultCalendarId === undefined ? {} : { defaultCalendarId: options.defaultCalendarId }),
       ...(knowledge.context === undefined ? {} : { knowledge: knowledge.context }),
     }),
@@ -353,6 +358,14 @@ function main(): void {
     statePath,
     ...(configuredCandidates === undefined ? {} : { knowledgeCandidates: configuredCandidates }),
     ...(scheduledReports === undefined ? {} : { scheduledReports }),
+    ...(bridged === undefined
+      ? {}
+      : {
+          workItemCapture: createBridgedWorkItemCaptureClient({
+            endpoint: `${bridged.endpoint}/internal/work-items/capture`,
+            apiKey: bridged.apiKey,
+          }),
+        }),
     ...(bridged === undefined || calendarId === undefined
         ? {}
         : {

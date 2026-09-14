@@ -730,6 +730,35 @@ export async function createDailyOperationsControlPlane(options: {
             run: (request: NativeScheduledReportRequest) =>
               nativeScheduledReports.run(request),
           },
+          nativeWorkItems: {
+            apiKey: options.nativeCronApiKey,
+            capture: async (request) => {
+              const existing = state.findWorkItemByCommand(
+                workspaceId,
+                request.idempotencyKey,
+              );
+              const acknowledgement = await gateway.acknowledgeCeoAction({
+                actorId: "ceo:ming",
+                workspaceId,
+                idempotencyKey: request.idempotencyKey,
+                intent: request.intent,
+                expectedEffect: {
+                  kind: "record-note",
+                  value: request.expectedEffect,
+                },
+                ...(request.accountableExecutive === undefined
+                  ? {}
+                  : { accountableExecutive: request.accountableExecutive }),
+                ...(request.workstream === undefined
+                  ? {}
+                  : { workstream: request.workstream }),
+              });
+              return {
+                workItem: acknowledgement.workItem,
+                deduplicated: existing !== undefined,
+              };
+            },
+          },
           // The MCP process holds no Google credential, so it asks here. This
           // process already reads the calendar for the morning brief; serving
           // the same read to the agent adds no second credential path.

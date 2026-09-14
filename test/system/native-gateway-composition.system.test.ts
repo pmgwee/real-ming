@@ -116,6 +116,49 @@ describe("RM-40 native-gateway composition mode", () => {
     }
   });
 
+  it("captures native-Hermes work through the lifecycle and Notion projection", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "real-ming-rm54-native-work-"));
+    const harness = await createControlPlaneSystemHarness({
+      statePath: join(directory, "state.sqlite"),
+      notionLedgerPath: join(directory, "notion.sqlite"),
+      telegramOwnership: "native-hermes-gateway",
+      hermesEnabled: true,
+      now: () => "2026-09-14T04:30:00.000Z",
+    });
+
+    try {
+      const request = {
+        intent: "Verify live Telegram task capture",
+        expectedEffect: "Record the live acceptance result",
+        idempotencyKey: "rm54-live-task-capture",
+        accountableExecutive: "CTO" as const,
+        workstream: "MicroSaaS" as const,
+      };
+      const first = await harness.captureWorkItemFromNativeHermes(request);
+      const replay = await harness.captureWorkItemFromNativeHermes(request);
+
+      expect(first).toMatchObject({
+        workItem: { state: "Captured", intent: request.intent },
+        deduplicated: false,
+      });
+      expect(replay).toMatchObject({
+        workItem: { id: first.workItem.id },
+        deduplicated: true,
+      });
+      await expect(harness.dashboardOverview()).resolves.toMatchObject({
+        workItems: [
+          expect.objectContaining({
+            id: first.workItem.id,
+            state: "Captured",
+          }),
+        ],
+      });
+    } finally {
+      await harness.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
   it("does not proxy conversation through the Real-Ming turn coordinator", async () => {
     // Revision 6 removes the mandatory JSON turn envelope. With the native
     // gateway owning conversation, Real-Ming must hold no Hermes conversation

@@ -1,9 +1,11 @@
 import {
   executiveRoles,
   trustDomains,
+  workstreams,
   type ExecutiveRole,
   type TrustDomain,
   type WorkItem,
+  type Workstream,
   type WorkItemState,
 } from "../operations/contracts.js";
 import type { ExecutionLinkStore } from "./execution-link.js";
@@ -52,6 +54,16 @@ export interface RealMingTools {
     name: string,
     args: Record<string, unknown>,
   ) => Promise<RealMingToolResult>;
+}
+
+export interface WorkItemCaptureClient {
+  capture(request: {
+    readonly intent: string;
+    readonly expectedEffect: string;
+    readonly accountableExecutive?: ExecutiveRole;
+    readonly workstream?: Workstream;
+    readonly idempotencyKey: string;
+  }): Promise<{ readonly workItem: WorkItem; readonly deduplicated: boolean }>;
 }
 
 /**
@@ -288,6 +300,8 @@ export function createRealMingTools(options: {
   readonly defaultCalendarId?: string;
   /** Optional bounded native-knowledge MCP boundary. */
   readonly knowledge?: NativeKnowledgeToolContext;
+  /** Governed control-plane write; absent from read-only compositions. */
+  readonly workItemCapture?: WorkItemCaptureClient;
 }): RealMingTools {
   const scheduledReports = options.scheduledReports;
   const calendar = options.calendar;
@@ -296,6 +310,7 @@ export function createRealMingTools(options: {
       ? undefined
       : options.mail;
   const knowledge = options.knowledge;
+  const workItemCapture = options.workItemCapture;
   const definitions: readonly RealMingToolDefinition[] = [
     {
       name: "real_ming_list_work_items",
@@ -347,6 +362,32 @@ export function createRealMingTools(options: {
         required: ["workItemId", "nativeTaskId", "idempotencyKey"],
       },
     },
+    ...(workItemCapture === undefined
+      ? []
+      : [
+          {
+            name: "real_ming_capture_work_item",
+            description:
+              "Capture one idempotent Work Item through Real-Ming's governed lifecycle and Notion Master Tasks projection. This creates Captured work only; it cannot execute or complete work.",
+            inputSchema: {
+              type: "object",
+              properties: {
+                intent: { type: "string" },
+                expectedEffect: { type: "string" },
+                accountableExecutive: {
+                  type: "string",
+                  enum: executiveRoles,
+                },
+                workstream: { type: "string", enum: workstreams },
+                idempotencyKey: {
+                  type: "string",
+                  description: "Stable key for this task; reuse it on retry.",
+                },
+              },
+              required: ["intent", "expectedEffect", "idempotencyKey"],
+            },
+          } satisfies RealMingToolDefinition,
+        ]),
     ...(knowledge === undefined
       ? []
       : [
@@ -1007,6 +1048,51 @@ export function createRealMingTools(options: {
     }
   };
 
+  const captureWorkItem = async (
+    args: Record<string, unknown>,
+  ): Promise<RealMingToolResult> => {
+    if (workItemCapture === undefined) {
+      return { kind: "failed", reason: "Governed Work Item capture is not enabled." };
+    }
+    const intent = requiredString(args, "intent");
+    const expectedEffect = requiredString(args, "expectedEffect");
+    const idempotencyKey = requiredString(args, "idempotencyKey");
+    const accountableExecutive = requiredString(args, "accountableExecutive");
+    const workstream = requiredString(args, "workstream");
+    if (intent === undefined || expectedEffect === undefined || idempotencyKey === undefined) {
+      return { kind: "failed", reason: "intent, expectedEffect and idempotencyKey are required." };
+    }
+    if (
+      accountableExecutive !== undefined &&
+      !executiveRoles.includes(accountableExecutive as ExecutiveRole)
+    ) {
+      return { kind: "failed", reason: "accountableExecutive is unsupported." };
+    }
+    if (workstream !== undefined && !workstreams.includes(workstream as Workstream)) {
+      return { kind: "failed", reason: "workstream is unsupported." };
+    }
+    try {
+      const result = await workItemCapture.capture({
+        intent,
+        expectedEffect,
+        idempotencyKey,
+        ...(accountableExecutive === undefined
+          ? {}
+          : { accountableExecutive: accountableExecutive as ExecutiveRole }),
+        ...(workstream === undefined ? {} : { workstream: workstream as Workstream }),
+      });
+      return {
+        kind: "ok",
+        value: { workItem: viewOf(result.workItem), deduplicated: result.deduplicated },
+      };
+    } catch (error) {
+      return {
+        kind: "failed",
+        reason: error instanceof Error ? error.message.slice(0, 240) : "Work Item capture failed.",
+      };
+    }
+  };
+
   const tools: RealMingTools = {
     list: () => definitions,
     call(name, args) {
@@ -1085,6 +1171,11 @@ export function createRealMingTools(options: {
             value: { ...result.link, deduplicated: result.deduplicated },
           };
         }
+        case "real_ming_capture_work_item":
+          return {
+            kind: "failed",
+            reason: "This Work Item tool requires the asynchronous MCP call path.",
+          };
         case "real_ming_knowledge_list_candidates":
           return listKnowledge(args);
         case "real_ming_capture_knowledge_candidate":
@@ -1148,7 +1239,8 @@ export function createRealMingTools(options: {
     scheduledReports === undefined &&
     calendar === undefined &&
     mail === undefined &&
-    knowledge === undefined
+    knowledge === undefined &&
+    workItemCapture === undefined
   ) {
     return tools;
   }
@@ -1156,6 +1248,7 @@ export function createRealMingTools(options: {
   return {
     ...tools,
     callAsync: async (name: string, args: Record<string, unknown>) => {
+      if (name === "real_ming_capture_work_item") return captureWorkItem(args);
       if (name === "real_ming_list_calendar_events") return readCalendar(args);
       if (name === "real_ming_search_mail") return readMail(args);
       if (name === "real_ming_read_email") return readOneEmail(args);
