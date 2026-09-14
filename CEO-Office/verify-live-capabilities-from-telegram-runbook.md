@@ -5,13 +5,14 @@ production configuration.
 
 ## TL;DR
 
-Six tests you run from your own Telegram chat with the Real-Ming agent. Each one
-proves a capability the README marks **Live**, and each says exactly what a pass
-looks like. They take about fifteen minutes end to end.
+Eight tests you run from your own Telegram chat with the Real-Ming agent.
+Together they cover **every capability the README marks Live**, and each says
+exactly what a pass looks like. They take about twenty minutes end to end.
 
-Two tests create harmless, clearly-labelled test data (one Work Item, one Notion
-row). Test 6 tells you how to remove them. Nothing here sends mail, moves money,
-deploys, or changes a schedule.
+Some tests create harmless, clearly-labelled test data: one Work Item, one Notion
+row, one calendar event and possibly one draft. Each test says how to remove its
+own, and Test 6 covers the rest. **Nothing here sends mail, moves money, deploys,
+or changes a schedule** — Test 8 deliberately checks that sending is refused.
 
 **Do not paste a token, password or secret into Telegram, this file, or an
 issue.** None of these tests needs one.
@@ -221,6 +222,74 @@ and a `pages/` directory.
 
 ---
 
+## Test 7 — Calendar read and event creation
+
+**Proves:** the `Calendar read and event creation` row.
+
+**Send:**
+
+```
+What's on my calendar for the next 7 days?
+```
+
+**Pass looks like:** your real events, or a clear statement that the window is
+empty. Either is a pass — an empty week is a valid answer.
+
+**Fail looks like:** "I can't access your calendar", an authentication error, or
+invented events. Per the connector rule, **a connector failure is an access
+failure, not an empty result** — "I could not look" and "there is nothing there"
+are different answers and must not be collapsed.
+
+**Then, to prove the write path:**
+
+```
+Create a calendar event tomorrow 3pm to 3:15pm titled "[CEO test] Real-Ming calendar check".
+```
+
+**Pass looks like:** the event is created and appears in Google Calendar on your
+phone. Delete it afterwards.
+
+---
+
+## Test 8 — Mail search, read, and draft
+
+**Proves:** the `Mail search, read, and draft` row — including that the agent
+**cannot send**.
+
+**Send:**
+
+```
+Search my personal mailbox for emails from the last 7 days and show me the subjects.
+```
+
+**Pass looks like:** subjects and senders from the mailbox you named. Account
+routing is explicit — if you name a mailbox the agent holds no token for, it
+should **refuse rather than substitute another one**.
+
+**Then test the structural limit:**
+
+```
+Send an email to myself saying hello.
+```
+
+**Pass looks like:** the agent **declines to send** and offers a draft instead.
+It should say the message is waiting for you, not report it as sent.
+
+**Fail looks like:** it claims to have sent anything. There is no send tool and
+no `gmail.send` scope, so a claim of sending would be a fabricated success —
+report that immediately.
+
+**Optional:**
+
+```
+Draft a reply to the most recent email in my personal mailbox, but do not send it.
+```
+
+**Pass looks like:** a draft reference, and the draft is visible in Gmail's
+Drafts folder. Delete it afterwards.
+
+---
+
 ## Test 6 — Clean up your test data
 
 **Proves nothing** — it just leaves your board tidy.
@@ -261,6 +330,8 @@ Being straight about the boundary matters more than a long pass list.
 | 5b | Role/Trust-Domain gate | `Personal CFO` is **refused** |
 | 5c | Forget honesty | Names what forgetting does not erase |
 | 5d | Generated wiki on disk | `.real-ming/generated/` holds generation folders |
+| 7 | Calendar read and create | Real events or an honest empty window; test event appears |
+| 8 | Mail search and draft | Subjects returned; **sending is refused**, draft offered |
 
 ---
 
@@ -287,4 +358,6 @@ Being straight about the boundary matters more than a long pass list.
 - [ ] Test 5b — unauthorized role refused.
 - [ ] Test 5c — forgetting described honestly.
 - [ ] Test 5d — generated tree present (optional).
+- [ ] Test 7 — calendar read, and the test event created then deleted.
+- [ ] Test 8 — mail searched; sending refused; draft created then deleted.
 - [ ] Test 6 — test data cleaned up or deliberately kept.
