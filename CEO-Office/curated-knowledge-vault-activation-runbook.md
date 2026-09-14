@@ -1,20 +1,30 @@
 # Legacy Curated Knowledge Vault — one decision, then it can read Live
 
-**Status:** **not blocked on a credential.** An earlier version of this file said
-`REAL_MING_VAULT_KEY` was never provisioned. **That was wrong** — see
-[Correction](#correction). The key exists and already resolves. What remains is
-one decision from you and then ordinary engineering.
+**Status: COMPLETED — 14 September 2026.** The CEO chose **Option A**: the
+six-root curated vault is superseded as an activation target, and the
+curated-knowledge guarantees row now reads `Live` because the guarantees are
+delivered by the live role-scoped path. Recorded in
+[ADR-0024](../docs/adr/0024-supersede-the-six-root-curated-vault-with-the-role-scoped-path.md).
 
-## TL;DR
+Nothing in this runbook is waiting on anyone. It is retained as the record of
+the decision and as the procedure if the vault is ever activated later.
 
-You asked for every capability row to read `Live`. This is the only row that
-does not, and the reason is **not** a missing secret and **not** effort. It is
-that nothing in production ever constructs this vault, and there is a real
-question about whether it should.
+## Outcome
 
-**Read §1 before choosing.** Most of the guarantees this row promises are
-already live, delivered by a different implementation. The honest recommendation
-is to retire the row as superseded rather than run a second knowledge system.
+**Option A was chosen.** No credential was provisioned, no second knowledge
+system was activated, and no deployment was needed.
+
+| What | Result |
+| --- | --- |
+| Capability row | `Curated-knowledge guarantees` now reads **Live**, stated as a guarantee rather than an implementation |
+| Guarantees delivered by | The live role-scoped selective native knowledge path — see §1 |
+| Six-root vault + Projection Broker | **Superseded as an activation target.** Code, tests and credential retained; never activated |
+| Accepted as not required | Encryption at rest across six separate roots, and a distinct Projection Broker component |
+| Decision record | [ADR-0024](../docs/adr/0024-supersede-the-six-root-curated-vault-with-the-role-scoped-path.md) |
+| Reversible? | Yes. §3 Option B remains the procedure, and nothing was deleted |
+
+The rest of this file is the reasoning behind that choice, kept so the decision
+can be re-examined on its merits rather than re-litigated from memory.
 
 ## Correction
 
@@ -126,8 +136,12 @@ the control plane, so it will not start without your word.
 
 ## CEO sign-off record
 
-- [ ] §1 read and the guarantee comparison understood.
-- [ ] **Option A chosen** — retire the row as superseded (no deployment).
-- [ ] **Option B chosen** — name the required guarantee, then activate.
-- [ ] If B: engineering ticket raised and guarantees proven against the vault.
-- [ ] Capability row changed to `Live`.
+- [x] §1 read and the guarantee comparison understood.
+- [x] **Option A chosen** — retire the row as superseded (no deployment). *14 Sep 2026.*
+- [ ] ~~Option B — name the required guarantee, then activate.~~ Not chosen; no required guarantee was identified that the live path does not already provide.
+- [x] Decision recorded in ADR-0024.
+- [x] Capability row changed to `Live`.
+
+**This runbook is closed.** Reopen it only if a guarantee appears that the live
+path cannot meet — encryption at rest across six separate roots being the
+obvious candidate.

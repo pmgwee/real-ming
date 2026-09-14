@@ -40,7 +40,9 @@ passed; the 14 September backup additionally carries the live native-knowledge
 registry and its generated wiki tree, and an isolated restore recovered both.
 Eight Ming skills are installed. Role-scoped selective native knowledge is live;
 **recurring consolidation is deliberately disabled** and exactly two cron rows
-run. The remaining acceptance boundary is recorded in the
+run. The six-root curated vault is **superseded as an activation target**
+(ADR-0024): its credential resolves and its code is retained, but no production
+caller constructs it and none will. The remaining acceptance boundary is recorded in the
 [deployment evidence](evidence/RM-40-v6-deployment-evidence-2026-09-07.md) and
 the [RM-54 live evidence](evidence/RM-54-live-operations-and-knowledge-2026-09-14.md).
 The design baseline and deployed revision are stated separately on purpose and
@@ -56,10 +58,13 @@ evidence](evidence/RM-40-v6-milestone-3-cutover-evidence.md).
 | Product and specification baseline | [docs/specs/real-ming-v1.1.md](specs/real-ming-v1.1.md) | Real-Ming v1.1 Personal Executive Operations Specification, Architecture Revision 6 |
 | Original architecture diagram | [docs/architecture/old_uncleaned/real-ming-agent-diagram-v6.html](architecture/old_uncleaned/real-ming-agent-diagram-v6.html) | Architecture Revision 6 — native Hermes + thin Real-Ming extension; retained unchanged after the v7 presentation cleanup |
 | Original architecture render | [docs/architecture/old_uncleaned/real-ming-agent-diagram-v6.png](architecture/old_uncleaned/real-ming-agent-diagram-v6.png) | Revision 6 render; retained unchanged after the v7 presentation cleanup |
-| Current architecture presentation | [docs/architecture/real-ming-agent-diagram-v7-cleanup.html](architecture/real-ming-agent-diagram-v7-cleanup.html) | Architecture Revision 6, v7 cleanup — same revision, corrected presentation. The v6 HTML and PNG above are retained unchanged as the prior render. **PNG render outstanding.** |
+| Current architecture presentation | [docs/architecture/real-ming-agent-diagram-v8-production.html](architecture/real-ming-agent-diagram-v8-production.html) | Architecture Revision 6, v8 production — same revision, showing the live production state after RM-54. Role-scoped selective native knowledge live, recurring consolidation disabled, six-root curated vault superseded per [ADR-0024](adr/0024-supersede-the-six-root-curated-vault-with-the-role-scoped-path.md) |
+| Current architecture render | [docs/architecture/real-ming-agent-diagram-v8-production.png](architecture/real-ming-agent-diagram-v8-production.png) | Revision 6 v8 render, produced from the HTML above and confirmed visually on 14 September 2026 |
+| Retained prior presentation | [docs/architecture/real-ming-agent-diagram-v7-cleanup.html](architecture/real-ming-agent-diagram-v7-cleanup.html) | Architecture Revision 6, v7 cleanup — same revision, corrected presentation. Retained unchanged as the prior render; its label is preserved rather than rewritten |
 | Post-RM-40 knowledge design | [docs/superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md](superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md) and [ADR-0022](adr/0022-native-knowledge-consolidation-around-hermes.md) | Revision 6 additive design; deployed and live-accepted on 14 September 2026 under RM-54, with recurring cron activation still withheld |
+| Knowledge architecture decision | [ADR-0024](adr/0024-supersede-the-six-root-curated-vault-with-the-role-scoped-path.md) | The role-scoped native path is the knowledge architecture. The six-root encrypted vault and Projection Broker of [ADR-0018](adr/0018-compile-knowledge-into-trust-domain-vaults.md) are superseded as an activation target and retained unactivated; ADR-0018 keeps its own label |
 | Post-RM-40 knowledge implementation plan | [docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md](superpowers/plans/2026-09-09-native-knowledge-consolidation.md) | Tasks 0–8 implemented; deployment and the one-shot live acceptance were executed under RM-54 on 14 September 2026. Recurring cron activation and Task 9 remain separately gated |
-| Decision record set | [docs/adr/](adr) | ADR 0001 through ADR 0023 |
+| Decision record set | [docs/adr/](adr) | ADR 0001 through ADR 0024 |
 | Implementation graph | [real-ming-phase3-tickets.json](../real-ming-phase3-tickets.json) | Phase 3 tracer-bullet decomposition, 44 tickets |
 
 ## Recorded historical baseline
