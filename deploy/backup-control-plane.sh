@@ -121,6 +121,7 @@ timeout --signal=TERM --kill-after=60s 20m /usr/bin/docker run --rm \
   --env REAL_MING_HERMES_SESSIONS_PATH=/var/lib/real-ming/hermes.sqlite \
   --env REAL_MING_HERMES_NATIVE_STATE_PATH=/var/lib/real-ming/hermes-native.snapshot \
   --env REAL_MING_HERMES_VAULT_PATH=/var/lib/real-ming/hermes-vault.snapshot \
+  --env REAL_MING_NATIVE_KNOWLEDGE_STATE_PATH=/var/lib/real-ming/native-knowledge.sqlite \
   --env REAL_MING_LOCAL_BACKUP_DIRECTORY=/var/lib/real-ming/backups \
   --env REAL_MING_BACKUP_STORAGE_ACCOUNT \
   --env REAL_MING_BACKUP_STORAGE_CONTAINER \
