@@ -145,16 +145,38 @@ publication, role and Trust-Domain-gated retrieval, and that forgetting works.
 
 ### 5a. Retrieve a cited page
 
+> **Read this first — it is why the original version of this test failed.**
+> `wiki_retrieve` is a **literal contiguous substring match**, not search. The
+> whole query must appear verbatim in the page id, path, citation or body.
+> There is no tokenising, ranking or fuzzy matching. So
+> `RM-54 live acceptance` finds nothing — that exact phrase is nowhere in the
+> page — and neither does `role-scoped native knowledge Malaysia West`, because
+> the body reads "…native knowledge **is live on** Malaysia West" and the words
+> are not contiguous. This is a real limitation of today's reader, not a fault
+> in your phrasing.
+
 **Send:**
 
 ```
-Using the wiki, what do you have on the RM-54 live acceptance? Cite the source.
+Search the wiki for the exact phrase "role-scoped native knowledge" and cite the source.
 ```
 
-**Pass looks like:** a bounded answer that **cites** its source, referencing the
-live acceptance page. Normal Hermes formatting.
+**Pass looks like:** the agent returns the page and **cites** it — source
+reference `issue:54/live-acceptance-live`, Trust Domain `Ming Creatives`. The
+content is one line: *"Real-Ming role-scoped native knowledge is live on
+Malaysia West; retrieval is bounded to the Ming Creatives Trust Domain."*
 
-**Fail looks like:** a confident answer with no citation, or an invented source.
+`rm54-live-acceptance-live` works as a query too — the page id is matched as
+well as the body.
+
+**Fail looks like:** a confident answer with **no** citation, or an invented
+source. Note that "no published supported page matched" is the *correct* answer
+to a query whose exact words are not in the page — that is the reader being
+honest, not broken.
+
+**Worth knowing:** if you ask a natural-language question and get nothing, the
+agent is not hiding anything and the knowledge is not lost. Retry with an exact
+phrase you expect to be in the text.
 
 ### 5b. The role gate actually refuses
 
@@ -235,7 +257,7 @@ Being straight about the boundary matters more than a long pass list.
 | 2 | Work items and lifecycle | Work Item ID returned, state `Captured` |
 | 3 | Idempotency | Same ID on replay; exactly one item |
 | 4 | Notion task coordination | One `Pending` row on Master Tasks |
-| 5a | Native knowledge retrieval | Bounded, **cited** answer |
+| 5a | Native knowledge retrieval | Exact-phrase query returns a **cited** page |
 | 5b | Role/Trust-Domain gate | `Personal CFO` is **refused** |
 | 5c | Forget honesty | Names what forgetting does not erase |
 | 5d | Generated wiki on disk | `.real-ming/generated/` holds generation folders |
@@ -251,7 +273,8 @@ Being straight about the boundary matters more than a long pass list.
 | Telegram says the Work Item was captured, but Notion has no row | The most serious case: a reported write that did not land | Record the Work Item ID and the time, then report it. Do not retry repeatedly |
 | Test 3 creates a second item | Idempotency is not holding | Record both IDs and report it |
 | Test 5b returns the content instead of refusing | The role gate is not enforcing | Report immediately and treat as a real defect. Do not keep querying |
-| Test 5a answers with no citation | Retrieval fell back to ordinary reasoning | Ask it again and say "cite the wiki source". If it still cannot, report it |
+| Test 5a returns "no published supported page matched" | Usually your phrase is not a contiguous substring of the page — the reader does not tokenise | Retry with an exact phrase such as `role-scoped native knowledge`, or the page id `rm54-live-acceptance-live` |
+| Test 5a answers **with content but no citation** | Retrieval fell back to ordinary reasoning instead of the wiki | Ask again and say "cite the wiki source". If it still cannot, report it |
 | A capability answers correctly but the README calls it something else | A documentation drift, not an outage | Worth a ticket, not an alarm |
 
 ## CEO sign-off record
@@ -260,7 +283,7 @@ Being straight about the boundary matters more than a long pass list.
 - [ ] Test 2 — Work Item captured in `Captured` state.
 - [ ] Test 3 — replay returned the same ID, one item only.
 - [ ] Test 4 — one `Pending` row on the Notion Master Tasks board.
-- [ ] Test 5a — cited retrieval.
+- [ ] Test 5a — exact-phrase query returned a cited page.
 - [ ] Test 5b — unauthorized role refused.
 - [ ] Test 5c — forgetting described honestly.
 - [ ] Test 5d — generated tree present (optional).

@@ -80,6 +80,32 @@ rather than a local queue assertion.
 | Registry health after the run | Publication epoch 2, tombstone epoch 1, tombstone-head epoch 1, repair state `healthy` |
 | The pinned one-shot wrapper stays inside its allowlist | Completed successfully **twice** using only the four permitted operations: list candidates, read source, stage generation, wiki retrieve |
 
+### Retrieval matches literally, not semantically
+
+Found on 14 September 2026 when the CEO ran the Telegram verification runbook
+and retrieval returned nothing for `RM-54 live acceptance`.
+
+`pageMatches` in `src/knowledge/native-consolidation/retrieval.ts` lowercases
+the query and tests `\`${pageId}\n${path}\n${sourceReference}\n${content}\`.includes(needle)`.
+The **entire query must appear as one contiguous substring**. Probed directly
+against the production MCP surface as `CTO` / `Ming Creatives`:
+
+| Query | Result |
+| --- | --- |
+| `role-scoped native knowledge` | `kind: "ok"` — returns `rm54-live-acceptance-live` with citation `issue:54/live-acceptance-live`, generation `…cb09e3ed…` |
+| `rm54-live-acceptance-live` | `kind: "ok"` — same page |
+| `RM-54 live acceptance` | `no published supported page matched` |
+| `role-scoped native knowledge Malaysia West` | `no published supported page matched` — the body reads "…native knowledge **is live on** Malaysia West", so the phrase is not contiguous |
+
+**The capability is live and correct**; the page, its citation and its Trust
+Domain all come back. What is absent is *search*: there is no tokenisation, no
+ranking and no fuzzy matching. A natural-language question usually misses, and
+the agent then correctly refuses to fabricate an answer rather than guessing.
+
+Two consequences were acted on: the README now states the matching rule, and
+the CEO Telegram runbook now uses queries that can actually match. A ranked or
+token-based reader would be a separate ticket, not a defect in this one.
+
 ### Safe failure retained as evidence
 
 The first fixture attempt **failed safely**: its content hash lacked the
