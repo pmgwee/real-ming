@@ -57,13 +57,37 @@ production. Capture runs the existing `OperationsGateway` lifecycle and the
 | Intent recorded verbatim | `[Live acceptance #54] Verify native Hermes Work Item and Notion projection` |
 | Lifecycle state is `Captured`, not executed or completed | State `Captured` |
 | Role and workstream metadata recorded | `CTO` / `MicroSaaS` |
-| The call reaches the real Notion provider, not a local queue | Notion page `3db89b83-bac5-81b6-8b28-df768d840c9e`, board category `Pending` |
+| The call reaches the real Notion provider, not a local queue | Notion page `3db89b83-bac5-81b6-8b28-df768d840c9e`; visible on the Master Tasks board in the **`Captured`** column |
 | Exactly one Notion version for the item | Version count 1 |
 | Replay on the same idempotency key is a read, not a duplicate | Idempotency key `rm54-live-work-item-notion-v1` replayed and returned the **same** Work Item ID with `deduplicated: true` |
 
 The capture call waits for the provider projection to complete. A failed
 projection would have failed the call, so this is production-write evidence
 rather than a local queue assertion.
+
+### Two status vocabularies, and a reporting mismatch
+
+Found 14 September 2026 when the CEO opened the Master Tasks board.
+
+`src/master-tasks/master-tasks.ts` projects `lifecycle: workItem.state`, so
+Notion receives the **Real-Ming lifecycle** name. The Master Tasks board's
+columns are lifecycle names — `Captured`, `Pending Approval`,
+`Changes Requested`, `Completed`, `Cancelled` — and both RM-54 items sit
+correctly under `Captured`.
+
+Separately, `notionCategoryForLifecycle` in `src/integration/real-ming-tools.ts`
+maps `Captured` → `Pending` and returns it to the agent as `notionCategory`.
+That is the **legacy** category vocabulary defined in
+`docs/agents/notion-task-status-semantics.md` for the databases RM-11 migrated
+from. It is correct as a *meaning* mapping and wrong as a *board* label: there
+is no `Pending` column on the current board.
+
+Consequence: the agent truthfully answers "Notion category: Pending" while the
+CEO sees the row under `Captured`. The projected data is right; the reported
+label names a column that does not exist here. **Not changed under RM-54** —
+the mapping predates this ticket, and per `AGENTS.md` a correctness change
+needs a failing approved-seam test first. Recorded here so it can be taken
+deliberately.
 
 ---
 
