@@ -53,20 +53,38 @@ superseded curated vault, not the live path. See §5.
 ## 2. See it yourself, in your own Obsidian
 
 One-way pull to your laptop. Full steps are in the
-[access runbook](dashboard-and-obsidian-access-runbook.md); this is the command:
+[access runbook](dashboard-and-obsidian-access-runbook.md).
+
+### Use this command
 
 ```bash
-ssh -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35 'sudo tar cz -C /var/lib/hermes-real-ming/obsidian-vault .' | tar xz -C ~/Obsidian/real-ming
+ssh -i ~/.ssh/real_ming_southeastasia_ed25519 azureuser@100.110.253.35 'sudo tar cz -C /var/lib/hermes-real-ming/obsidian-vault .' \
+  | tar xz -C ~/Obsidian/real-ming --transform 's,^\./\.real-ming,./real-ming-generated,'
 ```
 
-Then open `~/Obsidian/real-ming` as an Obsidian vault. You will see
-`Native cron ownership.md` at the top level, and `.real-ming/generated/` holding
-the governed pages. Obsidian hides dot-folders by default — enable **Settings →
-Files & Links → Detect all file extensions**, or just browse the folder in your
-file manager.
+The `--transform` matters. On the host the governed tree lives at
+`.real-ming/`, and **Obsidian ignores every folder whose name starts with a
+dot** — that is how it hides its own `.obsidian` and `.trash`. The rename drops
+the dot on the way in, so the generated pages land at `real-ming-generated/` and
+Obsidian indexes them normally.
+
+Then open `~/Obsidian/real-ming` as a vault. You will see
+`Native cron ownership.md` and a `real-ming-generated/` folder holding the
+governed pages, their `index.md`, `log.md` and `manifest.json`.
+
+> **No Obsidian setting reveals a dot-folder.** *Show all file types* and
+> *Detect all file extensions* affect file **extensions**, not dot-directories,
+> and neither will make a raw `.real-ming/` pull visible. Renaming on the way in
+> is the fix.
+
+**In File Explorer it needs no setting at all.** The tar extract sets no Windows
+*hidden* attribute, so pasting the path into the address bar just works —
+Windows hides by attribute, not by leading dot.
 
 > **This is a read-only snapshot.** Edits you make locally never travel back,
-> and the next pull overwrites them. Azure remains canonical.
+> and the next pull overwrites them. Azure remains canonical. Your own notes and
+> canvases in the vault are untouched by the pull: the archive only contains what
+> the host holds.
 
 ---
 
@@ -200,7 +218,7 @@ no broker sits in front of it, and no mirror exists.
 | Wiki search returns nothing | Your phrase is not a contiguous substring of any page | Retry with an exact phrase, or `rm54-live-acceptance-live` |
 | "No published supported page matched" for everything | Expected — the corpus is two fixtures | Declare real sources; see §4 |
 | Agent offers to "remember" something conversational | It is using native memory, not the wiki | Fine, but do not record it as cited knowledge |
-| `.real-ming` invisible in Obsidian | Obsidian hides dot-folders | Enable "Detect all file extensions", or browse in your file manager |
+| `.real-ming` invisible in Obsidian | Obsidian ignores **all** dot-folders, and no setting changes that | Re-pull with the `--transform` in §2 so it arrives as `real-ming-generated/` |
 | Local edits vanish after a pull | The pull is one-way by design | Azure is canonical; edit through the agent |
 | Role gate returns content instead of refusing | **Real defect** | Stop and report it; the gate is the guarantee |
 
