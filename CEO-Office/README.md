@@ -21,7 +21,9 @@ protected backup and isolated restore passed, and since 14 September the backup
 also carries the live native-knowledge registry. Work Items, Notion task
 coordination and role-scoped selective native knowledge are live;
 **recurring knowledge consolidation is still switched off on purpose** and
-exactly two cron jobs run. The two labels are stated separately in
+exactly two cron jobs run. You can confirm all of that yourself in about fifteen
+minutes from your own Telegram chat — see the
+[live capability verification runbook](verify-live-capabilities-from-telegram-runbook.md). The two labels are stated separately in
 [docs/BASELINE.md](../docs/BASELINE.md) on purpose; neither is evidence for the
 other. See the [deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md)
 and the [RM-54 live evidence](../docs/evidence/RM-54-live-operations-and-knowledge-2026-09-14.md).
@@ -409,6 +411,7 @@ After RM-16 the graph fans out hard — 4, then 5, then 9 tickets per wave. **RM
 | [RM-40-phase4-activation-runbook.md](RM-40-phase4-activation-runbook.md) | Historical V5 activation and recovery record; use the V6 plan for migration work |
 | [phase-4-ceo-action.md](phase-4-ceo-action.md) | Short CEO checklist for the remaining identity, Telegram and review actions needed to finish Phase 4 |
 | [dashboard-and-obsidian-access-runbook.md](dashboard-and-obsidian-access-runbook.md) | Step-by-step: reach the Hermes dashboard and Kanban over an SSH tunnel, and set up Obsidian on your laptop |
+| [verify-live-capabilities-from-telegram-runbook.md](verify-live-capabilities-from-telegram-runbook.md) | Six tests you run from your own Telegram chat to confirm the capabilities marked **Live** actually answer you — Work Items, idempotency, Notion, cited retrieval and the role gate. About fifteen minutes, no laptop needed |
 | [native-knowledge-consolidation-activation-runbook.md](native-knowledge-consolidation-activation-runbook.md) | CEO-only review, deployment-disabled rollout, one-shot live acceptance, restore checks and optional 02:00 cron enablement for Tasks 0–8 |
 
 ---
