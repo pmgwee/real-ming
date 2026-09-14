@@ -8,18 +8,23 @@ Whenever `npm run graph:status` prints `BLOCKED ON YOU`, come here.
 
 ## 🚦 Current status
 
-*As of 2026-09-07 · run `npm run graph:status` for live truth*
+*As of 2026-09-14 · run `npm run graph:status` for live truth*
 
 **Design baseline: Architecture Revision 6 — [native Hermes + thin Real-Ming extension](../docs/architecture/real-ming-agent-diagram-v6.html), recorded in [ADR-0020](../docs/adr/0020-run-ming-on-the-native-hermes-runtime.md).**
 Read [why the earlier architecture drifted and what to reuse](../docs/architecture/RM-40-v6-architecture-review.md)
 and the [official Hermes capability comparison](../docs/architecture/RM-40-hermes-native-capability-review.md).
 **Deployed revision: Revision 6, partially activated.** Malaysia West now runs
-`real-ming:v6-23bd903`; the native Hermes gateway owns your Telegram bot,
+`real-ming:v6-c4ee6eb`; the native Hermes gateway owns your Telegram bot,
 Real-Ming polls nothing, the supervised native dashboard is loopback-only and
-the extension is registered as an MCP server. The protected backup and isolated
-restore passed. The two labels are stated separately in
+the extension is registered as an MCP server with 17 tools and 8 skills. The
+protected backup and isolated restore passed, and since 14 September the backup
+also carries the live native-knowledge registry. Work Items, Notion task
+coordination and role-scoped selective native knowledge are live;
+**recurring knowledge consolidation is still switched off on purpose** and
+exactly two cron jobs run. The two labels are stated separately in
 [docs/BASELINE.md](../docs/BASELINE.md) on purpose; neither is evidence for the
-other. See the [deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md).
+other. See the [deployment evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md)
+and the [RM-54 live evidence](../docs/evidence/RM-54-live-operations-and-knowledge-2026-09-14.md).
 
 **Milestone 0 — done, 6 September.** The specification, ADRs, baseline labels, ticket-graph metadata and baseline tests are reconciled to Revision 6, and every Revision 5 requirement now carries a keep/revise/defer/remove disposition in the [requirement ledger](../docs/planning/RM-40-v6-requirement-ledger.md). `npm run check` passes: 771 tests, exit 0.
 
@@ -216,7 +221,8 @@ Two came out of the RM-30 reviews. Neither blocks anything; both change what you
 | V6 Telegram ownership | Native Hermes owns the gateway, commands, conversation and execution; Real-Ming adds selected integrations. | One-owner migration executed on Malaysia West; retain East Asia for rollback until the remaining V6 acceptance and recovery proof. | ✅ Transport cutover live; broader V6 acceptance pending |
 | **RM-40 (#41) acceptance criteria** | The readiness ticket was written for Revision 5 and had no criterion for native Telegram ownership, native presentation, a real coding loop, or native memory. Passing it as written would have certified a system no longer being run. | Approved 8 Sep 2026. Five native-experience criteria were posted to [#41](https://github.com/pmgwee/real-ming/issues/41) with evidence for each, the six original criteria retained as the controlled-test and privacy floor, and the ticket closed as completed. | ✅ Done — decision 1 |
 | **Optional curated-knowledge guarantees** | Versioned atomic publication, contradiction quarantine and access-controlled cross-domain projection are built and controlled-tested but were never wired to a production caller. Revision 6 makes them optional rather than default. | Defer. Prove native Obsidian/LLM-Wiki knowledge first in milestone 6, then decide against observed gaps instead of in advance. The code and design are preserved either way. | ⏳ Open — decision 2 |
-| **Selective native knowledge consolidation (Tasks 0–8)** | Native-Hermes-only reasoning/memory with a bounded Real-Ming candidate, publication, forgetting, retrieval and health extension. The Azure vault is canonical; the inactive `02:00 Asia/Kuala_Lumpur` manifest is not a cron row. | Controlled implementation approved and evidenced. Review the artifact, then separately approve deployment, one harmless live run and (optionally) one recurring cron row. | ✅ Controlled-tested; live activation pending — [activation runbook](native-knowledge-consolidation-activation-runbook.md) |
+| **Selective native knowledge consolidation (Tasks 0–8)** | Native-Hermes-only reasoning/memory with a bounded Real-Ming candidate, publication, forgetting, retrieval and health extension. The Azure vault is canonical; the `02:00 Asia/Kuala_Lumpur` manifest is still an inactive manifest, not a cron row. | Deployment and the one harmless live run were approved and executed on 14 September 2026. **The only part still open is whether to enable one recurring `02:00` cron row** — there is no operational need for it today, so leaving it off is the safe default until you want scheduled consolidation. | ✅ Deployed and live-accepted — [evidence](../docs/evidence/RM-54-live-operations-and-knowledge-2026-09-14.md) · ⏳ recurring cron row still your call — [activation runbook](native-knowledge-consolidation-activation-runbook.md) |
+| **Open the RM-54 milestone pull request** | One pull request for the RM-54 milestone on `codex/live-operations-and-knowledge`: governed Work Item capture from native Hermes, trust-domain propagation, the protected-backup fix, and the documentation that marks these capabilities live. It is opened but **not merged**; merging is yours. | Review and merge when you are satisfied. Nothing on the host depends on the merge — production already runs `c4ee6eb`. | ⏳ Open — awaiting your review |
 | **Dashboard access from your phone** | Reached at `https://real-ming-malaysia.tail54f32e.ts.net/kanban` from laptop and iPhone alike — no SSH client, no tunnel, no key on the phone, laptop off. The socket never left `127.0.0.1`; `HERMES_DASHBOARD_PUBLIC_URL` makes the tailnet hostname trusted and forces the login gate on. | Resolved 8 Sep 2026 with Nous Portal OAuth over Tailscale Serve, Funnel off. Verified by Ming on both devices, and Tailscale-off correctly makes the address unreachable. See [ADR-0021](../docs/adr/0021-reach-the-dashboard-over-tailscale-with-nous-oauth.md). | ✅ Done, 8 Sep 2026. The tailnet policy was narrowed the same day: the allow-all grant replaced (not supplemented, since grants are additive), rules keyed on device addresses because every device shares one user identity, no tagging, and policy tests including a negative case. Enabling Serve had granted Funnel to every member; that was removed and its absence verified. |
 | **Deploy the new V6 recovery/dashboard bundle** | The candidate adds the supervised loopback Hermes dashboard unit and whitelist-only native-state backup/restore coverage. It is a new bundle; the prior image approval does not cover it. | Approved and executed on Malaysia West; all listeners remain loopback-only and East Asia is retained for rollback. | ✅ Deployed; [evidence](../docs/evidence/RM-40-v6-deployment-evidence-2026-09-07.md) |
 | **Create native cron jobs and switch ownership** | Exactly two Telegram-delivering jobs (07:30/21:30 Kuala Lumpur) and the protected ownership flags. | Approved and executed. Both jobs are live and enabled, the timezone is `Asia/Kuala_Lumpur`, and the fourth MCP tool is registered in the gateway. | ✅ Live — the 21:30 roll-up landing unattended is the last observation |

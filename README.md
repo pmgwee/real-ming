@@ -30,12 +30,12 @@ Capabilities below are labelled by evidence:
 | Mail search, read, and draft | **Live** | Multiple mailboxes with explicit routing. Drafting only — see [Security and authority](#security-and-authority). |
 | Scheduled reports | **Live** | Composed by Real-Ming, scheduled and delivered by native Hermes cron. |
 | Private operations dashboard | **Live** | Loopback-bound HTTP read model; see [Operations](#operations). |
-| Native knowledge notes | **Live** | The knowledge path that actually runs. Hermes's own bundled Obsidian and LLM-Wiki skills write cited Markdown into the vault on the host; a note survived a service restart, was retrieved from a later session and restored byte-identical from backup. The vault holds one agent-written note today — this is a working write/retrieve path, not a populated second brain. |
-| Selective wiki consolidation | **Tested (controlled only)** | Tasks 0–8 and the final local remediation are controlled-tested with native Hermes as the sole reasoning, synthesis and native-memory runtime. The inactive `02:00 Asia/Kuala_Lumpur` manifest is not a cron row; no production caller, live acceptance or local mirror is active. This is a **different system** from the curated vault above — it uses no trust-domain roots, and its `.real-ming/generated` path does not exist on the host. Its seven MCP tools and two skills are in this repository but not deployed: the host exposes nine tools and six skills. See [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md), the [implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md), [controlled evidence](docs/evidence/native-knowledge-consolidation-controlled-acceptance-2026-09-09.md) and the [final remediation packet](docs/evidence/RM-40-native-knowledge-final-remediation-review-packet-2026-09-10.md). |
-| Work items and lifecycle | **Tested** | One work-item model across sources; see [ADR-0011](docs/adr/0011-use-one-executive-work-lifecycle.md) and [ADR-0015](docs/adr/0015-converge-tasks-on-one-work-item-model.md). |
-| Notion task coordination | **Tested** | Master-tasks provisioning, migration rehearsal and cutover CLIs. |
-| Backup and restore | **Tested** | Whitelist-only state backup with an isolated restore path. |
-| Curated-knowledge guarantees | **Partial** | The original design: an encrypted, versioned vault over six trust-domain roots (`Personal/`, `Ming-Creatives/`, `Academic/`, `Finance/`, `Entertainment/`, `CEO/`) with an LLM-wiki folder shape, Candidate Envelope quarantine and a Projection Broker, each executive perspective reading its own root. Built and controlled-tested. **Not in production and not partially in production:** `REAL_MING_OBSIDIAN_ROOTS` is unset on the host, none of the six folders exist, and the only production use of `vaultRoots` is validating configured names. Revision 6 makes it optional; see [ADR-0018](docs/adr/0018-compile-knowledge-into-trust-domain-vaults.md). |
+| Native knowledge notes | **Live** | Hermes's own bundled Obsidian and LLM-Wiki skills write cited Markdown into the vault on the host; a note survived a service restart, was retrieved from a later session and restored byte-identical from backup. The writer-owned part of the vault holds one agent-written note today — a working write/retrieve path, not a populated second brain. The governed generated tree in the next row lives beside it under `.real-ming/`, separately owned. |
+| Role-scoped selective native knowledge | **Live** | Governed generation and publication, role- and Trust-Domain-gated retrieval, and restore-safe forgetting backed by an independent Azure tombstone head — invoked by native Hermes through the production MCP surface. In the 14 September acceptance run native Hermes retrieved citation `issue:54/live-acceptance-live` for Trust Domain `Ming Creatives`; the same request made as `Personal CFO` was refused as unauthorized; and forgetting subject `rm54-live-acceptance-alpha` left retrieval continuous at tombstone-head epoch 1. **Recurring consolidation remains disabled** — the `02:00 Asia/Kuala_Lumpur` manifest is still an inactive manifest and not a cron row, and only the two report jobs recur. This is a **different system** from the legacy curated vault below, which stays optional and unwired. See [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md), [ADR-0023](docs/adr/0023-scope-native-knowledge-retrieval-by-trust-domain.md) and the [RM-54 live evidence](docs/evidence/RM-54-live-operations-and-knowledge-2026-09-14.md). |
+| Work items and lifecycle | **Live** | One work-item model across sources, now reached from native Hermes through the governed `real_ming_capture_work_item` tool. Capture runs the existing `OperationsGateway` lifecycle rather than a second or bypass path, so it can create `Captured` work but cannot execute or complete it. Live acceptance captured Work Item `8d78fde1-45b3-4377-b89b-dd04d38636cc` in state `Captured`, and a replay on idempotency key `rm54-live-work-item-notion-v1` returned the same ID as `deduplicated`. See [ADR-0011](docs/adr/0011-use-one-executive-work-lifecycle.md), [ADR-0015](docs/adr/0015-converge-tasks-on-one-work-item-model.md) and the [RM-54 live evidence](docs/evidence/RM-54-live-operations-and-knowledge-2026-09-14.md). |
+| Notion task coordination | **Live** | Master-tasks provisioning, migration rehearsal and cutover CLIs, plus the live Master Tasks projection. The RM-54 capture waited on the real provider write rather than a local queue acknowledgement: the item landed on Notion page `3db89b83-bac5-81b6-8b28-df768d840c9e` in board category `Pending` with one version recorded, so a failed projection would have failed the call. |
+| Backup and restore | **Live** | Whitelist-only state backup with an isolated restore path, now covering the live native-knowledge registry. The 14 September protected backup and its isolated restore verified 24 files and 11 SQLite stores, recovering the registry at publication epoch 2 and tombstone-head epoch 1 together with the generated wiki tree. Credentials, OAuth material and caches never enter the snapshot. |
+| Legacy curated-knowledge vault | **Partial — retained, optional** | Not the live row above, and not a stage of it. The original design: an encrypted, versioned vault over six trust-domain roots (`Personal/`, `Ming-Creatives/`, `Academic/`, `Finance/`, `Entertainment/`, `CEO/`) with an LLM-wiki folder shape, Candidate Envelope quarantine and a Projection Broker, each executive perspective reading its own root. Built and controlled-tested. **Not in production and not partially in production:** `REAL_MING_OBSIDIAN_ROOTS` is unset on the host, none of the six folders exist, and the only production use of `vaultRoots` is validating configured names. Revision 6 makes it optional; see [ADR-0018](docs/adr/0018-compile-knowledge-into-trust-domain-vaults.md). The live role-scoped path above meets its own narrower guarantee and does not activate this one. |
 | Event-driven mandatory controls | **Planned** | No runtime hook or event wiring exists in this repository today. Current deterministic guarantees come from build-time checks and from tool capability being absent rather than forbidden. |
 
 ### Executive perspectives
@@ -74,30 +74,50 @@ flowchart TB
     subgraph H["Hermes Agent — the runtime"]
         GW["Gateway<br/>transport · conversation · tool loop"]
         NAT["Native subsystems<br/>memory · kanban · plugins"]
-        SK["Skills · 6<br/>coo · cto · cmo · personal-cfo · cao<br/>real-ming"]
-        CRON["Cron · 2 rows<br/>07:30 and 21:30 Asia/Kuala_Lumpur"]
+        SK["Skills · 8<br/>coo · cto · cmo · personal-cfo · cao · real-ming<br/>knowledge-capture · knowledge-consolidation"]
+        CRON["Cron · 2 rows<br/>07:30 and 21:30 Asia/Kuala_Lumpur<br/>no recurring consolidation row"]
+        OBS["Obsidian + LLM-Wiki<br/>writer-owned notes"]
     end
 
     subgraph R["Real-Ming — integration and governance"]
         CFG["Configuration<br/>ownership variables · config fragment<br/>SOUL.md · systemd units"]
-        MCP["MCP server · 9 tools<br/>3 work-item · 1 report · 5 provider"]
+        MCP["MCP server · 17 tools<br/>4 work-item · 7 knowledge<br/>1 report · 5 provider"]
+        LIFE["Work-item lifecycle<br/>OperationsGateway · governed capture"]
+        GATE["Role and Trust-Domain gate<br/>authorized retrieval only"]
+        REG["Native-knowledge registry<br/>generations · tombstones · epochs"]
         ADP["Provider adapters"]
         EV["Work items · evidence · audit"]
     end
 
     subgraph SOR["Sources of Record"]
-        EXT["Task database · calendar<br/>mailboxes · repositories"]
+        NOTION["Notion Master Tasks"]
+        EXT["Calendar · mailboxes · repositories"]
+    end
+
+    subgraph AZ["Azure-hosted, canonical"]
+        GEN["Generated wiki<br/>.real-ming/generated"]
+        TOMB["Independent tombstone head"]
     end
 
     TG --> GW
     DB --> GW
     CLI --> GW
     GW --- NAT
+    GW --- OBS
     CFG -.->|"sets ownership"| GW
     CFG -.->|"authors"| SK
     SK -.->|"guides, grants nothing"| GW
     GW -->|"tool call"| MCP
     CRON -->|"composes through one tool"| MCP
+    MCP -->|"capture_work_item"| LIFE
+    LIFE -->|"Captured, projected on write"| NOTION
+    LIFE --> EV
+    MCP -->|"wiki_retrieve and forget"| GATE
+    GATE --> REG
+    GATE -->|"cited pages for the authorized role"| GEN
+    MCP -->|"stage generation"| GEN
+    REG -->|"restore-safe forgetting"| TOMB
+    OBS -.->|"same vault, separate ownership"| GEN
     MCP --> ADP
     ADP -->|"read, and write only when approved"| EXT
     MCP --> EV
@@ -115,24 +135,31 @@ Real-Ming is reached as a tool. It is never in the path of an ordinary conversat
 | Mechanism | Deployed | What it is |
 | --- | ---: | --- |
 | **Configuration** | — | A secret-free Hermes config fragment, `SOUL.md`, ownership variables (`REAL_MING_TELEGRAM_OWNERSHIP`, `REAL_MING_SCHEDULER_OWNERSHIP`) and the systemd units. It states no opinion about Hermes memory. |
-| **Skills** | **6** | Five role playbooks — `coo`, `cto`, `cmo`, `personal-cfo`, `cao` — plus `real-ming` for vocabulary, authority and portfolio. Guidance only: no skill carries a credential or grants a permission. |
-| **MCP tools** | **9** | 3 work-item and execution-link · 1 scheduled-report · 5 provider access, over one stdio server. |
-| **Scheduled jobs** | **2** | Native Hermes cron rows at 07:30 and 21:30 `Asia/Kuala_Lumpur`. Real-Ming composes through one tool; Hermes owns the schedule and the Telegram delivery. |
+| **Skills** | **8** | Five role playbooks — `coo`, `cto`, `cmo`, `personal-cfo`, `cao` — plus `real-ming` for vocabulary, authority and portfolio, and the two knowledge skills `knowledge-capture` and `knowledge-consolidation`. Guidance only: no skill carries a credential or grants a permission. |
+| **MCP tools** | **17** | 4 work-item, capture and execution-link · 7 native-knowledge · 1 scheduled-report · 5 provider access, over one stdio server. |
+| **Scheduled jobs** | **2** | Native Hermes cron rows at 07:30 and 21:30 `Asia/Kuala_Lumpur`. Real-Ming composes through one tool; Hermes owns the schedule and the Telegram delivery. Knowledge consolidation adds no third row: its manifest stays inactive. |
 
-**Deployed is not the same as present in this repository.** The host exposes
-9 tools and 6 skills. The repository additionally holds **7 selective-knowledge
-tools** — `capture_knowledge_candidate`, `knowledge_list_candidates`,
-`read_knowledge_source`, `stage_knowledge_generation`, `wiki_retrieve`,
-`forget_wiki_knowledge`, `knowledge_health` — and **2 knowledge skills**, all
-controlled-tested and **not deployed**. A third, narrower scope exists in code
-for a nightly job restricted to four operations; no such job runs.
+**The repository and the host now agree.** Since 14 September 2026 the host
+exposes the same **17 tools and 8 skills** this repository holds:
+`hermes mcp test real-ming` discovers 17, and `skills/ming/` carries 8. The
+seven native-knowledge tools — `capture_knowledge_candidate`,
+`knowledge_list_candidates`, `read_knowledge_source`,
+`stage_knowledge_generation`, `wiki_retrieve`, `forget_wiki_knowledge`,
+`knowledge_health` — and the two knowledge skills are deployed and live.
 
-Five of the nine deployed tools are provider access, which a native connector
+**Deployed is still not the same as recurring.** A narrower scope exists in
+code for a nightly job restricted to four operations — list candidates, read
+source, stage generation, wiki retrieve. That wrapper has been exercised
+successfully in production as a one-shot, but **no recurring job runs it**: the
+only two cron rows remain the 07:30 and 21:30 reports.
+
+Five of the seventeen deployed tools are provider access, which a native connector
 could also perform. They exist for governance rather than capability: there is
 no send tool and no `gmail.send` scope, and the MCP child holds no Google
 credential or Key Vault access, calling a loopback endpoint where per-account
-tokens and the mailbox allowlist are enforced. The four genuinely
-Real-Ming-shaped tools are the work-item, execution-link and report ones.
+tokens and the mailbox allowlist are enforced. The genuinely Real-Ming-shaped
+tools are the work-item, capture, execution-link, report and native-knowledge
+ones.
 
 ## Production topology
 
@@ -145,14 +172,17 @@ is for clean execution and recovery, not a hardened multi-tenant boundary.
 | --- | --- | --- |
 | Always-on host | One Azure Linux VM under systemd; restart and reconcile verified with nothing lost and nothing replayed | live-verified |
 | Native Hermes gateway | Sole Telegram consumer; owns conversation, tools, cron, kanban and native memory | live-verified |
-| Real-Ming extension | Separate process, same host; nine MCP tools reached over local stdio | live-verified |
+| Real-Ming extension | Separate process, same host; 17 MCP tools reached over local stdio | live-verified |
 | Hermes dashboard | Bound to `127.0.0.1:9119` | live-verified |
 | Real-Ming read model | Bound to `127.0.0.1:8787` | live-verified |
 | Private remote access | Approved devices only, over a private network behind OAuth. No public dashboard or SSH port is opened | live-verified |
 | Secrets | Azure Key Vault, resolved at runtime; no copy rests on the host disk | live-verified |
 | Scheduled reports | Two native Hermes cron jobs delivering to Telegram; one unattended run observed | live-verified |
 | Off-host backup | Azure Blob Storage in a separate region, whitelist-only, with an isolated restore proven byte-identical | live-verified |
-| Selective knowledge consolidation | Inactive manifest only; no cron row exists | controlled-tested |
+| Role-scoped selective native knowledge | Deployed and exercised in production: governed publication, role/Trust-Domain-gated retrieval and restore-safe forgetting | live-verified |
+| Recurring knowledge consolidation | Inactive manifest only; no cron row exists | deliberately disabled |
+| Native-knowledge registry | `/var/lib/real-ming/native-knowledge.sqlite`, included in the protected backup and recovered by isolated restore | live-verified |
+| Independent tombstone head | Azure object read and written through managed identity, separate from the registry | live-verified |
 | Optional local worker | A laptop process for device-specific work; nothing depends on it | intended |
 
 ## What can Real-Ming contribute?
@@ -173,11 +203,12 @@ Every item remains attributable to its source of record and is shown through an 
 
 Real-Ming states no opinion about Hermes's own features. It previously pinned Hermes memory settings and those were removed rather than set permissively, because gating the runtime's working memory costs answer quality without buying safety. The reasoning is preserved in [`hermes/config.native-first.example.yaml`](hermes/config.native-first.example.yaml), and a test fails the build if a memory opinion reappears in that fragment.
 
-The selective knowledge-consolidation implementation is additive and
-controlled-tested, but not production-wired or active. It must not change
+The selective knowledge-consolidation implementation is additive and now
+production-wired, but it stays selective and non-recurring. It must not change
 Hermes native memory (`MEMORY.md`, `USER.md`, profile or session history),
 inspect every ordinary conversation, or be described as a hard security
-boundary for arbitrary filesystem reads.
+boundary for arbitrary filesystem reads. Role and Trust-Domain scoping bounds
+*which authorized retrieval* returns a page; it is not a filesystem sandbox.
 
 ### How a request flows
 
@@ -219,17 +250,27 @@ supported retrieval/publication path; direct arbitrary filesystem reads,
 already-delivered messages and Hermes native memory/history are separate
 operations.
 
-The current artifact is controlled-only: the native cron manifest remains
-inactive, and deployment, a harmless live one-shot, recurring cron activation
-and any mirror transport each require separate approval. The 10 September
-remediation packet records its own status as **NOT READY, blockers remain**:
-NKC-10 could not be proven in that workspace because the pinned Hermes import
-needs PyYAML, so native-Hermes execution is not claimed, Its `npm run check` exited `1` on a Chromium `spawn EPERM` *environment*
-failure; that blocker is workspace-specific and does not reproduce here, where
-the same command passes. See [the design spec](docs/superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md),
+This path is deployed and exercised, with one activation deliberately withheld.
+Deployment and a harmless live one-shot were approved and executed on
+14 September 2026: native Hermes staged a generation, retrieved a cited page
+for an authorized role, was refused for an unauthorized one, and forgot a
+subject restore-safely. **Recurring cron activation and any local mirror
+transport were not approved and did not happen** — the `02:00` manifest is
+still inactive, and enabling it remains a separate CEO decision.
+
+The 10 September remediation packet is retained with its own label, **NOT
+READY, blockers remain**, as the record of where the work stood then. Its
+NKC-10 blocker — the pinned Hermes import needing PyYAML in that workspace, so
+native-Hermes execution could not be claimed — was resolved on the production
+host, where the pinned one-shot wrapper completed twice within its
+four-operation allowlist. Its `npm run check` failure was a workspace-specific
+Chromium `spawn EPERM` *environment* fault and does not reproduce here. The
+packet's label is preserved rather than rewritten; the [RM-54 live
+evidence](docs/evidence/RM-54-live-operations-and-knowledge-2026-09-14.md)
+supersedes it. See also [the design spec](docs/superpowers/specs/2026-09-08-native-knowledge-consolidation-design.md),
 [ADR-0022](docs/adr/0022-native-knowledge-consolidation-around-hermes.md),
-[the implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md)
-and [the final remediation packet](docs/evidence/RM-40-native-knowledge-final-remediation-review-packet-2026-09-10.md).
+[ADR-0023](docs/adr/0023-scope-native-knowledge-retrieval-by-trust-domain.md) and
+[the implementation plan](docs/superpowers/plans/2026-09-09-native-knowledge-consolidation.md).
 
 ## Sources of Record and account routing
 
@@ -373,7 +414,7 @@ Tests run through **two approved seams only**:
 
 Do not add a third seam and do not test internals. Work proceeds red-to-green through those harnesses; the reasoning and the wider working agreement are in [AGENTS.md](AGENTS.md).
 
-The suite is 71 test files under [`test/`](test), covering system behaviour, adapter contracts, documentation invariants, the ticket graph, and one real browser test for the dashboard read model.
+The suite is 85 test files under [`test/`](test), covering system behaviour, adapter contracts, documentation invariants, the ticket graph, and one real browser test for the dashboard read model.
 
 ## Repository structure
 
@@ -402,7 +443,7 @@ The suite is 71 test files under [`test/`](test), covering system behaviour, ada
 | [AGENTS.md](AGENTS.md) | Working agreement, definition of done, secrets policy |
 | [docs/BASELINE.md](docs/BASELINE.md) | Current design and deployed revision labels |
 | [docs/specs/real-ming-v1.1.md](docs/specs/real-ming-v1.1.md) | The system specification |
-| [docs/adr/](docs/adr) | Twenty-two decision records, oldest to newest |
+| [docs/adr/](docs/adr) | Twenty-three decision records, oldest to newest |
 | [docs/architecture/real-ming-agent-diagram-v7-cleanup.html](docs/architecture/real-ming-agent-diagram-v7-cleanup.html) | The current architecture diagram — Revision 6, v7 cleanup |
 | [docs/architecture/](docs/architecture) | Capability and architecture reviews, and retained earlier diagram revisions |
 | [docs/agents/](docs/agents) | Agent guidance, handoffs, lessons learned |
